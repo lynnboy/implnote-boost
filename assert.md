@@ -47,3 +47,11 @@
 #### Boost::Config
 
 * `<boost/config.hpp>`, when _custom handlers_ are enabled.
+
+------
+### Standard Facilities
+
+* Preprocessor: `__func__`, `__FILE__`, `__LINE__`.
+* Standard Library: `<cassert>`
+* Proposals:
+  * N4129 - Source Code Information Capture.
