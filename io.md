@@ -93,3 +93,7 @@ as the manipulator type. `>>` is only provided for non-`const` version of `basic
 
 * `<boost/detail/workaround.hpp>`.
 
+------
+### Standard Facilities
+
+* Standard Library: n3654 Quoted Strings Library Proposal, (C++14).
