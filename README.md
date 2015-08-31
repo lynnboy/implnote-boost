@@ -5,31 +5,151 @@ Boost C++ Libraries
   * STD: `<cassert>`.
 
 * `static_assert` -- **Static Assert** | _Static assertions (compile time assertions)._
-  * STD: `static_assert`.
+  * STD: `static_assert` (C++11).
 
-* conversion
-  * `implicit_cast`, `polymorphic_cast`, `polymorphic_downcast`, etc.
-* disjoint_sets
+* `conversion` -- **Conversion** | _Polymorphic casts._
+  * `implicit_cast`, `polymorphic_[pointer_][down]cast`, etc.
+
+* `disjoint_sets`
   * Aux algorithm.
-* any
-  * STD: `<any>`.
-* compatibility
-  * STD: `<cxxxx>`.
-* throw_exception
-  * Add throwing position as exception error-info.
-  * STD: `<exception>` `current_exception` support.
-* array
-  * STD: `<array>`.
-* io
-  * IOS state savers.
-  * STD: `quoted` manipulator.
-* rational
-  * Rational number
-  * STD proposal N3611, not accepted.
-* timer
-  * Timer classes.
-* 
 
+* `any` -- **Any** | _Safe, generic container for single values of different value types._
+  * STD: `<any>` (Library Fundamentals TS v1).
+
+* `compatibility` -- **Compatibility** | _Help for non-conforming standard libraries._
+  * STD: `<cxxxx>`.
+
+* `throw_exception` -- **ThrowException** | _A common infrastructure for throwing exceptions from Boost libraries._
+  * Add throwing position as exception error-info.
+  * STD: `<exception>` `current_exception` support (C++11).
+
+* `array` -- **Array** | _STL compliant container wrapper for arrays of constant size._
+  * STD: `<array>` (tr1, C++11).
+
+* `io` -- **IO State Savers** | _The I/O sub-library of Boost helps segregate the large number of Boost headers._
+  * IOS state savers.
+  * STD: `quoted` manipulator (C++14).
+
+* `timer` -- **Timer** | _Event timer, progress timer, and progress display classes._
+  * Timer classes.
+
+* `rational` -- **Rational** | _A rational number class._
+  * STD: proposal N3611, pending.
+
+* `logic` -- **Tribool** | _3-state boolean type library._
+  * `tribool` related.
+
+* `tokenizer` -- **Tokenizer** | _Break of a string or other character sequence into a series of tokens._
+
+* `align`
+* `type_index`
+* `foreach`
+* `uuid`
+* `tuple`
+* `integer`
+* `assign`
+* `scope_exit`
+* `coroutine2`
+* `system`
+* `core`
+* `convert`
+* `dynamic_bitset`
+* `exception`
+* `optional`
+* `concept_check`
+* `endian`
+* `detail`
+* `function`
+* `crc`
+* `chrono/stopwatches`
+* `lockfree`
+* `signals`
+* `flyweight`
+* `tti`
+* `multi_array`
+* `lexical_cast`
+* `ratio`
+* `property_map`
+* `functional`
+* `winapi`
+* `tr1`
+* `dll`
+* `format`
+* `pool`
+* `numeric/conversion`
+* `sort`
+* `numeric/interval`
+* `statechart`
+* `parameter`
+* `iterator`
+* `utility`
+* `predef`
+* `signals2`
+* `bind`
+* `program_options`
+* `local_function`
+* `variant`
+* `heap`
+* `move`
+* `filesystem`
+* `coroutine`
+* `ptr_container`
+* `context`
+* `unordered`
+* `circular_buffer`
+* `smart_ptr`
+* `property_tree`
+* `config`
+* `chrono`
+* `type_erasure`
+* `sync`
+* `atomic`
+* `lambda`
+* `bimap`
+* `mpi`
+* `algorithm`
+* `accumulators`
+* `random`
+* `multi_index`
+* `vmd`
+* `range`
+* `icl`
+* `iostreams`
+* `function_types`
+* `units`
+* `date_time`
+* `type_traits`
+* `locale`
+* `msm`
+* `python`
+* `serialization`
+* `xpressive`
+* `graph_parallel`
+* `regex`
+* `numeric/odeint`
+* `test`
+* `compute`
+* `thread`
+* `multiprecision`
+* `wave`
+* `polygon`
+* `intrusive`
+* `gil`
+* `interprocess`
+* `proto`
+* `container`
+* `log`
+* `graph`
+* `numeric/ublas`
+* `preprocessor`
+* `asio`
+* `math`
+* `mpl`
+* `typeof`
+* `geometry`
+* `spirit`
+* `fusion`
+* `phoenix`
 
 
 
@@ -72,32 +192,6 @@ Align
          
     Categories
         Memory
-
-Any
-
-    Safe, generic container for single values of different value types.
-
-    Author(s)
-        Kevlin Henney
-    First Release
-        1.23.0
-    Standard
-         
-    Categories
-        Data structures
-
-Array
-
-    STL compliant container wrapper for arrays of constant size.
-
-    Author(s)
-        Nicolai Josuttis
-    First Release
-        1.17.0
-    Standard
-        TR1
-    Categories
-        Containers
 
 Asio
 
@@ -202,19 +296,6 @@ Circular Buffer
          
     Categories
         Containers
-
-Compatibility
-
-    Help for non-conforming standard libraries.
-
-    Author(s)
-        Ralf Grosse-Kunstleve and Jens Maurer
-    First Release
-        1.21.2
-    Standard
-         
-    Categories
-        Broken compiler workarounds
 
 Compressed Pair
 
@@ -709,19 +790,6 @@ Intrusive
          
     Categories
         Containers
-
-IO State Savers
-
-    The I/O sub-library of Boost helps segregate the large number of Boost headers. This sub-library should contain various items to use with/for the standard I/O library.
-
-    Author(s)
-        Daryle Walker
-    First Release
-        1.28.0
-    Standard
-         
-    Categories
-        Input/Output
 
 Iostreams
 
@@ -1269,19 +1337,6 @@ Ratio
     Categories
         Math and numerics
 
-Rational
-
-    A rational number class.
-
-    Author(s)
-        Paul Moore
-    First Release
-        1.11.0
-    Standard
-         
-    Categories
-        Math and numerics
-
 Ref
 
     A utility library for passing references to generic functions.
@@ -1490,45 +1545,6 @@ Thread
     Categories
         Concurrent Programming, System
 
-ThrowException
-
-    A common infrastructure for throwing exceptions from Boost libraries.
-
-    Author(s)
-        Emil Dotchevski
-    First Release
-        1.56.0
-    Standard
-         
-    Categories
-        Miscellaneous
-
-Timer
-
-    Event timer, progress timer, and progress display classes.
-
-    Author(s)
-        Beman Dawes
-    First Release
-        1.9.0
-    Standard
-         
-    Categories
-        Miscellaneous
-
-Tokenizer
-
-    Break of a string or other character sequence into a series of tokens.
-
-    Author(s)
-        John Bandela
-    First Release
-        1.23.0
-    Standard
-         
-    Categories
-        Iterators, String and text processing
-
 TR1 (deprecated)
 
     The TR1 library provides an implementation of the C++ Technical Report on Standard Library Extensions. This library does not itself implement the TR1 components, rather it's a thin wrapper that will include your standard library's TR1 implementation (if it has one), otherwise it will include the Boost Library equivalents, and import them into namespace std::tr1.
@@ -1539,19 +1555,6 @@ TR1 (deprecated)
         1.34.0
     Standard
         TR1
-    Categories
-        Miscellaneous
-
-Tribool
-
-    3-state boolean type library.
-
-    Author(s)
-        Doug Gregor
-    First Release
-        1.32.0
-    Standard
-         
     Categories
         Miscellaneous
 
