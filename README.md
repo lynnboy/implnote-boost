@@ -40,8 +40,12 @@ Boost C++ Libraries
   * `tribool` related.
 
 * `tokenizer` -- **Tokenizer** | _Break of a string or other character sequence into a series of tokens._
+  * Tokenizer function, iterator, view range.
 
 * `align`
+  * `is_aligned`, `aligned_alloc`, `aligned_allocator`, `aligned_delete`
+  * STD: `align`, `alignment_of`
+
 * `type_index`
 * `foreach`
 * `uuid`
