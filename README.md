@@ -42,11 +42,12 @@ Boost C++ Libraries
 * `tokenizer` -- **Tokenizer** | _Break of a string or other character sequence into a series of tokens._
   * Tokenizer function, iterator, view range.
 
-* `align`
+* `align` -- **Align** | _Memory alignment functions, allocators, and adaptors._
   * `is_aligned`, `aligned_alloc`, `aligned_allocator`, `aligned_delete`
   * STD: `align`, `alignment_of`
 
-* `type_index`
+* `type_index` -- **Type Index** | _Runtime/Compile time copyable type info._
+
 * `foreach`
 * `uuid`
 * `tuple`
@@ -183,19 +184,6 @@ Algorithm
          
     Categories
         Algorithms
-
-Align
-
-    Memory alignment functions, allocators, and adaptors.
-
-    Author(s)
-        Glen Fernandes
-    First Release
-        1.56.0
-    Standard
-         
-    Categories
-        Memory
 
 Asio
 
@@ -1600,19 +1588,6 @@ Type Erasure
          
     Categories
         Data structures
-
-Type Index
-
-    Runtime/Compile time copyable type info.
-
-    Author(s)
-        Antony Polukhin
-    First Release
-        1.56.0
-    Standard
-         
-    Categories
-        Language Features Emulation
 
 Type Traits
 
