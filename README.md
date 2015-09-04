@@ -52,7 +52,11 @@ Boost C++ Libraries
 * `foreach` -- **Foreach** | _BOOST_FOREACH iterates over sequences for us, freeing us from having to deal directly with iterators or write predicates._
   * STD: Range based `for` (C++11)
 
-* `uuid`
+* `uuid` -- **Uuid** | _A universally unique identifier._
+  * Uuid data type & generator/factories
+  * SHA1 hasher
+  * URNG seed generator (C++11 `random_device`)
+
 * `tuple`
 * `integer`
 * `assign`
@@ -1656,19 +1660,6 @@ Utility
          
     Categories
         Algorithms, Function objects and higher-order programming, Memory, Patterns and Idioms
-
-Uuid
-
-    A universally unique identifier.
-
-    Author(s)
-        Andy Tompkins
-    First Release
-        1.42.0
-    Standard
-         
-    Categories
-        Data structures, Domain Specific
 
 Value Initialized
 
