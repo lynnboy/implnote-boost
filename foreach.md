@@ -68,4 +68,4 @@
 ------
 ### Standard Facilities
 
-* Standard Library: `<typeindex>` (C++11).
+* Language: Range-based `for` (C++11).
