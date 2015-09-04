@@ -44,11 +44,14 @@ Boost C++ Libraries
 
 * `align` -- **Align** | _Memory alignment functions, allocators, and adaptors._
   * `is_aligned`, `aligned_alloc`, `aligned_allocator`, `aligned_delete`
-  * STD: `align`, `alignment_of`
+  * STD: `align`, `alignment_of` (C++11)
 
 * `type_index` -- **Type Index** | _Runtime/Compile time copyable type info._
+  * STD: `<typeindex>` (C++11)
 
-* `foreach`
+* `foreach` -- **Foreach** | _BOOST_FOREACH iterates over sequences for us, freeing us from having to deal directly with iterators or write predicates._
+  * STD: Range based `for` (C++11)
+
 * `uuid`
 * `tuple`
 * `integer`
@@ -509,19 +512,6 @@ Flyweight
          
     Categories
         Patterns and Idioms
-
-Foreach
-
-    In C++, writing a loop that iterates over a sequence is tedious. We can either use iterators, which requires a considerable amount of boiler-plate, or we can use the std::for_each() algorithm and move our loop body into a predicate, which requires no less boiler-plate and forces us to move our logic far from where it will be used. In contrast, some other languages, like Perl, provide a dedicated "foreach" construct that automates this process. BOOST_FOREACH is just such a construct for C++. It iterates over sequences for us, freeing us from having to deal directly with iterators or write predicates.
-
-    Author(s)
-        Eric Niebler
-    First Release
-        1.34.0
-    Standard
-         
-    Categories
-        Algorithms, Language Features Emulation
 
 Format
 
