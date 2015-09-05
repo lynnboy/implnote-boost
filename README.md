@@ -60,7 +60,11 @@ Boost C++ Libraries
 * `tuple` -- **Tuple** | _Ease definition of functions returning multiple values, and more._
   * STD: `<tuple>` (C++11)
 
-* `integer`
+* `integer` -- **Integer** | _Take advantage of <stdint.h> types from the 1999 C standard._
+  * Type selector, mask maker
+  * Compile-time and Runtime GCD/LCM and Log2.
+  * STD: `<cstdint>` (C++1)
+
 * `assign`
 * `scope_exit`
 * `coroutine2`
@@ -726,19 +730,6 @@ In Place Factory, Typed In Place Factory
          
     Categories
         Generic Programming
-
-Integer
-
-    The organization of boost integer headers and classes is designed to take advantage of <stdint.h> types from the 1999 C standard without resorting to undefined behavior in terms of the 1998 C++ standard. The header <boost/cstdint.hpp> makes the standard integer types safely available in namespace boost without placing any names in namespace std.
-
-    Author(s)
-         
-    First Release
-        1.9.0
-    Standard
-         
-    Categories
-        Math and numerics
 
 Interprocess
 
