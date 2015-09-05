@@ -57,7 +57,9 @@ Boost C++ Libraries
   * SHA1 hasher
   * URNG seed generator (C++11 `random_device`)
 
-* `tuple`
+* `tuple` -- **Tuple** | _Ease definition of functions returning multiple values, and more._
+  * STD: `<tuple>` (C++11)
+
 * `integer`
 * `assign`
 * `scope_exit`
@@ -1556,19 +1558,6 @@ TTI
          
     Categories
         Generic Programming, Template Metaprogramming
-
-Tuple
-
-    Ease definition of functions returning multiple values, and more.
-
-    Author(s)
-        Jaakko Järvi
-    First Release
-        1.24.0
-    Standard
-        TR1
-    Categories
-        Data structures
 
 Type Erasure
 
