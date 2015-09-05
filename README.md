@@ -63,9 +63,11 @@ Boost C++ Libraries
 * `integer` -- **Integer** | _Take advantage of <stdint.h> types from the 1999 C standard._
   * Type selector, mask maker
   * Compile-time and Runtime GCD/LCM and Log2.
-  * STD: `<cstdint>` (C++1)
+  * STD: `<cstdint>` (C++11)
 
-* `assign`
+* `assign` -- **Assign** | _Filling containers with constant or generated data has never been easier._
+  * STD: `<initializer_list>` (C++11)
+
 * `scope_exit`
 * `coroutine2`
 * `system`
@@ -210,19 +212,6 @@ Asio
          
     Categories
         Concurrent Programming, Input/Output
-
-Assign
-
-    Filling containers with constant or generated data has never been easier.
-
-    Author(s)
-        Thorsten Ottosen
-    First Release
-        1.32.0
-    Standard
-         
-    Categories
-        Input/Output
 
 Atomic
 
