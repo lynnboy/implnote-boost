@@ -71,13 +71,20 @@ Boost C++ Libraries
 * `scope_exit` -- **Scope Exit** | _Execute arbitrary code at scope exit._
   * STD: N4189 - Generic Scope Guard and RAII Wrapper for the Standard Library
 
-* `coroutine2`
-* `system`
+* `optional` -- **Optional** | _A value-semantic, type-safe wrapper for representing 'optional' (or 'nullable') objects of a given type._
+  * STD: Library fundamentals v1
+
+* `coroutine2` -- **Coroutine2** | _(C++14) Coroutine library._
+  * Asymmetric coroutine
+  * STD: N4499 - Draft wording for Coroutines (Revision 2)
+
+* `system` -- **System** | _Operating system support, including the diagnostics support that will be part of the C++0x standard library._
+  * STD: `<system_error>` (C++11)
+
 * `core`
 * `convert`
 * `dynamic_bitset`
 * `exception`
-* `optional`
 * `concept_check`
 * `endian`
 * `detail`
@@ -392,19 +399,6 @@ Coroutine
         Oliver Kowalke
     First Release
         1.53.0
-    Standard
-         
-    Categories
-        Concurrent Programming
-
-Coroutine2
-
-    (C++14) Coroutine library.
-
-    Author(s)
-        Oliver Kowalke
-    First Release
-        1.59.0
     Standard
          
     Categories
@@ -1099,19 +1093,6 @@ Operators
     Categories
         Generic Programming, Iterators, Math and numerics
 
-Optional
-
-    A value-semantic, type-safe wrapper for representing 'optional' (or 'nullable') objects of a given type. An optional object may or may not contain a value of the underlying type.
-
-    Author(s)
-        Fernando Cacciola
-    First Release
-        1.30.0
-    Standard
-         
-    Categories
-        Miscellaneous
-
 Parameter
 
     Boost.Parameter Library - Write functions that accept arguments by name.
@@ -1462,19 +1443,6 @@ Swap
          
     Categories
         Miscellaneous
-
-System
-
-    Operating system support, including the diagnostics support that will be part of the C++0x standard library.
-
-    Author(s)
-        Beman Dawes
-    First Release
-        1.35.0
-    Standard
-         
-    Categories
-        System
 
 Test
 
