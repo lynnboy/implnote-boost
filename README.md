@@ -68,7 +68,9 @@ Boost C++ Libraries
 * `assign` -- **Assign** | _Filling containers with constant or generated data has never been easier._
   * STD: `<initializer_list>` (C++11)
 
-* `scope_exit`
+* `scope_exit` -- **Scope Exit** | _Execute arbitrary code at scope exit._
+  * STD: N4189 - Generic Scope Guard and RAII Wrapper for the Standard Library
+
 * `coroutine2`
 * `system`
 * `core`
@@ -1343,19 +1345,6 @@ Result Of
          
     Categories
         Function objects and higher-order programming
-
-Scope Exit
-
-    Execute arbitrary code at scope exit.
-
-    Author(s)
-        Alexander Nasonov
-    First Release
-        1.38.0
-    Standard
-         
-    Categories
-        Language Features Emulation
 
 Serialization
 
