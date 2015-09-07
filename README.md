@@ -81,7 +81,20 @@ Boost C++ Libraries
 * `system` -- **System** | _Operating system support, including the diagnostics support that will be part of the C++0x standard library._
   * STD: `<system_error>` (C++11)
 
-* `core`
+* `core` -- **Core** | _A collection of simple core utilities with minimal dependencies._
+  * **Enable If** | _Selective inclusion of function template overloads._
+    * `disable_if`, `lazy_enable_if`, etc.
+    * STD: `enable_if` (C++11)
+  * **Ref** | _A utility library for passing references to generic functions._
+    * Trait `is_reference_wrapper` and `unwrap_reference`, `unwrap_ref()`
+    * STD: `ref`, `cref`, `reference_wrapper` (C++11)
+  * **Swap** | _Enhanced generic swap function._
+    * Call member `swap` if avaiable.
+    * STD: `swap`
+  * `demangle`, `typeinfo` and `demangled_name`
+  * `ignore_unused`, Lightweight Test, Dummy try/catch, `noncopyable`, `null_deleter`
+  * STD: `addressof`, `default_delete`, `explicit operator bool`, `is_same`, `enum class`
+
 * `convert`
 * `dynamic_bitset`
 * `exception`
@@ -378,19 +391,6 @@ Convert
     Categories
         String and text processing
 
-Core
-
-    A collection of simple core utilities with minimal dependencies.
-
-    Author(s)
-        Peter Dimov, Glen Fernandes and Andrey Semashev
-    First Release
-        1.56.0
-    Standard
-         
-    Categories
-        Miscellaneous
-
 Coroutine
 
     Coroutine library.
@@ -442,19 +442,6 @@ Dynamic Bitset
          
     Categories
         Containers
-
-Enable If
-
-    Selective inclusion of function template overloads.
-
-    Author(s)
-        Jaakko Järvi, Jeremiah Willcock and Andrew Lumsdaine
-    First Release
-        1.31.0
-    Standard
-         
-    Categories
-        Generic Programming
 
 Endian
 
@@ -1288,19 +1275,6 @@ Ratio
     Categories
         Math and numerics
 
-Ref
-
-    A utility library for passing references to generic functions.
-
-    Author(s)
-        Jaako Järvi, Peter Dimov, Doug Gregor and Dave Abrahams
-    First Release
-        1.25.0
-    Standard
-        TR1
-    Categories
-        Function objects and higher-order programming
-
 Regex
 
     Regular expression library.
@@ -1430,19 +1404,6 @@ String Algo
          
     Categories
         Algorithms, String and text processing
-
-Swap
-
-    Enhanced generic swap function.
-
-    Author(s)
-        Joseph Gauterin
-    First Release
-        1.38.0
-    Standard
-         
-    Categories
-        Miscellaneous
 
 Test
 
