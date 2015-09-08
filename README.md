@@ -89,8 +89,7 @@ Boost C++ Libraries
     * Trait `is_reference_wrapper` and `unwrap_reference`, `unwrap_ref()`
     * STD: `ref`, `cref`, `reference_wrapper` (C++11)
   * **Swap** | _Enhanced generic swap function._
-    * Call member `swap` if avaiable.
-    * STD: `swap`
+    * STD: `swap` for array (C++11)
   * `demangle`, `typeinfo` and `demangled_name`
   * `ignore_unused`, Lightweight Test, Dummy try/catch, `noncopyable`, `null_deleter`
   * STD: `addressof`, `default_delete`, `explicit operator bool`, `is_same`, `enum class`
