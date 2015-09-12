@@ -97,7 +97,9 @@ Boost C++ Libraries
 * `convert` -- **Convert** | _An extendible and configurable type-conversion framework._
   * Pluggable conversion API, `lexical_cast`, `printf`, `stream`, `strtol`, `spirit` based converters.
 
-* `dynamic_bitset`
+* `dynamic_bitset` -- **Dynamic Bitset** | _The dynamic_bitset class represents a set of bits._
+  * Dynamic version of `bitset`
+
 * `exception`
 * `concept_check`
 * `endian`
@@ -417,19 +419,6 @@ Date Time
          
     Categories
         Domain Specific, System
-
-Dynamic Bitset
-
-    The dynamic_bitset class represents a set of bits. It provides accesses to the value of individual bits via an operator[] and provides all of the bitwise operators that one can apply to builtin integers, such as operator& and operator<<. The number of bits in the set is specified at runtime via a parameter to the constructor of the dynamic_bitset.
-
-    Author(s)
-        Jeremy Siek and Chuck Allison
-    First Release
-        1.29.0
-    Standard
-         
-    Categories
-        Containers
 
 Endian
 
