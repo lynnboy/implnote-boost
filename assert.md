@@ -17,6 +17,7 @@
 * `BOOST_ASSERT_MSG(expr, msg)`
 * `BOOST_VERIFY(expr)`
 * `BOOST_VERIFY_MSG(expr, msg)`
+* `BOOST_ASSERT_IS_VOID` - Whether assertion is not in effect.
 
 #### Switch Macro
 
