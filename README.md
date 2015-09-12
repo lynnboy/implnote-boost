@@ -94,7 +94,9 @@ Boost C++ Libraries
   * `ignore_unused`, Lightweight Test, Dummy try/catch, `noncopyable`, `null_deleter`
   * STD: `addressof`, `default_delete`, `explicit operator bool`, `is_same`, `enum class`
 
-* `convert`
+* `convert` -- **Convert** | _An extendible and configurable type-conversion framework._
+  * Pluggable conversion API, `lexical_cast`, `printf`, `stream`, `strtol`, `spirit` based converters.
+
 * `dynamic_bitset`
 * `exception`
 * `concept_check`
@@ -376,19 +378,6 @@ Context
          
     Categories
         Concurrent Programming, System
-
-Convert
-
-    An extendible and configurable type-conversion framework.
-
-    Author(s)
-        Vladimir Batov
-    First Release
-        1.59.0
-    Standard
-         
-    Categories
-        String and text processing
 
 Coroutine
 
