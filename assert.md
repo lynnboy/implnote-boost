@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/assert`
 * repo: `boostorg/assert`
-* tag: `boost-1.59.0`
+* commit: `938bfbb0`, 2015-9-12
 
 ------
 ### BOOST_ASSERT / BOOST_VERIFY
