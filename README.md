@@ -52,13 +52,13 @@ Boost C++ Libraries
 * `foreach` -- **Foreach** | _BOOST_FOREACH iterates over sequences for us, freeing us from having to deal directly with iterators or write predicates._
   * STD: Range based `for` (C++11)
 
+* `tuple` -- **Tuple** | _Ease definition of functions returning multiple values, and more._
+  * STD: `<tuple>` (C++11)
+
 * `uuid` -- **Uuid** | _A universally unique identifier._
   * Uuid data type & generator/factories
   * SHA1 hasher
   * URNG seed generator (C++11 `random_device`)
-
-* `tuple` -- **Tuple** | _Ease definition of functions returning multiple values, and more._
-  * STD: `<tuple>` (C++11)
 
 * `integer` -- **Integer** | _Take advantage of <stdint.h> types from the 1999 C standard._
   * Type selector, mask maker
@@ -100,8 +100,13 @@ Boost C++ Libraries
 * `dynamic_bitset` -- **Dynamic Bitset** | _The dynamic_bitset class represents a set of bits._
   * Dynamic version of `bitset`
 
-* `exception`
-* `concept_check`
+* `exception` -- **Exception** | _The Boost Exception library supports transporting of arbitrary data in exception objects, and transporting of exceptions between threads._
+  * STD: `exception_ptr` (C++11)
+  * STD: proposal N3757 and N3758, pending.
+
+* `concept_check` -- **Concept Check** | _Tools for generic programming._
+  * STD: Concept Lite TS
+
 * `endian`
 * `detail`
 * `function`
@@ -329,19 +334,6 @@ Compressed Pair
     Categories
         Data structures, Patterns and Idioms
 
-Concept Check
-
-    Tools for generic programming.
-
-    Author(s)
-        Jeremy Siek
-    First Release
-        1.19.0
-    Standard
-         
-    Categories
-        Correctness and testing, Generic Programming
-
 Config
 
     Helps Boost library developers adapt to compiler idiosyncrasies; not intended for library users.
@@ -432,19 +424,6 @@ Endian
          
     Categories
         Input/Output, Math and numerics
-
-Exception
-
-    The Boost Exception library supports transporting of arbitrary data in exception objects, and transporting of exceptions between threads.
-
-    Author(s)
-        Emil Dotchevski
-    First Release
-        1.36.0
-    Standard
-         
-    Categories
-        Language Features Emulation
 
 Filesystem
 
