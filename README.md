@@ -107,7 +107,9 @@ Boost C++ Libraries
 * `concept_check` -- **Concept Check** | _Tools for generic programming._
   * STD: Concept Lite TS
 
-* `endian`
+* `endian` -- **Endian** | _Types and conversion functions for correct byte ordering and more regardless of processor endianness._
+ * Endian conversion, Endian-aware buffer, Endian-aware arithmetic type
+
 * `detail`
 * `function`
 * `crc`
@@ -411,19 +413,6 @@ Date Time
          
     Categories
         Domain Specific, System
-
-Endian
-
-    Types and conversion functions for correct byte ordering and more regardless of processor endianness.
-
-    Author(s)
-        Beman Dawes
-    First Release
-        1.58.0
-    Standard
-         
-    Categories
-        Input/Output, Math and numerics
 
 Filesystem
 
