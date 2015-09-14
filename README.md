@@ -108,10 +108,14 @@ Boost C++ Libraries
   * STD: Concept Lite TS
 
 * `endian` -- **Endian** | _Types and conversion functions for correct byte ordering and more regardless of processor endianness._
- * Endian conversion, Endian-aware buffer, Endian-aware arithmetic type
+  * Endian conversion, Endian-aware buffer, Endian-aware arithmetic type
 
 * `detail`
-* `function`
+  * STD: `binary_search`, `codecvt_utf8` (C++11), `is_sorted` (C++11)
+
+* `function` -- **Function** | _Function object wrappers for deferred calls or callbacks._
+  * STD: `function` (C++11)
+
 * `crc`
 * `chrono/stopwatches`
 * `lockfree`
@@ -452,19 +456,6 @@ Format
          
     Categories
         Input/Output, String and text processing
-
-Function
-
-    Function object wrappers for deferred calls or callbacks.
-
-    Author(s)
-        Doug Gregor
-    First Release
-        1.23.0
-    Standard
-        TR1
-    Categories
-        Function objects and higher-order programming, Programming Interfaces
 
 Function Types
 
