@@ -245,7 +245,7 @@ Header `<boost/detail/is_xxx.hpp>`
 
 ##### Boost.Preprocessor
 
-* `<boost/preprocessor/enum_params.hpp>
+* `<boost/preprocessor/enum_params.hpp>`
 
 ------
 ### Lightweight Test Facilities
@@ -266,7 +266,7 @@ Header `<boost/detail/lightweight_test_report.hpp>`
 
 ##### Boost.Core
 
-* `<boost/detail/lightweight_test.hpp>
+* `<boost/detail/lightweight_test.hpp>`
 
 ------
 ### Facility For Named Template Parameter
@@ -281,8 +281,8 @@ Header `<boost/detail/named_template_params.hpp>`
 
 ##### Boost.TypeTraits
 
-* `<boost/type_traits/conversion_traits.hpp>
-* `<boost/type_traits/composite_traits.hpp>
+* `<boost/type_traits/conversion_traits.hpp>`
+* `<boost/type_traits/composite_traits.hpp>`
 
 ------
 ### Numeric Type Traits
@@ -308,7 +308,7 @@ Header `<boost/detail/numeric_traits.hpp>`
 
 ##### Boost.TypeTraits
 
-* `<boost/type_traits.hpp>
+* `<boost/type_traits.hpp>`
 
 ------
 ### Reference Data Storage
@@ -333,7 +333,7 @@ Header `<boost/detail/reference_content.hpp>`
 
 ##### Boost.TypeTraits
 
-* `<boost/type_traits/has_nothrow_copy.hpp>
+* `<boost/type_traits/has_nothrow_copy.hpp>`
 
 ------
 ### Conditionally Select Type
