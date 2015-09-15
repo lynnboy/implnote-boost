@@ -116,7 +116,9 @@ Boost C++ Libraries
 * `function` -- **Function** | _Function object wrappers for deferred calls or callbacks._
   * STD: `function` (C++11)
 
-* `crc`
+* `crc` -- **CRC** | _The Boost CRC Library provides two implementations of CRC (cyclic redundancy code) computation objects and two implementations of CRC computation functions. The implementations are template-based._
+  * CRC checksum calculator
+
 * `chrono/stopwatches`
 * `lockfree`
 * `signals`
@@ -391,19 +393,6 @@ Coroutine
          
     Categories
         Concurrent Programming
-
-CRC
-
-    The Boost CRC Library provides two implementations of CRC (cyclic redundancy code) computation objects and two implementations of CRC computation functions. The implementations are template-based.
-
-    Author(s)
-        Daryle Walker
-    First Release
-        1.22.0
-    Standard
-         
-    Categories
-        Domain Specific
 
 Date Time
 
