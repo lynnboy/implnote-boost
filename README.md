@@ -120,6 +120,8 @@ Boost C++ Libraries
   * CRC checksum calculator
 
 * `chrono/stopwatches`
+  * Stopwatch, output formatting, supersedes *Boost.Timer*
+
 * `lockfree` -- **Lockfree** | _Lockfree data structures._
   * Lock-free `queue`, `stack`, wait-free `spsc_queue`
 
