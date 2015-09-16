@@ -9,6 +9,8 @@
 
 Header `<boost/chrono/stopwatches.hpp>` for all 
 
+Supersedes **Boost.Timer**.
+
 #### Simple Stopwatch
 
 Header `<boost/chrono/stopwatches/simple_stopwatch.hpp>`
