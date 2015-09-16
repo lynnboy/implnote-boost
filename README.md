@@ -120,7 +120,9 @@ Boost C++ Libraries
   * CRC checksum calculator
 
 * `chrono/stopwatches`
-* `lockfree`
+* `lockfree` -- **Lockfree** | _Lockfree data structures._
+  * Lock-free `queue`, `stack`, wait-free `spsc_queue`
+
 * `signals`
 * `flyweight`
 * `tti`
@@ -744,19 +746,6 @@ Locale
          
     Categories
         String and text processing
-
-Lockfree
-
-    Lockfree data structures.
-
-    Author(s)
-        Tim Blechmann
-    First Release
-        1.53.0
-    Standard
-         
-    Categories
-        Concurrent Programming
 
 Log
 
