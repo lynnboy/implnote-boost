@@ -49,6 +49,8 @@ class progress_display : noncopyable; // not a timer, just a progress ruler
 ------
 ### Timer Version 2
 
+Superseded by **Boost.Chrono/Stopwatches**
+
 #### Header
 
 * `<boost/timer/timer.hpp>`
