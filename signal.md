@@ -227,9 +227,15 @@ public:
   connection connect([group_type const&,] slot_type const&, connect_position = at_back);
   template <typename T> void disconnect(T const&); // 'T' may be group name or a functor
   
-  result_type operator()(Args...) [const] {
+  result_type operator()(Args...args) [const] {
     // remember call depth
-    
+    auto f = [=](auto const& slot) {
+      F* target = unsafe_any_cast<F>(&slot.second);
+      return (*target)(args...);
+    };
+    optional<slot_result_type> cache;
+    return Combiner()(slot_call_iterator(slots_.begin(), slots_.end(), f, cache),
+                      slot_call_iterator(slots_.end(), slots_.end(), f, cache));
   }
 };
 ```
@@ -243,35 +249,50 @@ public:
 
 #### Boost.Config
 
-* `<boost/config.hpp>`.
+* `<boost/config.hpp>`
+* `<boost/config/auto_link.hpp>` - for library naming
 
-#### Boost.TypeIndex
+#### Boost.Iterator
 
-* `<boost/type_index.hpp>`, for RTTI.
+* `<boost/iterator/iterator_facade.hpp>`
 
-#### Boost.TypeTraits
+#### Boost.Function
 
-* `<boost/type_traits/*.hpp>`, several type traits.
+* `<boost/function.hpp>`
 
-#### Boost.ThrowException
+#### Boost.SmartPtr
 
-* `<boost/throw_exception.hpp>`
+* `<boost/shared_ptr.hpp>`
 
-#### Boost.StaticAssert
+#### Boost.Any
 
-* `<boost/static_assert.hpp>`
+* `<boost/any.hpp>`
 
 #### Boost.Core
 
-* `<boost/utility/enable_if.hpp>`
+* `<boost/noncopyable.hpp>`
+* `<boost/utility/addressof.hpp>`
+* `<boost/ref.hpp>`
+* `<boost/visit_each.hpp>`
+
+#### Boost.TypeTraits
+
+* `<boost/type_traits/conversion_traits.hpp>`
+* `<boost/type_traits/function_traits.hpp>`
+* `<boost/type_traits/is_convertible.hpp>`
+* `<boost/type_traits.hpp>`
 
 #### Boost.MPL
 
-* `<boost/mpl/if.hpp>`, would be `<boost/type_traits/conditional.hpp>` better.
+* `<boost/mpl/bool.hpp>`
+
+#### Boost.Optional
+
+* `<boost/optional.hpp>`
+
+#### Boost.Utility
+
+* `<boost/operators.hpp>`
 
 ------
 ### Standard Facilities
-
-* Proposals:
-  * N3804 - Any library proposal.
-  * N4335 - C++ Extensions for Library Fundamentals v1.
