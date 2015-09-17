@@ -194,6 +194,22 @@ Overloaded for `T*`, and `std::auto_ptr`, `std::unique_ptr`, `std::shared_ptr`, 
 Boost smart pointers and wrapper types usually provide overload for it.
 
 ------
+### `visit_each` Algorithm
+
+Header `<boost/visit_each.hpp>`
+
+```c++
+template <typename Visitor, typename T>
+inline void visit_each(Visitor& visitor, const T& t, long) { visitor(t); }          // fallback
+
+template <typename Visitor, typename T>
+inline void visit_each(Visitor& visitor, const T& t) { visit_each(visitor, t, 0); } // entrance
+```
+* Overload `visit_each` to access sub-objects.
+* Expanded by **Boost.Bind** and **Boost.Phoenix**.
+* Used by **Boost.Signals** and **Boost.Signals2**.
+
+------
 ### Dependency
 
 #### Boost.Config
