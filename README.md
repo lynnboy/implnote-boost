@@ -91,7 +91,7 @@ Boost C++ Libraries
   * **Swap** | _Enhanced generic swap function._
     * STD: `swap` for array (C++11)
   * `demangle`, `typeinfo` and `demangled_name`
-  * `ignore_unused`, Lightweight Test, Dummy try/catch, `noncopyable`, `null_deleter`
+  * `ignore_unused`, Lightweight Test, Dummy try/catch, `noncopyable`, `null_deleter`, `visit_each`
   * STD: `addressof`, `default_delete`, `explicit operator bool`, `is_same`, `enum class`
 
 * `convert` -- **Convert** | _An extendible and configurable type-conversion framework._
@@ -125,7 +125,9 @@ Boost C++ Libraries
 * `lockfree` -- **Lockfree** | _Lockfree data structures._
   * Lock-free `queue`, `stack`, wait-free `spsc_queue`
 
-* `signals`
+* `signals` -- **Signals** (deprecated) | _Managed signals & slots callback implementation._
+  * Signal/slot, disconnect notify trackable targets, pullable combiner API
+
 * `flyweight`
 * `tti`
 * `multi_array`
@@ -1229,19 +1231,6 @@ Serialization
          
     Categories
         Input/Output
-
-Signals (deprecated)
-
-    Managed signals & slots callback implementation.
-
-    Author(s)
-        Doug Gregor
-    First Release
-        1.29.0
-    Standard
-         
-    Categories
-        Function objects and higher-order programming, Patterns and Idioms
 
 Signals2
 
