@@ -131,7 +131,10 @@ Boost C++ Libraries
 * `flyweight` -- **Flyweight** | _Design pattern to manage large quantities of highly redundant objects._
   * Automatic intern values in repository, flyweight wrapper for handles behave as immutable value.
 
-* `tti`
+* `tti` -- **TTI** | _Type Traits Introspection library._
+  * Query members of a type.
+  * STD: reflection proposals: N4428, N4447, N4451
+
 * `multi_array`
 * `lexical_cast`
 * `ratio`
@@ -1337,19 +1340,6 @@ TR1 (deprecated)
         TR1
     Categories
         Miscellaneous
-
-TTI
-
-    Type Traits Introspection library.
-
-    Author(s)
-        Edward Diener
-    First Release
-        1.54.0
-    Standard
-         
-    Categories
-        Generic Programming, Template Metaprogramming
 
 Type Erasure
 
