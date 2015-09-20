@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/coroutine2`
 * repo: `boostorg/coroutine2`
-* commit: `5c65e916`, 2015-9-5
+* commit: `f3c099d2`, 2015-9-19
 
 ------
 ### Boost Asymmetric Coroutine (C++14)
@@ -39,6 +39,7 @@ Wrappers around a `control_block<T>` pointer.
 
 * On destruction of master control block, the slave stack is forced to unwind
 * When slave throw exception, it is propagated and thrown at master side.
+* Pull side will switch to its push counterpart to try to fetch the first data element.
 
 #### Specialization
 
