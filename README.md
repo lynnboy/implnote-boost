@@ -128,7 +128,9 @@ Boost C++ Libraries
 * `signals` -- **Signals** (deprecated) | _Managed signals & slots callback implementation._
   * Signal/slot, disconnect notify trackable targets, pullable combiner API
 
-* `flyweight`
+* `flyweight` -- **Flyweight** | _Design pattern to manage large quantities of highly redundant objects._
+  * Automatic intern values in repository, flyweight wrapper for handles behave as immutable value.
+
 * `tti`
 * `multi_array`
 * `lexical_cast`
@@ -138,7 +140,7 @@ Boost C++ Libraries
 * `winapi`
 * `tr1`
 * `dll`
-* `format`
+* `format`fl
 * `pool`
 * `numeric/conversion`
 * `sort`
@@ -425,19 +427,6 @@ Filesystem
          
     Categories
         System
-
-Flyweight
-
-    Design pattern to manage large quantities of highly redundant objects.
-
-    Author(s)
-        Joaquín M López Muñoz
-    First Release
-        1.38.0
-    Standard
-         
-    Categories
-        Patterns and Idioms
 
 Format
 
