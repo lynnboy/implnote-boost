@@ -74,10 +74,6 @@ Boost C++ Libraries
 * `optional` -- **Optional** | _A value-semantic, type-safe wrapper for representing 'optional' (or 'nullable') objects of a given type._
   * STD: Library fundamentals v1
 
-* `coroutine2` -- **Coroutine2** | _(C++14) Coroutine library._
-  * Asymmetric coroutine
-  * STD: N4499 - Draft wording for Coroutines (Revision 2)
-
 * `system` -- **System** | _Operating system support, including the diagnostics support that will be part of the C++0x standard library._
   * STD: `<system_error>` (C++11)
 
@@ -93,6 +89,10 @@ Boost C++ Libraries
   * `demangle`, `typeinfo` and `demangled_name`
   * `ignore_unused`, Lightweight Test, Dummy try/catch, `noncopyable`, `null_deleter`, `visit_each`
   * STD: `addressof`, `default_delete`, `explicit operator bool`, `is_same`, `enum class`
+
+* `coroutine2` -- **Coroutine2** | _(C++14) Coroutine library._
+  * Asymmetric coroutine
+  * STD: N4499 - Draft wording for Coroutines (Revision 2)
 
 * `convert` -- **Convert** | _An extendible and configurable type-conversion framework._
   * Pluggable conversion API, `lexical_cast`, `printf`, `stream`, `strtol`, `spirit` based converters.
@@ -135,7 +135,9 @@ Boost C++ Libraries
   * Query members of a type.
   * STD: reflection proposals: N4428, N4447, N4451
 
-* `multi_array`
+* `multi_array` -- **Multi-Array** | _Boost.MultiArray provides a generic N-dimensional array concept definition and common implementations of that interface._
+  * STD: N4355, N4512 (Fundamentals TS v2)
+
 * `lexical_cast`
 * `ratio`
 * `property_map`
@@ -911,19 +913,6 @@ MPL
          
     Categories
         Template Metaprogramming
-
-Multi-Array
-
-    Boost.MultiArray provides a generic N-dimensional array concept definition and common implementations of that interface.
-
-    Author(s)
-        Ron Garcia
-    First Release
-        1.29.0
-    Standard
-         
-    Categories
-        Containers, Math and numerics
 
 Multi-Index
 
