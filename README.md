@@ -138,7 +138,8 @@ Boost C++ Libraries
 * [`multi_array`](multi_array.md) -- **Multi-Array** | _Boost.MultiArray provides a generic N-dimensional array concept definition and common implementations of that interface._
   * STD: N4355, N4512 (Fundamentals TS v2)
 
-* `lexical_cast`
+* [`lexical_cast`](lexical_cast.md) -- **Lexical Cast** | _General literal text conversions, such as an int represented a string, or vice-versa._
+  * Casting using stringstream by concept, keeps precision.
 
 * [`ratio`](ratio.md) -- **Ratio** | _Compile time rational arithmetic. C++11._
   * STD: `ratio` (C++11)
@@ -708,19 +709,6 @@ Lambda
          
     Categories
         Function objects and higher-order programming
-
-Lexical Cast
-
-    General literal text conversions, such as an int represented a string, or vice-versa.
-
-    Author(s)
-        Kevlin Henney
-    First Release
-        1.20.0
-    Standard
-         
-    Categories
-        String and text processing
 
 Local Function
 
