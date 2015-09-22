@@ -139,7 +139,10 @@ Boost C++ Libraries
   * STD: N4355, N4512 (Fundamentals TS v2)
 
 * `lexical_cast`
-* `ratio`
+
+* `ratio` -- **Ratio** | _Compile time rational arithmetic. C++11._
+  * STD: `ratio` (C++11)
+
 * `property_map`
 * `functional`
 * `winapi`
@@ -1160,19 +1163,6 @@ Range
          
     Categories
         Algorithms
-
-Ratio
-
-    Compile time rational arithmetic. C++11.
-
-    Author(s)
-        Howard Hinnant, Beman Dawes and Vicente J. Botet Escriba
-    First Release
-        1.47.0
-    Standard
-        Proposed
-    Categories
-        Math and numerics
 
 Regex
 
