@@ -165,7 +165,9 @@ Boost C++ Libraries
 * [`functional/overloaded_function`](functional-overloaded_function.md) -- **Functional/Overloaded Function** | _Overload different functions into a single function object._
   * Function object wrapper for multiple `function` with different signatures.
 
-* `winapi`
+* [`winapi`](winapi.md)
+  * Windows API declaration.
+
 * `tr1`
 * `dll`
 * `format`fl
