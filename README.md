@@ -78,17 +78,20 @@ Boost C++ Libraries
   * STD: `<system_error>` (C++11)
 
 * [`core`](core.md) -- **Core** | _A collection of simple core utilities with minimal dependencies._
-  * **Enable If** | _Selective inclusion of function template overloads._
-    * `disable_if`, `lazy_enable_if`, etc.
-    * STD: `enable_if` (C++11)
-  * **Ref** | _A utility library for passing references to generic functions._
-    * Trait `is_reference_wrapper` and `unwrap_reference`, `unwrap_ref()`
-    * STD: `ref`, `cref`, `reference_wrapper` (C++11)
-  * **Swap** | _Enhanced generic swap function._
-    * STD: `swap` for array (C++11)
   * `demangle`, `typeinfo` and `demangled_name`
   * `ignore_unused`, Lightweight Test, Dummy try/catch, `noncopyable`, `null_deleter`, `visit_each`
   * STD: `addressof`, `default_delete`, `explicit operator bool`, `is_same`, `enum class`
+
+* [`core/enable_if`](core-enable_if.md) -- **Enable If** | _Selective inclusion of function template overloads._
+  * `disable_if`, `lazy_enable_if`, etc.
+  * STD: `enable_if` (C++11)
+
+* [`core/ref`](core-ref.md) -- **Ref** | _A utility library for passing references to generic functions._
+  * Trait `is_reference_wrapper` and `unwrap_reference`, `unwrap_ref()`
+  * STD: `ref`, `cref`, `reference_wrapper` (C++11)
+
+* [`core/swap`](core-swap.md) -- **Swap** | _Enhanced generic swap function._
+  * STD: `swap` for array (C++11)
 
 * [`coroutine2`](coroutine2.md) -- **Coroutine2** | _(C++14) Coroutine library._
   * Asymmetric coroutine
@@ -145,7 +148,23 @@ Boost C++ Libraries
   * STD: `ratio` (C++11)
 
 * `property_map`
-* `functional`
+
+* [`functional`](functional.md) -- **Functional** | _The Boost.Function library contains a family of class templates that are function object wrappers._
+  * STD: `<functional>`
+
+* [`functional/factory`](functional-factory.md) -- **Functional/Factory** | _Function object templates for dynamic and static object creation)_
+  * wrapper for object creation
+
+* [`functional/forward`](functional-forward.md) -- **Functional/Forward** | _Adapters to allow generic function objects to accept arbitrary arguments_
+  * STD: rvalue-reference, `forward` (C++11)
+
+* [`functional/hash`](functional-hash.md) -- **Functional/Hash** | _A TR1 hash function object that can be extended to hash user defined types._
+  * `hash_combine`, `hash_range`
+  * STD: `hash` (C++11)
+
+* [`functional/overloaded_function`](functional-overloaded_function.md) -- **Functional/Overloaded Function** | _Overload different functions into a single function object._
+  * Function object wrapper for multiple `function` with different signatures.
+
 * `winapi`
 * `tr1`
 * `dll`
@@ -462,71 +481,6 @@ Function Types
          
     Categories
         Generic Programming, Template Metaprogramming
-
-Functional
-
-    The Boost.Function library contains a family of class templates that are function object wrappers.
-
-    Author(s)
-        Mark Rodgers
-    First Release
-        1.16.0
-    Standard
-         
-    Categories
-        Function objects and higher-order programming
-
-Functional/Factory
-
-    Function object templates for dynamic and static object creation
-
-    Author(s)
-        Tobias Schwinger
-    First Release
-        1.43.0
-    Standard
-         
-    Categories
-        Function objects and higher-order programming
-
-Functional/Forward
-
-    Adapters to allow generic function objects to accept arbitrary arguments
-
-    Author(s)
-        Tobias Schwinger
-    First Release
-        1.43.0
-    Standard
-         
-    Categories
-        Function objects and higher-order programming
-
-Functional/Hash
-
-    A TR1 hash function object that can be extended to hash user defined types.
-
-    Author(s)
-        Daniel James
-    First Release
-        1.33.0
-    Standard
-        TR1
-    Categories
-        Function objects and higher-order programming
-
-Functional/Overloaded Function
-
-    Overload different functions into a single function object.
-
-    Author(s)
-        Lorenzo Caminiti
-    First Release
-        1.50.0
-    Standard
-         
-    Categories
-        Function objects and higher-order programming
 
 Fusion
 
