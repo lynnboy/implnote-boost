@@ -168,7 +168,9 @@ Boost C++ Libraries
 * [`winapi`](winapi.md)
   * Windows API declaration.
 
-* `tr1`
+* `tr1` -- **TR1** (deprecated) | _The TR1 library provides an implementation of the C++ Technical Report on Standard Library Extensions._
+  * STD: TR1
+
 * `dll`
 * `format`fl
 * `pool`
@@ -1250,19 +1252,6 @@ Thread
         Proposed
     Categories
         Concurrent Programming, System
-
-TR1 (deprecated)
-
-    The TR1 library provides an implementation of the C++ Technical Report on Standard Library Extensions. This library does not itself implement the TR1 components, rather it's a thin wrapper that will include your standard library's TR1 implementation (if it has one), otherwise it will include the Boost Library equivalents, and import them into namespace std::tr1.
-
-    Author(s)
-        John Maddock
-    First Release
-        1.34.0
-    Standard
-        TR1
-    Categories
-        Miscellaneous
 
 Type Erasure
 
