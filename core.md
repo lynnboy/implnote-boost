@@ -49,16 +49,6 @@ demangle(const char*) -> std::string;
 
 Depends on `abi::__cxa_demangle`.
 
-### `enable_if` Family
-
-Header `<boost/core/enable_if.hpp>`
-
-* `enable_if_c<bool, T=void>`
-* `enable_if<Cond, T=void>` - test `Cond::value`
-* `lazy_enable_if<Cond, T>` - when `Cond::value`, use (instantiate) `T::type`
-
-Standard: `enable_if<bool, T=void>` (C++11), `enable_if_t` (C++14)
-
 ------
 ### Explicit Operator `bool` Simulation
 
@@ -126,22 +116,6 @@ Header `<boost/core/null_deleter.hpp>`
 Just a no-op functor accepting a pointer argument.
 
 ------
-### Reference Wrapping
-
-Header `<boost/core/ref.hpp>`
-
-* Class `reference_wrapper<T>`
-  * `T` as member `type`
-  * Ctor for `T&`, no ctor for `T&&`
-  * accessors `T& get() const`, `T* get_pointer() const`, and `operator T&() const`
-* `ref(T&) -> reference_wrapper<T> const`
-* `cref(T const&) -> reference_wrapper<const T> const`
-* Trait `is_reference_wrapper<T>`, `unwrap_reference<T>`
-* `unwrap_ref(T&) -> unwrap_reference<T>`
-
-Standard: `ref`, `cref` and `reference_wrapper` in `<functional>` (C++11)
-
-------
 ### Scoped `enum` Emulation
 
 Header `<boost/core/scoped_enum.hpp>`
@@ -163,15 +137,6 @@ the underlying type.
 * Function `native_value(EnumType)` get the real or wrapped `enum` value.
 
 Standard: `enum class`, `underlying_type` (C++11)
-
-------
-### Swap
-
-Header `<boost/core/swap.hpp>`
-
-Add support for array types, call `std::swap` for each element.
-
-Standard: `swap` for array (C++11)
 
 ------
 ### `typeinfo` Simulation
