@@ -69,6 +69,9 @@ concept bool Mutable_LvaluePropertyMap = ReadWritePropertyMap<PMap> && requires 
 ------
 ### Property Map Wrapper
 
+------
+#### Wraps Property Map As Function Object
+
 ```c++
 struct property_map_function<PropMap> requires ReadablePropertyMap<PropMap> {
   PropMap pm; // stored map
@@ -83,8 +86,26 @@ auto make_property_map_function(PropMap const&) -> property_map_function<PropMap
 ```
 
 * Lvalue property map
-* Use `IndexMap` as adaptor to map key to index
+* Use `PropMap` as adaptor to map key to index
 * `safe_iterator_property_map` asserts index range when accessing.
+
+------
+#### Plug Property Map Into Iterator
+
+Header `<boost/property_map/property_map_iterator.hpp>`
+
+```c++
+class {lvalue|readable}_pmap_iter<Iterator, PMap> : public iterator_adaptor<...> {
+  PMap map;   // stored map
+public:
+  // ctor(), ctor(Iterator const&, PMap), initialize base iterator and map member
+  reference dereference() const;  // m_map[] for lvalue, get(m_map,) for readable
+}:
+auto make_property_map_iterator(PMap, Iterator)
+  -> requires LValuePropertyMap<PMap> ? lvalue_pmap_iter : readable_pmap_iter;
+```
+
+* Maps upon the result of iterator access.
 
 ------
 ### Predefined Property Maps
@@ -296,6 +317,53 @@ auto make_compose_property_map(FPMap const&, GPMap const&) -> compose_property_m
 ```
 
 * Compose two maps like `f(g(k))`
+
+------
+### Dynamic Property Maps
+
+Header `<boost/property_map/dynaimc_property_map.hpp>`
+
+```c++
+class dynamic_property_map { // interface
+public:
+  virtual ~dynamic_property_map() {}
+  virtual any get(any const&) = 0;
+  virtual string get_string(any const&) = 0;
+  virtual void put(any const&, any const&) = 0;
+  virtual type_info const& key() const = 0;
+  virtual type_info const& value() const = 0;
+};
+struct dynamic_property_exception : std::exception;
+// derived: property_not_found, dynamic_get_failure, dynamic_const_put_error
+
+class dynamic_property_map_adaptor<PMap> : public dynamic_property_map {
+  PMap pmap;
+public:
+  dynamic_property_map_adaptor(PMap const&);  // ctor
+  // get(), get_string(), get value or streamed to string
+  // put(), throw if not writable, otherwise accept value_type or string
+  // key(), value(), return 'typeid()' for types
+  [const] PMap& base() [const]; // access
+};
+
+struct dynamic_properties {
+  std::multimap<string, shared_ptr<dynamic_property_map>>   property_maps;
+  function<shared_ptr<dynamic_property_map>(string const&, any const&, any const&)> generate_fn;
+  
+  // ctor(generate_fn), default ctor, dtor
+  // begin(), end(), lower_bound(), insert() forwards to 'property_maps'
+  dynamic_properties[&] property<PMap>(string const& name, PMap pmap) [const]; // const version copies
+  shared_ptr<dynamic_property_map> generate<Key, Value>(string const& name, Key const&, Value const&);
+};
+
+bool put<Key,Value>(string const& name, dynamic_properties&, Key const&, Value const&);
+Value get<Value,Key>(string const& name, dynamic_properties const&, Key const&[,type<Value>]);
+string get<Key>(string const& name, dynamic_properties const&, Key const&); // call 'get_string()'
+```
+
+* `dynamic_properties` stores multiple property maps for each name
+* `generate` creates map via function object but not store, `property` wraps map as adaptor and store
+* `get` throws if not found, `put` create new map by `generate` if not found
 
 ------
 ### Dependency
