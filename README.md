@@ -168,11 +168,13 @@ Boost C++ Libraries
 * [`winapi`](winapi.md)
   * Windows API declaration.
 
-* `tr1` -- **TR1** (deprecated) | _The TR1 library provides an implementation of the C++ Technical Report on Standard Library Extensions._
+* [`tr1`](tr1.md) -- **TR1** (deprecated) | _The TR1 library provides an implementation of the C++ Technical Report on Standard Library Extensions._
   * STD: TR1
 
+* [`format`](format.md) -- **Format** | _The format library provides a class for formatting arguments according to a format-string.
+  * Formating to string.
+
 * `dll`
-* `format`fl
 * `pool`
 * `numeric/conversion`
 * `sort`
@@ -459,19 +461,6 @@ Filesystem
          
     Categories
         System
-
-Format
-
-    The format library provides a class for formatting arguments according to a format-string, as does printf, but with two major differences: format sends the arguments to an internal stream, and so is entirely type-safe and naturally supports all user-defined types; the ellipsis (...) can not be used correctly in the strongly typed context of format, and thus the function call with arbitrary arguments is replaced by successive calls to an argument feeding operator%.
-
-    Author(s)
-        Samuel Krempp
-    First Release
-        1.29.0
-    Standard
-         
-    Categories
-        Input/Output, String and text processing
 
 Function Types
 
