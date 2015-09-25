@@ -101,7 +101,7 @@ class distributed_property_map<PG, GM, SM>
       vector<vector<pair<SM::key_type, value_type>>> values(num_processes(process_group));
       for (auto cell : ghost_cells) {
         auto g = get(global, cell.first);   // get owner/local_key pair for each cell
-        values[g.first].emplace_back(g.second, cell.second); put each owner's cell
+        values[g.first].emplace_back(g.second, cell.second); // put each owner's cell
       }
       for (int p = 0; p < values.size(); ++p)
         if (!values[p].empty()) send(process_group, p, pm_multiput, values[p]);
