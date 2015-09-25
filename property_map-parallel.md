@@ -91,9 +91,9 @@ class distributed_property_map<PG, GM, SM>
     GM        global;           // maps key to <owner, local_key> pair
     SM        storage;          // local map
     shared_ptr<ghost_cells_type>    ghost_cells;        // storage for ghost cells
-    size_t    max_ghost_cells = 1000000;  // 0 for infinite
+    size_t    max_ghost_cells = 1000000;    // 0 for infinite
     function<value_type(key_type)>  get_default_value;  // get default value for ghost
-    bool      has_default_resolver;         // flag so that the resolver can't provide default value
+    bool      has_default_resolver;         // flag so that the resolver can provide default value
     consistency_model     model = cm_forward;           // the consistency model flags
     function<void()>      reset;            // resets all ghost cells to default
     void      clear() { ghost_cells->clear(); }         // clear out all ghost cells
