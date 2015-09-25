@@ -39,13 +39,13 @@ concept bool ProcessGroup<PG,T> = Serializable<T> &&
 };
 
 concept bool OobProcessGroup<PG,T,U,F1,F2,Result> = ProcessGroup<PG,T> &&
-  require (PG& pg, PG const& cpg, F1 const& f1, F2 const& f2, int tag, int id, T& val, T const& cval, U& u) {
+  require (PG& pg, PG const& cpg, F1 const& f1, F2 const& f2, int tag, int id, T& v, T const& cv, U& u) {
     pg.template trigger<T>(tag, f1);
     pg.template trigger_with_reply<T>(tag, f2);
     { cpg.trigger_context() } -> trc;
-    send_oob(cpg, id, tag, cval);
-    send_oob_with_reply(cpg, id, tag, cval, u);
-    receive_oob(cpg, id, tag, val);
+    send_oob(cpg, id, tag, cv);
+    send_oob_with_reply(cpg, id, tag, cv, u);
+    receive_oob(cpg, id, tag, v);
     pg.poll();
 };
 ```
