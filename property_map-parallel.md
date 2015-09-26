@@ -54,7 +54,7 @@ concept bool OobProcessGroup<PG,T,U,F1,F2,Result> = ProcessGroup<PG,T> &&
 * Out-of-band messages will invoke registered trigger handler function
 
 ------
-### Distributed Property Map
+#### Distributed Property Map
 
 Header `<boost/property_map/parallel/parallel_property_maps.hpp>`
 
@@ -313,14 +313,117 @@ auto make_distributed_property_map(PG const&, GM global, SM storage,[Reduce])
 * `request` will allocate ghost cell and expect it being refreshed on next `synchronize`
 
 ------
-### Predefined Property Maps
+#### Caching Property Map
+
+```c++
+class caching_property_map<PM> requires DistributedPropertyMap<PM> {
+  PM property_map;
+public:
+  // process_group_type, value_type, key_type, reference, category
+  // ctor(pm), base()
+  // set_reduce(r), reset() forward to 'property_map'
+};
+// get(), put(), local_put(), cache()
+auto make_caching_property_map<PM>(PM const&) -> caching_property_map<PM>;
+```
+
+* Wraps a `distributed_property_map` and disable `pm_put` (by calling `local_put` in `put`)
+
+------
+#### Local Property Map
+
+```c++
+class distributed_property_map<PG, GM, SM>
+  requires ProcessGroup<PG> && ReadablePropertyMap<GM> && PropertyMap<SM>
+{
+  PG process_group; GM global; SM storage;
+public:
+  // process_group_type, value_type, key_type, reference, category
+  // ctor(), ctor(pg, gm, sm)
+  reference operator[]
+  // global(), base(), process_group()
+};
+// get(), put()
+```
+
+* Provides same API as `distributed_property_map`, but don't use `process_group` at all, just wraps a local map
+
+------
+#### Global Index Map
+
+```c++
+class global_index_map<IndexMap, GM> {
+  GM global; IndexMap index_map;
+  share_ptr<vector<value_type>> starting_index; // store index ranges for each process
+public:
+  using key_type = IndexMap::key_type; using value_type = IndexMap::value_type;
+  using category readable_property_map_tag;     // only readable, data prepared on ctor
+  global_index_map<PG>(PG pg, value_type num_local_indices, IndexMap index_map, GM gm)
+    : index_map(index_map), global(gm) {
+    starting_index.reset(new vector(num_processes(pg) + 1));    // process 0 is master node
+    send(pg, 0, 0, num_local_indices);  // report self capacity to process 0
+    synchronize(pg);
+    if (process_id(pg) == 0) {
+      (*starting_index)[0] = 0;
+      for (int dest = 1; dest < num_processes(pg); ++dest) {
+        value_type n; receive(pg, dest, 0, n);      // receive reported size from each process
+        (*starting_index)[dest + 1] = (*starting_index)[dest] + n;      // register index range
+      }
+      for (int dest = 1; dest < num_processes(pg); ++dest)
+        send(pg, dest, 1, &starting_index->front(), num_processes(pg)); // synchronize to all process
+      synchronize(pg);                  // send result to each process
+    } else {
+      synchronize(pg);                  // wait for result
+      receive(pg, 0, 1, &starting_index->front(), num_processes(pg));   // get data
+    }
+  }
+};
+value_type get(global_index_map const& gim, key_type const& key) {
+  auto owner = get(gim.global, key).first;
+  auto offset = get(gim.index_map, key);
+  return (*gim.starting_index)[owner] + offset;
+}
+```
+
+* Maintains a global index range map, maps `key_type` to a global index.
+
+------
+### Distributed Specialization For Predefined Property Maps
+
+#### Iterator Property Maps
+
+```c++
+class [safe_]iterator_property_map<RAIter, local_property_map<PG,GM,SM>, T, Ref>
+  : public distributed_property_map<PG, GM, [safe_]iterator_property_map<RAIter, SM, T, Ref>>;
+class [safe_]iterator_property_map<RAIter, distributed_property_map<PG,GM,SM>, T, Ref>
+  : public distributed_property_map<PG, GM, [safe_]iterator_property_map<RAIter, SM, T, Ref>>;
+auto make_iterator_property_map(RAIter, local_property_map<PG,GM,SM>)
+    -> distributed_property_map<PG, GM, iterator_property_map<RA,SM>>;
+```
+
+* Inject a `distributed_property_map` to serve as index map.
+
+#### Vector Property Maps
+
+```c++
+class vector_property_map<T, local_property_map<PG,GM,SM>>
+  : public distributed_property_map<PG,GM, vector_property_map<T,SM>>;
+class vector_property_map<T, distributed_property_map<PG,GM,SM>>
+  : public distributed_property_map<PG,GM, vector_property_map<T,SM>>;
+```
+
+* Inject a `distributed_property_map` to serve as index map.
 
 ------
 ### Dependency
 
+#### Boost.PropertyMap
+
 #### Boost.Config
 
 * `<boost/config.hpp>`
+* `<boost/version.hpp>`
+* `<boost/cstdint.hpp>`
 
 #### Boost.Assert
 
@@ -333,50 +436,51 @@ auto make_distributed_property_map(PG const&, GM global, SM storage,[Reduce])
 #### Boost.Core
 
 * `<boost/detail/iterator.hpp>` - deprecated
-* `<boost/type.hpp>` - by `dynamic_property_map`
 
 #### Boost.TypeTraits
 
-* `<boost/type_traits.hpp>`, `<boost/type_traits/is_same.hpp>`, `<boost/type_traits/is_convertible.hpp>`
+* `<boost/type_traits.hpp>`
+* `<boost/type_traits/is_same.hpp>`, `<boost/type_traits/is_base_and_derived.hpp>`
 
 #### Boost.MPL
 
-* `<boost/mpl/and.hpp>`, `<boost/mpl/not.hpp>`, `<boost/mpl/or.hpp>`, `<boost/mpl/if.hpp>`
-* `<boost/mpl/has_xxx.hpp>`, `<boost/mpl/assert.hpp>`, `<boost/mpl/bool.hpp>`
-
-#### Boost.Utility
-
-* `<boost/utility/result_of.hpp>` - function PM
+* `<boost/mpl/if.hpp>`, `<boost/mpl/bool.hpp>`, `<boost/mpl/assert.hpp>`
+* `<boost/mpl/or.hpp>`, `<boost/mpl/and.hpp>`, `<boost/mpl/has_xxx.hpp>`
 
 #### Boost.ConceptCheck
 
-* `<boost/concept_check.hpp>`, `<boost/concept_archetype.hpp>`
+* `<boost/concept_check.hpp>`
+* `<boost/concept_archetype.hpp>`
+
+#### Boost.Serialization
+
+* `<boost/serialization/is_bitwise_serializable.hpp>`
+* `<boost/serialization/utility.hpp>`
+
+#### Boost.MPI
+
+* `<boost/mpi/datatype.hpp>`
 
 #### Boost.SmartPtr
 
-* `<boost/smart_ptr/shared_array.hpp>` - by `shared_array_property_map`
-* `<boost/shared_ptr.hpp>` - by `vector_property_map`
-* `<boost/smart_ptr.hpp>` - by `dynamic_property_map`
+* `<boost/shared_ptr.hpp>`, `<boost/weak_ptr.hpp>`
 
-#### Boost.Iterator
+#### Boost.Bind
 
-* `<boost/iterator/iterator_adaptor.hpp>` - by iterator generator
+* `<boost/bind.hpp>`
 
-#### Boost.LexicalCast
+#### Boost.Optional
 
-* `<boost/lexical_cast.hpp>` - by `dynamic_property_map`
-
-#### Boost.Any
-
-* `<boost/any.hpp>` - by `dynamic_property_map`
+* `<boost/optional.hpp>`
 
 #### Boost.Function
 
-* `<boost/function/function3.hpp>` - by `dynamic_property_map`
+* `<boost/function/function1.hpp>`
 
-#### Boost.ThrowException
+#### Boost.MultiIndex
 
-* `<boost/throw_exception.hpp>` - by `dynamic_property_map`
+* `<boost/multi_index_container.hpp>`
+* `<boost/multi_index/hashed_index.hpp>`, `<boost/multi_index/member.hpp>`, `<boost/multi_index/sequenced_index.hpp>`
 
 ------
 ### Standard Facilities
