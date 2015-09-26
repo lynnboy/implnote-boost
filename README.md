@@ -149,6 +149,8 @@ Boost C++ Libraries
 
 * [`property_map`](property_map.md) -- **Property Map** | _Concepts defining interfaces which map key objects to value objects._
   * Abstraction for `put`/`get`/`[]`
+
+* [`property_map/parallel`](property_map-parallel.md)
   * Distributed property map, upon MPI
 
 * [`functional`](functional.md) -- **Functional** | _The Boost.Function library contains a family of class templates that are function object wrappers._
