@@ -147,7 +147,9 @@ Boost C++ Libraries
 * [`ratio`](ratio.md) -- **Ratio** | _Compile time rational arithmetic. C++11._
   * STD: `ratio` (C++11)
 
-* `property_map`
+* [`property_map`](property_map.md) -- **Property Map** | _Concepts defining interfaces which map key objects to value objects._
+  * Abstraction for `put`/`get`/`[]`
+  * Distributed property map, upon MPI
 
 * [`functional`](functional.md) -- **Functional** | _The Boost.Function library contains a family of class templates that are function object wrappers._
   * STD: `<functional>`
@@ -1020,19 +1022,6 @@ Program Options
          
     Categories
         Input/Output
-
-Property Map
-
-    Concepts defining interfaces which map key objects to value objects.
-
-    Author(s)
-        Jeremy Siek
-    First Release
-        1.19.0
-    Standard
-         
-    Categories
-        Containers, Generic Programming
 
 Property Tree
 
