@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/lexical_cast`
 * repo: `boostorg/lexical_cast`
-* commit: `55b1b832`, 2015-04-27
+* commit: `038e80ec`, 2015-09-25
 
 ------
 ### Lexical Type Cast API
@@ -55,10 +55,6 @@ bool try_lexical_convert(const CharT*, std::size_t, Target&);
 #### Boost.Core
 
 * `<boost/noncopyable.hpp>`
-
-#### Boost.Utility
-
-* `<boost/utility/value_init.hpp>`
 
 #### Boost.ThrowException
 
