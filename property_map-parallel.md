@@ -148,10 +148,10 @@ public:
       auto reduced = r(req.first, local, req.second);
       put(data->storage, local_key, reduced);
     };
-    auto handle_get =            [=](int, int, key_type const& key, trc) -> value_type {
+    auto handle_get = [=](int, int, key_type const& key, trc) -> value_type {
       return get(data->storage, get(data->global, key).second);       // immediately reply via OOB return
     };
-    auto handle_multiget =       [=](int source, int, vector<key_type> const& keys, trc) {
+    auto handle_multiget = [=](int source, int, vector<key_type> const& keys, trc) {
       vector<pair<key_type, value_type>> results; results.reserve(keys.size());
       for (auto k : msg) {
         auto local_key = get(data->global, k).second;
@@ -166,7 +166,7 @@ public:
         if (pos != data->ghost_cells->end()) pos->second = p.second;    // update ghost cell's value
       }
     };
-    auto handle_multiput =       [=](int, int, vector<pair<SM::key_type, value_type>> const values&, trc) {
+    auto handle_multiput = [=](int, int, vector<pair<SM::key_type, value_type>> const values&, trc) {
       for (auto p : values) {
         auto local = get(data->storage, p.first);   // first is local key
         auto reduced = r(p.first, local, p.second); // second is remote pushed value
@@ -283,7 +283,34 @@ auto make_distributed_property_map(PG const&, GM global, SM storage,[Reduce])
 ```
 
 * Assert only `put` on writable and non-const lvalue property maps.
-* 
+* Use 5 messages, all handled by registered trigger handlers.
+  * `pm_put` caused by `put`, synchronized
+  * `pm_get` caused by `get`, out-of-band, immediately wait for response
+  * `pm_multiget` and `pm_multiget_reply`, caused by refreshing ghost cells, synchronized
+  * `pm_multiput`, caused by flushing ghost cells to owners, synchronized
+* Reducer have two roles:
+  * Combiner for local value and remote value, decide how to update owned value against received `put` value
+  * Default value provider, used by `reset`-ing all ghost cells to default value, or provide initial value
+    for new ghost cells
+  * `non_default_resolver` flag means use the reducer provided value as initial value for ghost cells,
+    otherwise `cell(key, true)` will get value via oob `pm_get`, and `cell(key, false)` will use default-constructed
+    value as initial value for ghost cell.
+* Setting `max_ghost_cells` will cause ghost cells be discarded, `cm_backward` don't allow discarding
+* Consistency models: (default is `cm_forward`)
+  * when `cm_forward` is set, `put` will send `pm_put`, otherwise only cache the value in ghost cell
+  * `cm_backward` not set:
+    * ghost cell may discarded, but remaining cells are refreshed just before `synchronize`
+    * on synchronize, handle `cm_flush`, `cm_clear` and `cm_reset` in order.
+  * `cm_backward` is set:
+    * ghost cell never discarded, but on `synchronize`, they are refreshed only none of `cm_flush`, `cm_clear`
+      and `cm_reset` are set, because it is meaningless.
+    * otherwise `cm_flush`, `cm_clear` and `cm_reset` are handled normally.
+  * `cm_flush` ensure no value loss, discarded ghost cell will send `pm_put` before remove
+  * `cm_bidirectional` (`cm_forward | cm_backward`) will keep all ghost cells in sync
+  * `cm_forward | cm_flush | cm_clear` suitable to handle accumulated values
+* `operator[]` is like `get`, but use `[]` on local storage map.
+* `local_put` will store in ghost cell and don't send `pm_put`, `cache` don't store in local storage map
+* `request` will allocate ghost cell and expect it being refreshed on next `synchronize`
 
 ------
 ### Predefined Property Maps
