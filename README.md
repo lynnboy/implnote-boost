@@ -178,7 +178,10 @@ Boost C++ Libraries
 * [`format`](format.md) -- **Format** | _The format library provides a class for formatting arguments according to a format-string.
   * Formating to string.
 
-* `dll`
+* [`dll`](dll.md) -- **DLL** | _Library for comfortable work with DLL and DSO._
+  * Declare symbol alias, import symbol
+  * Load shared library, query symbols
+
 * `pool`
 * `numeric/conversion`
 * `sort`
