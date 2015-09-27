@@ -182,7 +182,9 @@ Boost C++ Libraries
   * Declare symbol alias, import symbol
   * Load shared library, query symbols
 
-* `pool`
+* [`pool`](pool.md) -- **Pool** | _Memory pool management._
+  * Fixed element size free-list (segregated) pool and allocators.
+
 * `numeric/conversion`
 * `sort`
 * `numeric/interval`
@@ -975,19 +977,6 @@ Polygon
          
     Categories
         Algorithms, Data structures, Math and numerics
-
-Pool
-
-    Memory pool management.
-
-    Author(s)
-        Steve Cleary
-    First Release
-        1.21.0
-    Standard
-         
-    Categories
-        Memory
 
 Predef
 
