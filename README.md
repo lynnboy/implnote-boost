@@ -185,7 +185,9 @@ Boost C++ Libraries
 * [`pool`](pool.md) -- **Pool** | _Memory pool management._
   * Fixed element size free-list (segregated) pool and allocators.
 
-* `numeric/conversion`
+* [`numeric/conversion`](numeric-conversion.md) -- **Numeric Conversion** | _Optimized Policy-based Numeric Conversions._
+  * Numeric conversion/cast with detailed control.
+
 * `sort`
 * `numeric/interval`
 * `statechart`
@@ -882,19 +884,6 @@ Multiprecision
         John Maddock and Christopher Kormanyos
     First Release
         1.53.0
-    Standard
-         
-    Categories
-        Math and numerics
-
-Numeric Conversion
-
-    Optimized Policy-based Numeric Conversions.
-
-    Author(s)
-        Fernando Cacciola
-    First Release
-        1.32.0
     Standard
          
     Categories
