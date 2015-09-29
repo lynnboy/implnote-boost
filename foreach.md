@@ -38,30 +38,30 @@
 ------
 ### Dependency
 
-#### Boost::Config
+#### Boost.Config
 
 * `<boost/config.hpp>`, `<boost/detail/workaround.hpp>`.
 
-#### Boost::Core
+#### Boost.Core
 
 * `<boost/noncopyable.hpp>`.
 * `<boost/utility/addressof.hpp>`.
 * `<boost/utility/enable_if.hpp>`, for runtime rvalue detection.
 
-#### Boost::TypeTraits
+#### Boost.TypeTraits
 
 * `<boost/type_traits/*.hpp>`, array, const, rvalue, etc.
 * `<boost/aligned._storage.hpp>`, etc., for runtime rvalue detection.
 
-#### Boost::MPL
+#### Boost.MPL
 
 * `<boost/mpl/if.hpp>`, `<boost/mpl/assert.hpp>`, etc.
 
-#### Boost::Iterator
+#### Boost.Iterator
 
 * `<boost/iterator/iterator_traits.hpp>`, for `iterator_reference`.
 
-#### Boost::Range
+#### Boost.Range
 
 * `<boost/range/begin.hpp>`, `<boost/range/end.hpp>`, etc. range iterator support.
 
