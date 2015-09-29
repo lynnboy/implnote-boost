@@ -30,15 +30,15 @@ Each macro have a trait-prenamed version `BOOST_TTI_TRAIT_HAS_TYPE(trait,name)`.
 
 #### `BOOST_TTI_HAS_MEMBER_DATA(name)`
 
-`has_member_data_[name]<T, Type>`
-`has_member_data_[name]<Type (T::*)>`
+* `has_member_data_[name]<T, Type>`
+* `has_member_data_[name]<Type (T::*)>`
 
 #### `BOOST_TTI_HAS_MEMBER_FUNCTION(name)`
 
-`has_member_function_[name]<T, R=deftype, mpl::vector<Args...>=vector<>, Tag=function_types::null_tag>`
-`has_member_function_[name]<R (T::*)(Args...) [const] [volatile]>`
+* `has_member_function_[name]<T, R=deftype, mpl::vector<Args...>=vector<>, Tag=function_types::null_tag>`
+* `has_member_function_[name]<R (T::*)(Args...) [const] [volatile]>`
 
-* The first version can omit `R` when not caring the return type.
+The first version can omit `R` when not caring the return type.
 
 #### `BOOST_TTI_HAS_STATIC_MEMBER_DATA(name)`
 
@@ -68,8 +68,8 @@ Either non-static or static
 
 Helper traits:
 
-`valid_member_metafunction<T> : (! is_same<T::type,T::boost_tti_marker_type>)`
-`valid_member_type<T,marker=notype> : (! is_same<T,marker>)`
+* `valid_member_metafunction<T> : (! is_same<T::type,T::boost_tti_marker_type>)`
+* `valid_member_type<T,marker=notype> : (! is_same<T,marker>)`
 
 ------
 ### Dependency
