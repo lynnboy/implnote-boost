@@ -38,27 +38,27 @@ above casts, using `static_pointer_cast` and `dynamic_pointer_cast` instead.
 ------
 ### Dependency
 
-#### Boost::Config
+#### Boost.Config
 
 * `<boost/config.hpp>`, `<boost/detail/workaround.hpp>`.
 
-#### Boost::Assert
+#### Boost.Assert
 
 * `<boost/assert.hpp>`.
 
-#### Boost::ThrowException
+#### Boost.ThrowException
 
 * `<boost/throw_exception.hpp>`.
 
-#### Boost::SmartPtr
+#### Boost.SmartPtr
 
 * `<boost/pointer_cast.hpp>`.
 
-#### Boost::TypeTraits
+#### Boost.TypeTraits
 
 * `<boost/utility/declval.hpp>`.
 
-#### Boost::TypeOf
+#### Boost.TypeOf
 
 * `<boost/typeof.hpp>`, if compiler don't supports `decltype`.
 
