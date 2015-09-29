@@ -35,9 +35,7 @@ to_string(error_info<Tag,T> const &) -> std::string;
 ------
 #### Putting and Getting of Error Info
 
-Header `<boost/exception/info.hpp>`
-Header `<boost/exception/get_error_info.hpp>`
-Header `<boost/exception/info_tuple.hpp>`
+Header `<boost/exception/info.hpp>`, `<boost/exception/get_error_info.hpp>`, and `<boost/exception/info_tuple.hpp>`
 
 ```c++
 operator<<(boost::exception const & x, error_info<Tag,T> const & v);
@@ -103,8 +101,7 @@ to_string( original_exception_type const & e ) -> std::string; // demangled name
 ------
 ### Exception Propagating Support
 
-Header `<boost/exception_ptr.hpp>`
-Header `<boost/exception/current_exception_cast.hpp>`
+Header `<boost/exception_ptr.hpp>` and `<boost/exception/current_exception_cast.hpp>`
 
 ```c++
 class exception_ptr;
@@ -135,8 +132,7 @@ class current_exception_std_exception_wrapper : public T, public boost::exceptio
 ------
 ### Stringize Facilities
 
-Header `<boost/exception/to_string.hpp>`
-Header `<boost/exception/to_string_stub.hpp>`
+Header `<boost/exception/to_string.hpp>` and `<boost/exception/to_string_stub.hpp>`
 
 ```c++
 template <typename T, class Char=char, class Traits=std::char_traits<Char>>
@@ -163,8 +159,7 @@ std::string to_string_stub(std::pair<T,U> const &, auto stub); // "(<first, stub
 ------
 ### Diagnostic Information Dumping
 
-Header `<boost/exception/diagnostic_information.hpp>`
-Header `<boost/exception_ptr.hpp>`
+Header `<boost/exception/diagnostic_information.hpp>` and `<boost/exception_ptr.hpp>`
 
 ```c++
 std::string diagnostic_information(auto const& ex, bool verbose=true);
