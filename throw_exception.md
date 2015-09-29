@@ -1,4 +1,4 @@
-# Boost::ThrowException
+# Boost.ThrowException
 
 * lib: `boost/libs/throw_exception`
 * repo: `boostorg/throw_exception`
@@ -75,7 +75,7 @@ derived from `boost::exception`, the copy-ctor and `clone` will automatically in
 For detail of `current_exception()` support, see **Boost::Exception** library.
 
 ------
-### BOOST_THROW_EXCEPTION
+### `BOOST_THROW_EXCEPTION`
 
 #### Header
 
