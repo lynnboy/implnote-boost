@@ -1,4 +1,4 @@
-# Boost::Compatibility
+# Boost.Compatibility
 
 * lib: `boost/libs/compatibility`
 * repo: `boostorg/compatibility`
