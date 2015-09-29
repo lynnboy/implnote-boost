@@ -7,6 +7,8 @@
 ------
 ### Numeric Conversion Traits
 
+Header `<boost/numeric/conversion/conversion_traits.hpp>`
+
 ```c++
 struct bounds<N> {
   using limits = std::numeric_limits<N>;
@@ -78,6 +80,8 @@ concept bool ConversionTraits<Tr> = requires {
 
 ------
 ### Converter
+
+Header `<boost/numeric/conversion/converter.hpp>`
 
 ```c++
 struct Trunc<S> {
@@ -228,6 +232,8 @@ struct make_converter_from<S,
 
 ------
 ### Numeric Cast
+
+Header `<boost/numeric/conversion/cast.hpp>`
 
 ```c++
 struct numeric_cast_traits<Target,Source> {
