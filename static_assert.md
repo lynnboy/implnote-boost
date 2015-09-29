@@ -25,7 +25,7 @@ will cause template instantiation failure if tested argument is false.
 ------
 ### Dependency
 
-#### Boost::Config
+#### Boost.Config
 
 * `<boost/config.hpp>`, `<boost/detail/workaround.hpp>`.
 
