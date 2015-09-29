@@ -82,7 +82,6 @@ Header `<boost/ratio/mpl/rational_constant.hpp>`
 
 * `<boost/config.hpp>`.
 * `<boost/cstdint.hpp>`.
-
 * `<boost/detail/workaround.hpp>`.
 
 #### Boost.StaticAssert
