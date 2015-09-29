@@ -7,9 +7,7 @@
 ------
 ### Hash
 
-Header `<boost/functional/hash/hash_fwd.hpp>`
-Header `<boost/functional/hash/hash.hpp>`
-Header `<boost/functional/hash/extensions.hpp>`
+Header `<boost/functional/hash/hash_fwd.hpp>`, `<boost/functional/hash/hash.hpp>`, and `<boost/functional/hash/extensions.hpp>`
 
 ```c++
 size_t hash_value(type);
