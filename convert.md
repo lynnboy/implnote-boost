@@ -45,8 +45,8 @@ template <typename T, typename TI, typename TO> concept bool is_cnv =
 ------
 ### Base class for converter
 
-Header `<boost/convert/base.hpp>`
-Header `<boost/convert/parameters.hpp>`
+* Header `<boost/convert/base.hpp>`
+* Header `<boost/convert/parameters.hpp>`
 
 Base class `cnv::cnvbase<DerivedConverter>`, provide basic support for string-oriented conversion.
 
@@ -91,8 +91,8 @@ Does not handle the `base` and `precision` options
 
 #### `cnv::basic_stream<CharT>`
 
-Header `<boost/convert/stream.hpp>`
-Header `<boost/make_default.hpp>`
+* Header `<boost/convert/stream.hpp>`
+* Header `<boost/make_default.hpp>`
 
 * Wrap a `basic_stringstream<CharT>` to perform conversion for strings, not copyable, but movable.
 * Not derived from `cnvbase`, but supports all keyword parameters, which are set on underlying
