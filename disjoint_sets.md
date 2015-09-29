@@ -69,6 +69,6 @@ Same as class `disjoint_sets`.
 ------
 ### Dependency
 
-#### Boost::Graph
+#### Boost.Graph
 
 * `<boost/graph/properties.hpp>`, which depends on Boost::PropertyMap.
