@@ -19,16 +19,16 @@ template <typename T> concept bool EndianReversible = CopyConstructible<T> &&
 template <typename T> concept bool EndianReversibleInPlace = CopyConstructible<T> &&
   requires (T x) { endian_reverse_inplace(x); };
 
-EndianReversible {big,little}_to_native(EndianReversible x) noexcept; // call endian_reverse on need
-EndianReversible native_to_{big,little}(EndianReversible x) noexcept; // call endian_reverse on need
-EndianReversible conditional_reverse<order, order>(EndianReversible x) noexcept; // call endian_reverse on need
-EndianReversible conditional_reverse(EndianReversible x, order, order) noexcept; // call endian_reverse on need
+EndianReversible {big,little}_to_native(EndianReversible x) noexcept; // endian_reverse(x) if need
+EndianReversible native_to_{big,little}(EndianReversible x) noexcept; // ditto
+EndianReversible conditional_reverse<order, order>(EndianReversible x) noexcept; // ditto
+EndianReversible conditional_reverse(EndianReversible x, order, order) noexcept; // ditto
 
 void endian_reverse_inplace(EndianReversible& x) noexcept; // x = endian_reverse(x)
-void {big,little}_to_native_inplace(EndianReversibleInplace& x) noexcept; // call endian_reverse_inplace on need
-void native_to_{big,little}_inplace(EndianReversibleInplace& x) noexcept; // call endian_reverse_inplace on need
-void conditional_reverse<order, order>(EndianReversibleInplace& x) noexcept; // call endian_reverse_inplace on need
-void conditional_reverse(EndianReversibleInplace& x, order, order) noexcept; // call endian_reverse_inplace on need
+void {big,little}_to_native_inplace(EndianReversibleInplace& x) noexcept; // endian_reverse_inplace(x) or x
+void native_to_{big,little}_inplace(EndianReversibleInplace& x) noexcept; // ditto
+void conditional_reverse<order, order>(EndianReversibleInplace& x) noexcept; // ditto
+void conditional_reverse(EndianReversibleInplace& x, order, order) noexcept; // ditto
 ```
 
 Overload `endian_reverse` for custom types.
