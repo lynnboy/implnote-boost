@@ -91,8 +91,7 @@ Does not handle the `base` and `precision` options
 
 #### `cnv::basic_stream<CharT>`
 
-* Header `<boost/convert/stream.hpp>`
-* Header `<boost/make_default.hpp>`
+* Header `<boost/convert/stream.hpp>` and `<boost/make_default.hpp>`
 
 * Wrap a `basic_stringstream<CharT>` to perform conversion for strings, not copyable, but movable.
 * Not derived from `cnvbase`, but supports all keyword parameters, which are set on underlying
