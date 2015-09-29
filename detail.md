@@ -250,8 +250,7 @@ Header `<boost/detail/is_xxx.hpp>`
 ------
 ### Lightweight Test Facilities
 
-Header `<boost/detail/lightweight_main.hpp>`
-Header `<boost/detail/lightweight_test_report.hpp>`
+Header `<boost/detail/lightweight_main.hpp>` and `<boost/detail/lightweight_test_report.hpp>`
 
 * A `main` function calling `cpp_main` and catching all `std::exception`.
 * A `cpp_main` function dumping brief BOOST version and command line, then call `test_main`.
@@ -356,7 +355,7 @@ Header `<boost/detail/templated_streams.hpp>`
 ------
 ### UTF-8 Conversion Facet
 
-Header `<boost/detail/utf8_codecvt_facet.hpp>`
+Header `<boost/detail/utf8_codecvt_facet.hpp>`.
 Include `<boost/detail/utf8_codecvt_facet.ipp>` in source
 
 * Similar to standard `codecvt_utf8<wchar_t>` facet.
