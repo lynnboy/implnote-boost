@@ -22,9 +22,7 @@
 
 #### Platform-specific
 
-Header `<boost/system/linux_error.hpp>`
-Header `<boost/system/windows_error.hpp>`
-Header `<boost/system/cygwin_error.hpp>`
+Header `<boost/system/linux_error.hpp>`, `<boost/system/windows_error.hpp>` and `<boost/system/cygwin_error.hpp>`
 
 Provide platform-specific enum for additional error_code, and provide
 corresponding `make_error_code()` overload for that enum type.
