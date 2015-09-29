@@ -72,27 +72,27 @@ User may provide its own `type_info` class, and at least these members of `type_
 ------
 ### Dependency
 
-#### Boost::Config
+#### Boost.Config
 
 * `<boost/config.hpp>`.
 
-#### Boost::StaticAssert
+#### Boost.StaticAssert
 
 * `<boost/static_assert.hpp>`.
 
-#### Boost::ThrowException
+#### Boost.ThrowException
 
 * `<boost/throw_exception.hpp>`, when `std::type_info` based implementation is chosen.
 
-#### Boost::Core
+#### Boost.Core
 
 * `<boost/demangle.hpp>`, when `std::type_info` based implementation is chosen.
 
-#### Boost::TypeTraits
+#### Boost.TypeTraits
 
 * `<boost/type_traits/*.hpp>`, for CV and Ref modifying.
 
-#### Boost::MPL
+#### Boost.MPL
 
 * `<boost/mpl/if.hpp>`, `<boost/mpl/or.hpp>`, when `std::type_info` based implementation is chosen.
 * `<boost/mpl/bool.hpp>`, when CTTI emulation implementation is chosen.
