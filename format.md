@@ -46,7 +46,7 @@ public:
   size_type size() const;     // the size sumed from each item, will be the resulting string's size
 
   basic_format& operator % (T const&);        // format argument feed
-  basic_format& modify_item(int argN, T manipulator);   // modify stream format by std::manip before argument feed
+  basic_format& modify_item(int argN, T manipulator);   // modify stream format by std::manip before feed
   basic_format& bind_arg(int argN, T const&); // explicitly bind N-th arg
   basic_format& clear_bind(int argN);
 };
@@ -112,7 +112,7 @@ tuple<Val> group_last(tuple<T..., Val> const&); // last, the value
 #### Boost.Config
 
 * `<boost/config.hpp>`, `<boost/detail/workaround.hpp>`
-* `<boost/limits.hpp>
+* `<boost/limits.hpp>`
 
 #### Boost.Assert
 
