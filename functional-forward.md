@@ -7,8 +7,7 @@
 ------
 ### Forwarding Wrappers
 
-Header `<boost/functional/forward_adapter.hpp>`
-Header `<boost/functional/lightweight_forward_adapter.hpp>`
+Header `<boost/functional/forward_adapter.hpp>` and `<boost/functional/lightweight_forward_adapter.hpp>`
 
 * Handling _perfect forwarding_ problem via preprocessor generated code, superceded by rvalue-reference
 * Both adapters wraps a functor/function pointer into a functor
