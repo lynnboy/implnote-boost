@@ -1,4 +1,4 @@
-# Boost::Assert
+# Boost.Assert
 
 * lib: `boost/libs/assert`
 * repo: `boostorg/assert`
@@ -45,7 +45,7 @@
 ------
 ### Dependency
 
-#### Boost::Config
+#### Boost.Config
 
 * `<boost/config.hpp>`, when _custom handlers_ are enabled.
 
