@@ -1,4 +1,4 @@
-# Boost::Any
+# Boost.Any
 
 * lib: `boost/libs/any`
 * repo: `boostorg/any`
