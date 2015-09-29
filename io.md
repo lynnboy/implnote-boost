@@ -89,7 +89,7 @@ as the manipulator type. `>>` is only provided for non-`const` version of `basic
 ------
 ### Dependency
 
-#### Boost::Config
+#### Boost.Config
 
 * `<boost/detail/workaround.hpp>`.
 
