@@ -25,7 +25,7 @@ union function_buffer {
   struct { type_info* type; bool const_q; bool volatile_q; } type;
   void (*func_ptr)();     // to store function pointers
   struct { void (X::*memfunc_ptr)(int); void* obj_ptr; } bounded_memfun_ptr; // not used
-  struct { void* obj_ptr; bool const_q; bool volatile_q; } obj_ref;  // to store reference_wrapper, remember qualification
+  struct { void* obj_ptr; bool const_q; bool volatile_q; } obj_ref;  // store reference_wrapper, remember cv
   char data;              // used for small-obj-opt, store full functor object
 };
 enum functor_manager_operation_type { clone, move, destroy, check_functor_type, get_functor_type };
@@ -40,7 +40,7 @@ struct function_base {
 
 template<typename R, typename ... Ts> struct basic_vtable {
   vtable_base base;     // mimic inheritance
-  invoker_type invoker; // dispatch to invocation code for different cases (funcptr, ref, functor, memptr, smallobj)
+  invoker_type invoker; // dispatch to invocation code of each case (funcptr, ref, functor, memptr, smallobj)
 };
 template<typename R(Ts...)>
 class function : public function_base {
