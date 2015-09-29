@@ -7,8 +7,7 @@
 ------
 ### Factory Wrappers
 
-Header `<boost/functional/factory.hpp>`
-Header `<boost/functional/value_factory.hpp>`
+Header `<boost/functional/factory.hpp>` and `<boost/functional/value_factory.hpp>`
 
 ```c++
 enum factory_alloc_propagation {
