@@ -43,24 +43,24 @@ class array<T, 0>; // fail on all element access operations
 ------
 ### Dependency
 
-#### Boost::Config
+#### Boost.Config
 
 * `<boost/config.hpp>`
 * `<boost/detail/workaround.hpp>`.
 
-#### Boost::Assert
+#### Boost.Assert
 
 * `<boost/assert.hpp>`.
 
-#### Boost::StaticAssert
+#### Boost.StaticAssert
 
 * `<boost/static_assert.hpp>`.
 
-#### Boost::ThrowException
+#### Boost.ThrowException
 
 * `<boost/throw_exception.hpp>`.
 
-#### Boost::Core
+#### Boost.Core
 
 * `<boost/swap.hpp>`.
 * `<boost/detail/iterator.hpp>`. (May be redundant.)
