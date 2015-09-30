@@ -37,7 +37,8 @@ concept bool TranscRounding<Tr, T> = ArithRounding<Tr, T> &&
   { r.{exp|log|sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|asinh|acosh|atanh}_{down|up}(t) } -> T;
 };
 
-concept bool ProtectedRounding<Tr, T> = ArithRounding<Tr, T> && ArithRounding<Tr::unprotected_rounding, T>;
+concept bool ProtectedRounding<Tr, T> =
+    ArithRounding<Tr, T> && ArithRounding<Tr::unprotected_rounding, T>;
 
 struct policies<Rounding, Checking> { using rounding=Rounding; using checking = Checking; };
 
@@ -45,7 +46,8 @@ struct change_rounding<Interval, NewRounding> =
     interval<Interval::base_type, policies<NewRounding, Interval::traits_type::checking>;
 struct change_checking<Interval, NewChecking> =
     interval<Interval::base_type, policies<Interval::traits_type::rounding, NewChecking>;
-struct unprotect<Interval> = change_rounding<Interval, Interval::traits_type::rounding::unprotected_rounding>;
+struct unprotect<Interval> =
+    change_rounding<Interval, Interval::traits_type::rounding::unprotected_rounding>;
 
 class interval<T, Policies> requires Checking<Policies::checking> && ArithRounding<Policies::rounding> {
   T low, up;
@@ -164,6 +166,82 @@ namespace ::boost::numeric::interval_lib {  // explicit comparisons
 * Exlicit comparisons don't test for emptyness
 
 ------
+#### Predefined Checking Policy
+
+```c++
+struct exception_create_empty;    // throw 'std::runtime_error'
+struct exception_invalid_number;  // throw 'std::invalid_argument'
+
+struct checking_base<T> {
+  static T {pos|neg}_inf();   // get 'std::numeric_limits<T>::infinity' by default
+  static T nan();                 static bool is_nan(T const&); // get quiet_NaN by default
+  static T empty_{lower|upper}(); static bool is_empty(T const&, T const&); // [-inf,inf], or [1,0]
+};
+
+struct checking_no_empty<T, Checking=checking_base<T>, Exception=exception_create_empty> : Checking {
+  static T nan() { assert(false); return Checking::nan() }
+  static T empty_{lower|upper}() { Exception()(); return Checking::empty_{lower|upper}(); }
+  static bool is_empty(T const&, T const&) { return false; }
+};
+struct checking_no_nan<T, Checking=checking_base<T>> : Checking {
+  static bool is_nan(T const&) { return false; }
+};
+struct checking_catch_nan<T, Checking=checking_base<T>, Exception=exception_invalid_number> : Checking {
+  static bool is_nan(T const&) { if (Checking::is_nan(x)) Exception()(); return false; }
+};
+struct checking_strict<T> : checking_no_nan<T, checking_no_empty<T>> {};
+```
+
+* `checking_strict` will throw whenever empty `interval` appears.
+
+------
+#### Predefined Rounding Policy
+
+```c++
+struct rounding_control<T> {  // define API to perform rounding
+  using rounding_mode = int;
+  static void {get|set}_rounding_mode(rounding_mode{&|}) {} // fetch/apply rounding mode of environment
+  static void {upward|downward|to_nearest} {}               // update environment's rounding mode
+  static const T& to_int(T const& x) { return x; }          // round to integer according to mode
+  static const T& force_rounding(T const& x) { return x; }  // round according to current rounding mode
+};
+
+struct rounded_arith_{exact|std|opp}<T, Rounding=rounding_control<T>> : Round {
+  void init();
+  T conv_{down|up}<U> (U const&);
+  T {add|sub|mul|div}_{down|up} (T const&, T const&);
+  T median (T const&, T const&);
+  T {sqrt|int}_{down|up} (T const&);
+};
+struct rounded_transc_{exact|std|opp}<T, Rounding=rounded_arith_{exact|std|opp}<T>> : Round {
+  T {exp|log}_{down|up} (T const&);
+  T [a]{sin|cos|tan}[h]_{down|up} (T const&);
+};
+
+struct save_state_unprotected<Rounding> : Rounding {
+  using unprotected_rounding = save_state_unprotected<Rounding>;  // unprotected of unprotected
+};
+struct save_state<Rounding> : Rounding {
+  rounding_mode mode;
+  save_state() { get_rounding_mode(mode); init(); }
+  ~save_state() { set_rounding_mode(mode); }
+  using unprotected_rounding = save_state_unprotected<Rounding>;
+};
+struct save_state_nothing<Rounding> : Rounding {    // don't save state
+  using unprotected_rounding = save_state_nothing<Rounding>;
+};
+
+struct rounded_math<T> : save_state_nothing<rounded_arith_exact<T>> {};
+struct rounded_math<FP> : save_state<rounded_arith_opp<FP>> {}; // for float/double/long double
+```
+
+* `_exact` roundings don't use rounding mode at all.
+* `_std` roundings change rounding mode before each calculation.
+* `_opp` roundings try keeps `upward` mode, only change mode when necessary and will restore back the mode.
+* `rounded_math` by default (integers) use exact arith, while fp types use `arith_opp` and supports state saving.
+* `rounding_control` is specialized for various compilers/architectures.
+
+------
 #### Misc Utilities
 
 Header `<boost/numeric/interval/limits.hpp>` and `<boost/numeric/interval/io.hpp>`
@@ -177,29 +255,19 @@ auto operator<<(std::basic_ostream<C,Tr> &, interval<T,P> const&); // '[l,u]', e
 ------
 ### Dependency
 
-#### Boost::Config
+#### Boost.Config
 
 * `<boost/config.hpp>`
-* `<boost/detail/workaround.hpp>`.
+* `<boost/limits.hpp>`
+* `<boost/config/no_tr1/cmath.hpp>`
 
-#### Boost::Assert
+#### Boost.Detail
 
-* `<boost/assert.hpp>`.
+* `<boost/detail/fenv.hpp>` - when C99 hardware rounding is used
 
-#### Boost::StaticAssert
+#### Boost.Tribool
 
-* `<boost/static_assert.hpp>`.
-
-#### Boost::ThrowException
-
-* `<boost/throw_exception.hpp>`.
-
-#### Boost::Core
-
-* `<boost/swap.hpp>`.
-* `<boost/detail/iterator.hpp>`. (May be redundant.)
+* `<boost/logic/tribool.hpp>` - required by `tribool` interval comparison.
 
 ------
 ### Standard Facilities
-
-* Standard Library: `<array>`.
