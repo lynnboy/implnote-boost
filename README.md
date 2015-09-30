@@ -188,8 +188,10 @@ Boost C++ Libraries
 * [`numeric/conversion`](numeric-conversion.md) -- **Numeric Conversion** | _Optimized Policy-based Numeric Conversions._
   * Numeric conversion/cast with detailed control.
 
+* [`numeric/interval`](numeric-interval.md) -- **Interval** | _Extends the usual arithmetic functions to mathematical intervals._
+  * Interval arithmetics
+
 * `sort`
-* `numeric/interval`
 * `statechart`
 * `parameter`
 * `iterator`
@@ -602,19 +604,6 @@ Interprocess
          
     Categories
         Concurrent Programming
-
-Interval
-
-    Extends the usual arithmetic functions to mathematical intervals.
-
-    Author(s)
-        Guillaume Melquiond, Hervé Brönnimann and Sylvain Pion
-    First Release
-        1.30.0
-    Standard
-         
-    Categories
-        Math and numerics
 
 Intrusive
 
