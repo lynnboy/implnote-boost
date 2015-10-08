@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/lockfree`
 * repo: `boostorg/lockfree`
-* commit: `f0bda4bd`, 2015-09-28
+* commit: `eb21dd05`, 2015-10-04
 
 ------
 ### Lockfree Data Structures
