@@ -71,4 +71,4 @@ Wrappers around a `control_block<T>` pointer.
 Proposals:
   N4402 - Resumable Functions (revision 4)
   N4403 - Draft Wording for Resumable Functions
-  N4499 - Draft wording for Coroutines(Revision 2)
+  P0057R00 - Wording for Coroutines (Revision 3)
