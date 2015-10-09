@@ -344,3 +344,5 @@ Recursively copy each dimension from `source` to `dest`.
 * Proposals:
   * N4355 - Shared Multidimensional Arrays with Polymorphic Layout
   * N4512 - Multidimensional bounds, offset and array_view, revision 7, Fundamentals TS V2
+  * P0009r00 - Polymorphic Multidimensional Array View
+  * P0122R0 - `array_view` : bounds-safe views for sequences of objects
