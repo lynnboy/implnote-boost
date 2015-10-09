@@ -69,7 +69,7 @@ Boost C++ Libraries
   * STD: `<initializer_list>` (C++11)
 
 * [`scope_exit`](scope_exit.md) -- **Scope Exit** | _Execute arbitrary code at scope exit._
-  * STD: N4189 - Generic Scope Guard and RAII Wrapper for the Standard Library
+  * STD: P0052 - Generic Scope Guard and RAII Wrapper for the Standard Library
 
 * [`optional`](optional.md) -- **Optional** | _A value-semantic, type-safe wrapper for representing 'optional' (or 'nullable') objects of a given type._
   * STD: Library fundamentals v1
@@ -95,7 +95,7 @@ Boost C++ Libraries
 
 * [`coroutine2`](coroutine2.md) -- **Coroutine2** | _(C++14) Coroutine library._
   * Asymmetric coroutine
-  * STD: N4499 - Draft wording for Coroutines (Revision 2)
+  * STD: P0057, P0073
 
 * [`convert`](convert.md) -- **Convert** | _An extendible and configurable type-conversion framework._
   * Pluggable conversion API, `lexical_cast`, `printf`, `stream`, `strtol`, `spirit` based converters.
@@ -139,10 +139,12 @@ Boost C++ Libraries
   * STD: reflection proposals: N4428, N4447, N4451
 
 * [`multi_array`](multi_array.md) -- **Multi-Array** | _Boost.MultiArray provides a generic N-dimensional array concept definition and common implementations of that interface._
-  * STD: N4355, N4512 (Fundamentals TS v2)
+  * Multi dimensional array & array view
+  * STD: N4355, N4512 (Fundamentals TS v2), P0009, P0122
 
 * [`lexical_cast`](lexical_cast.md) -- **Lexical Cast** | _General literal text conversions, such as an int represented a string, or vice-versa._
   * Casting using stringstream by concept, keeps precision.
+  * STD: Proposal P0117
 
 * [`ratio`](ratio.md) -- **Ratio** | _Compile time rational arithmetic. C++11._
   * STD: `ratio` (C++11)
@@ -163,11 +165,10 @@ Boost C++ Libraries
   * STD: rvalue-reference, `forward` (C++11)
 
 * [`functional/hash`](functional-hash.md) -- **Functional/Hash** | _A TR1 hash function object that can be extended to hash user defined types._
-  * `hash_combine`, `hash_range`
-  * STD: `hash` (C++11)
+  * STD: `hash` (C++11), Proposal P0029
 
 * [`functional/overloaded_function`](functional-overloaded_function.md) -- **Functional/Overloaded Function** | _Overload different functions into a single function object._
-  * Function object wrapper for multiple `function` with different signatures.
+  * STD: Proposal P0045, P0051
 
 * [`winapi`](winapi.md)
   * Windows API declaration.
@@ -191,7 +192,9 @@ Boost C++ Libraries
 * [`numeric/interval`](numeric-interval.md) -- **Interval** | _Extends the usual arithmetic functions to mathematical intervals._
   * Interval arithmetics
 
-* `sort`
+* [`sort`](sort.md) -- **Sort** | _High-performance templated sort functions._
+  * Spread sort algorithms for integer, floating, and strings.
+
 * `statechart`
 * `parameter`
 * `iterator`
@@ -1124,19 +1127,6 @@ Smart Ptr
         TR1
     Categories
         Memory
-
-Sort
-
-    High-performance templated sort functions.
-
-    Author(s)
-        Steven Ross
-    First Release
-        1.58.0
-    Standard
-         
-    Categories
-        Algorithms
 
 Spirit
 
