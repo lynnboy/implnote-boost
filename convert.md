@@ -203,3 +203,5 @@ template <typename T, typename R, typename ...A> concept trait_name<T, R(A...)> 
 ------
 ### Standard Facilities
 
+* Proposals
+  * P0117R0 - Generic `to_string`/`to_wstring` functions
