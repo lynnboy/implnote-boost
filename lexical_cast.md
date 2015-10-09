@@ -103,3 +103,4 @@ bool try_lexical_convert(const CharT*, std::size_t, Target&);
 
 * Proposals:
   * N1973 - Lexical Conversion Library Proposal for TR2 (not accepted)
+  * P0117R0 - Generic `to_string`/`to_wstring` functions
