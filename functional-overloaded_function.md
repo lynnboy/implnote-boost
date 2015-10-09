@@ -61,3 +61,7 @@ overloaded_function<...> make_overloaded_function(F...f);
 
 ------
 ### Standard Facilities
+
+* Proposals:
+  * P0051 - C++ generic overload functions
+  * P0045 - Overloaded and qualified `std::function`
