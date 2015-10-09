@@ -64,4 +64,6 @@ size_t hash_range<It>(It, It);  void hash_range(size_t&, It, It);
 ------
 ### Standard Facilities
 
-Standard Library: `hash` in `<functional>` (C++11)
+* Standard Library: `hash` in `<functional>` (C++11)
+* Proposal
+  * P0029R0 - A Unified Proposal for Composable Hashing
