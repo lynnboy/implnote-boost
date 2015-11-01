@@ -149,30 +149,112 @@ struct simple_state<MostDerived, Context, history_mode hm=has_no_history, ...Inn
 
     context_ptr_type pContext_;
 
-    outermost_context[_base]_type [const]& outermost[_base]_context() [const]; // forward to pContext_
+    outermost_context[_base]_type [const]& outermost_context[_base]() [const]; // forward to pContext_
     OtherContext [const]& context<OtherContext>() [const]; // return this or forward to pContext_
     // from outermost: state_cast, state_downcast, state_begin, state_end
 
-    simple_state() : pContext_(0) {}
+    simple_state() : pContext_{nullptr} {}
     ~simple_state() {
         if (pContext_ && deferred_events()) outermost_context_base().release_events();
         pContext_ && pContext_->remove_inner_state(orthogonal_position::value);
     }
-    state_base const* outer_state_ptr() const override; // pContext_, or 0 if it is outermost
+    state_base const* outer_state_ptr() const override; // pContext_, or nullptr if it is outermost
 
-    void exit_impl(intrusive_ptr<node_state_base> & pself,
+    void set_context(const context_ptr_type & p) {
+        pContext_ = p; set_context(orthogonal_position::value, p);
+    }
+
+    static inner_context_ptr_type shallow_construct(    // just create MostDerived and add to list
+        const context_ptr_type & pContext, outermost_context_base_type & outerm) {
+            inner_context_ptr_type s = new MostDerived; s.set_context(pContext); // set context
+            outerm.add(s); return s;
+    }
+    static void deep_construct_inner<Head, ...Tail>(    // create each inner state in MostDerived
+        const inner_context_ptr_type & pState, outermost_context_base_type & outerm) {
+            Head::deep_construct(pState, outerm);  // recursive to child state
+            deep_construct_inner<Tail...>(pState, outerm);  // recursive on state list
+    }
+    static void deep_construct(
+        const context_ptr_type & pContext, outermost_context_base_type & outerm) {
+            auto s = MostDerived::shallow_construct(pContext, outerm);     // MostDerived itself
+            deep_construct_inner<InnerInitial...>(s, outerm);  // child states
+    }
+    void exit_impl override (intrusive_ptr<node_state_base> & pself,
         intrusive_ptr<node_state_base>& pOutermostUnstableState, bool performFullExit) {
-        inner_context_ptr_type pMostDerivedSelf = this; pSelf = 0; // move reference to stack obj
+        inner_context_ptr_type pMostDerivedSelf; swap(pMostDerivedSelf, pSelf); // moveto stack obj
         switch (this->ref_count()) {
         case 2: // have one reference
-            if (pOutermostUnstableState == this) pOutermostUnstableState = pContext_; // ref becomes 1
+            if (pOutermostUnstableState == this) pOutermostUnstableState = pContext_ || nullptr;
             else break;
         case 1: // only ref-ed by pself
-            if (pOutermostUnstableState == 0) pOutermostUnstableState = pContext_;
-            if (performFullExit) { pSelf->exit(); check_store }
-            auto pContext = pContext_; pself = 0;       // save ref to outer context/state, destroy self
-            pContext->exit_impl(pContext, pOutermostUnstableState, performFullExit); // exit the context
+            if (pOutermostUnstableState == 0) pOutermostUnstableState = pContext_ || nullptr;
+            if (performFullExit)
+              { pSelf->exit(); check_store_shallow_history(); check_store_deep_history(); }
+            auto pContext = pContext_; pself = 0;   // save ref to outer context/state, destroy self
+            pContext->exit_impl(pContext, pOutermostUnstableState, performFullExit); // context exit
         }
     }
+};
+struct state<MostDerived, Context, history_mode hm=has_no_history, ...InnerInitial>
+    : simple_state<MostDerived, Context, historyMode, InnerInitial...> {
+    struct my_context { context_ptr_type pContext_; };      // transfer context to constructor
+    state( my_context ctx) { set_context(ctx.pContext_); }
+    static inner_context_ptr_type shallow_construct(    // just create MostDerived and add to list
+        const context_ptr_type & pContext, outermost_context_base_type & outerm) {
+            inner_context_ptr_type s = new MostDerived( my_context{pContext} ); 
+            outerm.add(s); return s;
+    }
+};
+
+struct state_machine<MostDerived, InitialState,
+    Allocator=std::allocator<void>, ExceptionTranslator=null_exception_translator> {
+    using allocator_type = Allocator;
+
+    state_list_type currentStates_ = {};
+    state_list_type::iterator currentStatesEnd_ = currentStates_.end();
+    intrusive_ptr<node_state_base> pOutermostUnstableState_ = nullptr;
+    state_base* pOutermostState = nullptr;
+    bool isInnermostCommonOuter_ = false;
+
+    using inner_orthogonal_position = integral_c<uint8_t, 0>;   // for single orthogonal
+    using inner_context_type = MostDerived; // for single orthogonal
+    using inner_context_ptr_type = state_machine*;
+    using context_type_list = mpl::list<>;
+    using outermost_context_base_type = state_machine;
+    using outermost_context_type = MostDerived;
+
+protected:
+    state_machine(){}
+    virtual ~state_machine(){ terminate_impl(false); }
+public:
+    struct state_iterator : std::iterator<std::forward_iterator_tag, state_base....> {..}
+
+    outermost_context[_base]_type [const]& outermost_context[_base]() [const]; // return this
+    Context [const]& context<Context>() [const]; // return this casted to Context
+
+    state_iterator state_begin() const { return state_iterator{ currentStates_.begin() }; }
+    state_iterator state_end() const { return state_iterator{ currentStatesEnd_ }; }
+    Target state_cast<Target>() const {
+    }
+    Target state_downcast<Target>() const {
+    }
+
+    // outermost services
+    void add<State>(intrusive_ptr<State> const& pState) { // state created (before child creation)
+        if (leaf_state(pState)) { if (currentStatesEnd_ == currentStates_.end())
+            { pState->set_list_position(currentStates_.insert(currentStateEnd_, pState)); }
+            else        // this case is for reuse cached list items
+            { *currentStatesEnd_ = pState; pState->set_list_position(currentStatesEnd_++); }
+        }
+        if (isInnermostCommonOuter_ ||
+            is_highest<State>() && pOutermostUnstableState_ == pState->outer_state_ptr())
+            pOutermostUnstableState_ = leaf_state(pState) ? nullptr : pState;
+        isInnermostCommonOuter_ = false;
+    }
+
+    // context/state interface
+    void add_inner_state(uint8_t, state_base* pOutermostState) { pOutermostState_ = pOutermostState; }
+    void remove_inner_state(uint8_t) { pOutermostState_ = 0; }
+    void exit_impl override (inner_context_ptr_type &, intrusive_ptr<node_state_base>&, bool) { }
 };
 ```
