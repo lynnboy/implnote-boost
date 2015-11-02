@@ -235,8 +235,18 @@ public:
     state_iterator state_begin() const { return state_iterator{ currentStates_.begin() }; }
     state_iterator state_end() const { return state_iterator{ currentStatesEnd_ }; }
     Target state_cast<Target>() const {
+        for (auto && it : { currentStates_.begin(), currentStatesEnd_ } ) {
+            state_base* state = *it;
+            while (state) {
+                Target result = dynamic_cast<Target>(is_pointer_v<Target> ? state : *state);
+                if (is_pointer_v<Target> && result != nullptr) return state;
+                state = state->outer_state_ptr();
+            }
+        }
+        if (is_pointer_v<Target>) return nullptr; else throw bad_cast();
     }
     Target state_downcast<Target>() const {
+        // similar as state_cast, but test with (emulated) type_info comparasion and 'static_cast'
     }
 
     // outermost services
@@ -260,6 +270,10 @@ public:
 ```
 
 * The structure is fully decided at compile-time: context and inner states are template type arguments.
+  * `inner_context_type` and `inner_orthogonal_position` types are recursively available in each level of state.
+  * `context_type_list` is a list of every outer state/context types.
+  * `outermost_context` and `outermost_context_base` access the `state_machine`
+  * `state_cast`, `state_downcast`, and `context` search and get state pointer from the current state tree.
 * States are ref-counted, ref holded by `intrusive_ptr`.
   * State can be leaf/node, and each state remembers its outerstate's reference, and its orthogonal position
   * node state remembers all its inner state's pointer (not ref-counted)
@@ -281,3 +295,4 @@ public:
 
 ------
 ### State Transition
+
