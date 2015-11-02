@@ -258,3 +258,26 @@ public:
     void exit_impl override (inner_context_ptr_type &, intrusive_ptr<node_state_base>&, bool) { }
 };
 ```
+
+* The structure is fully decided at compile-time: context and inner states are template type arguments.
+* States are ref-counted, ref holded by `intrusive_ptr`.
+  * State can be leaf/node, and each state remembers its outerstate's reference, and its orthogonal position
+  * node state remembers all its inner state's pointer (not ref-counted)
+  * Outermost `state_machine` only remember a `list` of leaf states
+  * During 'unstable' (not fully constructed), the outermost unstable state is remembered by the machine
+* `simple_state` don't have outer state reference during construction, while `state` takes its outer reference
+  via constructor argument
+* State construction is performed by `deep_construct`, which will construct itself, call `state_machine`'s `add`,
+  then recursively construct all its inner states.
+  * Leaf state `add` to `state_machine`'s list, which reuse any cached list node
+  * If a newly added state is current 'outermost unstable's last inner, it will become the new 'outermost unstable'
+  * `outermost unstable` is also updated when the root state is added (because of transition)
+* State destruction is caused by removing from machine's leaf-state-list, and lost all references
+  * `remove_from_state_list` is called recursively for all node-state's inner states.
+  * `state_machine` cache allocated list nodes, and `remove_from_state_list` updates the end-marker.
+  * if an empty node-state becomes the 'outermost unstable', it is explicitly called `exit_impl`,
+    otherwise it will be called by last inner state's `exit_impl`.
+  * `exit_impl` will maintain `state_machine` reference of 'outermost unstable' state.
+
+------
+### State Transition
