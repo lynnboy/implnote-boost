@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/any`
 * repo: `boostorg/any`
-* commit: `0013d7aabb00`, 2015-08-22
+* commit: `3b7c3499`, 2015-12-18
 
 ------
 ### Any

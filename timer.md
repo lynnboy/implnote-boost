@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/timer`
 * repo: `boostorg/timer`
-* commit: `00ed15d8`, 2014-10-08
+* commit: `da677f67`, 2015-10-27
 
 ------
 ### Timer Version 1 (Deprecated)

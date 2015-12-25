@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/dll`
 * repo: `boostorg/dll`
-* commit: `5f1caac8`, 2015-09-27
+* commit: `b10e9326`, 2015-12-22
 
 ------
 ### Dynamic Library Supporting API
@@ -21,12 +21,12 @@ enum load_mode::type {  // dll load options, defined to be platform value, or 0 
   rtld_lazy, rtld_now, rtld_global, rtld_local, rtld_deepbind, // posix dlfcn.h
   append_decorations  // both platform, try 'a.dll', 'liba.so', or 'liba.dylib' first
 };
-class shared_library {        // move-only type
+class shared_library {        // copyable type
   native_handle_t handle_;
 public:
   using native_handle_t = void* [or HMODULE]; // library handle
 
-  // default ctor, move-ctor, move-assign, dtor, swap()
+  // default ctor, copy-ctor, copy-assign, move-ctor, move-assign, dtor, swap()
   // ctors for each 'load()' signature
 
   void load(filesystem::path const& lib_path, load_mode::type = default_mode);
@@ -74,15 +74,13 @@ Header `<boost/dll/alias.hpp>`
 Header `<boost/dll/import.hpp>`.
 
 ```c++
-auto import[_alias]<T>(filesystem::path const& lib, const char* name,
+auto import[_alias]<T>(filesystem::path const& lib, [const char*|string const&] name,
                        load_mode::type mode = load_mode::default_mode);
-auto import[_alias]<T>(filesystem::path const& lib, string const& name,
-                       load_mode::type mode = load_mode::default_mode);
-auto import[_alias]<T>(shared_ptr<shared_library> const& lib, const const* name);
-auto import[_alias]<T>(shared_ptr<shared_library> const& lib, string const& name);
+auto import[_alias]<T>(shared_library [const&|&&] lib, [const const*|string const&] name);
 ```
 
-* Result type will be `function<T>` for functions and `shared_ptr` for variables.
+* Result type will be callable wrapper (or `boost::function<T>` on pre-C++11)
+  for functions and `shared_ptr` for variables.
 
 ------
 #### Get Module Path
@@ -219,6 +217,7 @@ using macho_info64 = macho_info<uint64_t>;
 
 * `<boost/type_traits/is_pointer.hpp>`, `<boost/type_traits/is_const.hpp>`
 * `<boost/type_traits/is_object.hpp>` - by import
+* `<boost/type_traits/integral_constant.hpp>`
 * `<boost/aligned_storage.hpp>` - by `library_info`
 
 #### Boost.MPL

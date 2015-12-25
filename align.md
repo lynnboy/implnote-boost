@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/align`
 * repo: `boostorg/align`
-* commit: `18b59498`, 2015-8-28
+* commit: `48b3792f`, 2015-12-20
 
 ------
 ### Alignment Library
@@ -18,13 +18,33 @@ void* align(std::size_t alignment, std::size_t size, void*& ptr, std::size_t& sp
 Use `std::align` if available (C++11).
 
 ------
+#### Function `align_up`
+
+Header `<boost/align/align_up.hpp>`
+
+```c++
+void* align_up(void* ptr, std::size_t alignment);
+constexpr std::size_t align_up(std::size_t value, std::size_t alignment) noexcept;
+```
+
+------
+#### Function `align_down`
+
+Header `<boost/align/align_down.hpp>`
+
+```c++
+void* align_down(void* ptr, std::size_t alignment);
+constexpr std::size_t align_down(std::size_t value, std::size_t alignment) noexcept;
+```
+
+------
 #### Trait `alignment_of`
 
 Header `<boost/align/alignment_of.hpp>`
 
 ```c++
-template <class X>
-struct alignment_of;
+template <class X> struct alignment_of;
+template <class X> constexpr std::size_t alignment_of_v;
 ```
 
 C++11 Standard library provides one.
@@ -35,7 +55,8 @@ C++11 Standard library provides one.
 Header `<boost/align/is_aligned.hpp>`
 
 ```c++
-bool is_aligned(std::size_t alignment, const void* ptr) noexcept;
+bool is_aligned(const void* ptr, std::size_t alignment) noexcept;
+constexpr bool is_aligned(std::size_t value, std::size_t alignment) noexcept;
 ```
 
 Effect: `(ptr & (alignment-1) == 0)`.
@@ -97,6 +118,13 @@ struct aligned_allocator_adaptor : public Allocator { /*...*/ };
 ```
 
 Override `allocate` and friends members of base allocator.
+
+------
+#### Customization
+
+User can define `BOOST_ALIGN_USE_ALLOCATE` and define
+`boost::alignment::allocate` and `boost::alignment::deallocate` for customized
+allocation, instead of default `malloc` and `free` functions.
 
 ------
 ### Dependency

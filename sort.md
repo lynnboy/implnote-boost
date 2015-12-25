@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/sort`
 * repo: `boostorg/sort`
-* commit: `d525fb02`, 2015-09-20
+* commit: `3326d793`, 2015-10-11
 
 ------
 ### Spread Sort Algorithm

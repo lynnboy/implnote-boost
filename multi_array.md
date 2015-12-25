@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/multi_array`
 * repo: `boostorg/multi_array`
-* commit: `5578fc34`, 2014-10-05
+* commit: `fcfb551a`, 2015-11-01
 
 ------
 ### Multi-dimensional Array
