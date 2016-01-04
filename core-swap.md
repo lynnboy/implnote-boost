@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/core`
 * repo: `boostorg/core`
-* commit: `3add9668`, 2015-8-28
+* commit: `6345b931`, 2016-01-01
 
 ------
 ### Swap

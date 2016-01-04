@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/core`
 * repo: `boostorg/core`
-* commit: `181965f3`, 2015-12-31
+* commit: `6345b931`, 2016-01-01
 
 ------
 ### `address_of`
