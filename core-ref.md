@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/core`
 * repo: `boostorg/core`
-* commit: `6345b931`, 2016-01-01
+* commit: `f8165366`, 2016-01-06
 
 ------
 ### Reference Wrapping

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/optional`
 * repo: `boostorg/optional`
-* commit: `0a228e74`, 2015-10-24
+* commit: `d3dda39b`, 2016-02-20
 
 ------
 ### Boost Optional
@@ -16,7 +16,7 @@ Allow bind to reference type (but not rvalue-reference)
 
 Differences from STD proposal:
 
-* Supports bind to reference, specialized for reference and storing pointer for them.
+* Supports bind to lvalue-reference, specialized for reference and storing pointer for them.
 * Constructor `optional(bool, T const&)` and `make_optional(bool, T const&)`
 * Constructors/assignments for `optional<U>`, when `T` can construct from `U`
 * Constructors/assignments for _InPlaceFactory_, but no `in_place_t` constructors.
@@ -70,10 +70,6 @@ Thrown by `optional::value()` when it contains nothing.
 * `<boost/type_traits/*.hpp>` for const/reference, decay, etc.
 * `<boost/type_traits/*.hpp>` for nothrow_xxx detection
 * `<boost/type_traits/is_same.hpp>`, `<boost/type_traits/is_base_of.hpp>`
-
-#### Boost.Detail
-
-* `<boost/detail/reference_content.hpp>`
 
 #### Boost.Move
 

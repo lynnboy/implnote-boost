@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/lockfree`
 * repo: `boostorg/lockfree`
-* commit: `875ef20a`, 2015-10-17
+* commit: `7d820fca`, 2016-02-12
 
 ------
 ### Lockfree Data Structures
@@ -137,6 +137,10 @@ public:
 
 * `<boost/config.hpp>`
 * `<boost/cstdint.hpp>`
+
+#### Boost.Align
+
+* `<boost/align/align_up.hpp>`, `<boost/align/aligned_allocator_adaptor.hpp>`
 
 #### Boost.Array
 

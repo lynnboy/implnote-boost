@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/dll`
 * repo: `boostorg/dll`
-* commit: `9714445f`, 2015-12-29
+* commit: `73e44454`, 2016-02-23
 
 ------
 ### Dynamic Library Supporting API
@@ -19,7 +19,8 @@ enum load_mode::type {  // dll load options, defined to be platform value, or 0 
   default_mode,   // default, 'rtld_lazy' and 'rtld_local' is default
   dont_resolve_dll_references, load_ignore_code_authz_level, load_with_altered_search_path, // windows
   rtld_lazy, rtld_now, rtld_global, rtld_local, rtld_deepbind, // posix dlfcn.h
-  append_decorations  // both platform, try 'a.dll', 'liba.so', or 'liba.dylib' first
+  append_decorations,  // both platform, try 'a.dll', 'liba.so', or 'liba.dylib' first
+  search_system_folders // both platform, if off, treat path as relative to current directory
 };
 class shared_library {        // copyable type
   native_handle_t handle_;
@@ -42,7 +43,7 @@ public:
 
   bool has(const char* symbol_name) const noexcept; bool has(string const& symbol_name) const noexcept;
   T& get<T>(const char* symbol_name) const;         T& get(string const& symbol_name) const;
-  T& get_alias<T>(const char* symbol_name) const;   T& get_alias(string const& symbol_name) const;
+  T& get_alias<T>(const char* alias_name) const;   T& get_alias(string const& alias_name) const;
 };
 // operators '==', '!=', '<', and swap()
 ```
@@ -50,6 +51,7 @@ public:
 * API without `error_code` parameter will throw `system_error` on failure.
 * On Windows, use `LoadLibraryEx` family API, on POSIXs, use `dlopen` family API.
 * `get_alias` just calls `*get<T*>(alias_name)`, alias symbols are pointers to actual instance.
+* `get` and `get_alias` supports member pointer and reference types for `T`.
 * `shared_library` will unload when destroyed.
 
 ------
@@ -74,16 +76,22 @@ Header `<boost/dll/alias.hpp>`
 Header `<boost/dll/import.hpp>`.
 
 ```c++
+class library_function<T> {
+    shared_ptr<T> f_;
+public:
+    operator T*() const noexcept { return f_.get(); } // for pre-C++11
+    auto operator()<Args...>(Args&&... args) const { return (*f_)(args...); } // for C++11
+};
 auto import[_alias]<T>(filesystem::path const& lib, [const char*|string const&] name,
                        load_mode::type mode = load_mode::default_mode);
 auto import[_alias]<T>(shared_library [const&|&&] lib, [const const*|string const&] name);
 ```
 
-* Result type will be callable wrapper (or `boost::function<T>` on pre-C++11)
-  for functions and `shared_ptr` for variables.
+* Result type will be callable wrapper `library_function` (or `boost::function<T>` on pre-C++11)
+  for functions, while be `shared_ptr` for objects.
 
 ------
-#### Get Module Path
+### Get Module Path
 
 Header `<boost/dll/runtime_symbol_info.hpp>`
 
@@ -94,7 +102,7 @@ filesystem::path program_location(T const& symbol);
 ```
 
 ------
-#### Module Symbol Query
+### Module Symbol Query
 
 Header `<boost/dll/library_info.hpp>`
 
@@ -170,11 +178,110 @@ using macho_info64 = macho_info<uint64_t>;
 * Supports ELF, MACH-O, PE
 
 ------
+### Experimental C++ Library Support
+
+Header `<boost/dll/smart_library.hpp>`
+
+```c++
+class smart_library {
+  shared_library _lib;
+  mangled_storage_impl _storage;
+public:
+  shared_library const& shared_lib() const;     mangled_storage const& symbol_storage() const;
+
+  // default-ctor, copy-ctor, dtor, assign(), swap()
+  smart_library(path const&, [error_code& ec,] load_mode = default_mode);
+  void load(path const&; [error_code& ec,] load_mode = default_mode);
+  void unload() noexcept;
+  bool is_loaded() const noexcept;  bool operator!() const noexcept; explicit operator bool() const noexcept;
+
+  T& get_variable<T>(string const&) { return _lib.get<T>(_storage.get_variable<T>(name)); }
+  Func& get_function<Func>(string const&) { return _lib.get<Func>(_storage.get_function<Func>(name)); }
+  auto get_mem_fn<T,Func>(string const&) { return _lib.get<>(_storage.get_mem_fn<T,Func>(name)); }
+  constructor<T> get_constructor<T>() { return load_ctor<T>(_lib, _storage.get_constructor<T>()); }
+  destructor<T> get_destructor<T>() { return load_dtor<T>(_lib, _storage.get_destructor<T>()); }
+  void add_type_alias<Alias>(string const&) { _storage.add_alias<Alias>(name); }
+
+  bool has(const char*) const noexcept;    bool has(string const&) const noexcept; // same as `shared_library`
+};
+// ==, !=, <, swap
+
+string demangle_symbol(const char* mangled_name);
+
+struct mangled_storage_impl {
+    struct entry { string mangled, demangled; };
+    vector<entry> storage_;
+    map<stl_type_index, string> aliases_;
+
+    // assign, swap, clear, get_storage
+    // default-ctor, copy-ctor, move-ctor
+
+    mangled_storage_impl(vector<string> const& symbols) { add_symbols(symbols); }
+    explicit mangled_storage_impl(library_info &);              void load(library_info &);
+    explicit mangled_storage_impl(path const&, bool = true);    void load(path const&, bool = true);
+    
+    void add_alias<Alias>(string const& n)
+    { aliases_.emplace(stl_type_index::type_id<Alias>(), n); }
+    void add_symbols(vector<string> const& symbols)
+    { for (auto& sym : symbols) storage_.emplace_back(sym, demangled_symbol(sym)); }
+
+    string get_name<T>() const {
+      auto tx = stl_type_index::type_id<T>();
+      return aliases_.count(tx) ? aliases_[tx] : tx.pretty_name();
+    }
+    
+    string get_variable<T>(string const& n) {
+        return find_if(storage_, [&](auto e) { return e.demangled == n; }).mangled;
+    }
+    string get_function<Func>(string const& n) {
+        string matcher = n + '(' + arg_list<Func>() + ')'; // compose signature
+        return find_if(storage_, [&](auto e) { return e.demangled == matcher; }).mangled;
+    }
+    string get_mem_fn<T,Func>(string const& n) {
+        string matcher = get_name<T>() + "::" + n + '(' + arg_list<Func>() + ')'
+                + const_rule<T>() + volatile_rule<T>(); // compose signature
+        return find_if(storage_, [&](auto e) { return e.demangled == matcher; }).mangled;
+    }
+    using ctor_sym = ...; using dtor_sym = ...;
+    ctor_sym get_constructor<Sig>() {
+        string matcher = get_return_type<Sig>() + "::" + ... // compose signature
+        return ctor_sym { // use mangled name, handle different ABI cases
+            find_if(storage_, [&](auto e) { return e.demangled == matcher; }).mangled
+        };
+    }
+    dtor_sym get_destructor<Sig>(); // similar as ctor
+};
+
+struct constructor<Signature> { // Class(Args...)
+    using standard_t = ...;     standard_t standard;        void call_standard(Class* const, Args...);
+    using allocating_t = ...;   allocating_t allocating;    Class* call_allocating(Args...);
+    bool has_allocating() const;    bool is_empty() const;
+};
+struct destructor<Class> {
+    using standard_t = void (*)(Class* const);   standard_t standard;    void call_standard(Class* const);
+    using standard_t = void (*)(Class* const);   deleting_t deleting;    void call_deleting(Class* const);
+    bool has_deleting() const;      bool is_empty() const;
+};
+constructor<Signature> load_ctor<Signature,Lib>(Lib& lib, ctor_sym const& ct) {
+    return constructor<Signature>(lib.get<standard_t>(ct)[,lib.get<allocating_t>(ct.C3));
+}
+destructor<Class> load_ctor<Class,Lib>(Lib& lib, dtor_sym const& dt) {
+    return destructor<Class>(lib.get<standard_t>(dt)[,lib.get<deleting_t>(dt.D0));
+}
+```
+
+* Differences between Itanium ABI and MSVC ABI mangling rules are handled accordingly.
+* Undeclared type names can be aliased by dummy type.
+* `constructor` provides either a standard or an allocating callable entry.
+* `destructor` provides either a standard or a deleting callable entry.
+
+------
 ### Dependency
 
 #### Boost.Config
 
 * `<boost/config.hpp>`
+* `<boost/cstdint.hpp>`
 
 #### Boost.StaticAssert
 
@@ -186,17 +293,18 @@ using macho_info64 = macho_info<uint64_t>;
 
 #### Boost.Core
 
-* `<boost/utility/addressof.hpp>`
+* `<boost/utility/addressof.hpp>` - by `import`
 * `<boost/swap.hpp>`
-* `<boost/utility/enable_if.hpp>` - by import
-* `<boost/noncopyable.hpp>` - by `library_info`
+* `<boost/utility/enable_if.hpp>`
 * `<boost/utility/explicit_operator_bool.hpp>`
+* `<boost/noncopyable.hpp>` - by `library_info`
+* `<boost/core/demangle.hpp>` - by `smart_library` on non-MSVC
 
 #### Boost.FileSystem
 
 * `<boost/filesystem/path.hpp>`
 * `<boost/filesystem/operations.hpp>`
-* `<boost/filesystem/fstream.hpp>`
+* `<boost/filesystem/fstream.hpp>` - by `library_info`
 
 #### Boost.Move
 
@@ -208,6 +316,7 @@ using macho_info64 = macho_info<uint64_t>;
 * `<boost/predef/library/c.h>`
 * `<boost/predef/compiler.h>` - by `BOOST_DLL_ALIAS`
 * `<boost/predef/architecture.h>` - by `library_info`
+* `<boost/predef/compiler/visualc.h>` - by `symbol_location`
 
 #### Boost.System
 
@@ -215,10 +324,8 @@ using macho_info64 = macho_info<uint64_t>;
 
 #### Boost.TypeTraits
 
-* `<boost/type_traits/is_pointer.hpp>`, `<boost/type_traits/is_const.hpp>`
-* `<boost/type_traits/is_object.hpp>` - by import
-* `<boost/type_traits/integral_constant.hpp>`
-* `<boost/aligned_storage.hpp>` - by `library_info`
+* `<boost/type_traits/*.hpp>` - pointer, reference, void, ...
+* `<boost/aligned_sotrage.hpp>` - by `library_info`
 
 #### Boost.MPL
 
@@ -230,11 +337,19 @@ using macho_info64 = macho_info<uint64_t>;
 
 #### Boost.Function
 
-* `<boost/function.hpp>` - by import
+* `<boost/function.hpp>` - by import on pre-C++11
 
 #### Boost.SmartPtr
 
 * `<boost/make_shared.hpp>` - by import
+
+#### Boost.TypeIndex
+
+* `<boost/type_index/stl_type_index.hpp>` - by `smart_library`
+
+#### Boost.Spirit
+
+* `<boost/spirit/home/x3.hpp>` - by `smart_library` (on MSVC), used to compose C++ signature string.
 
 ------
 ### Standard Facilities

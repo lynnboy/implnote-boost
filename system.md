@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/system`
 * repo: `boostorg/system`
-* commit: `e374f766`, 2015-11-21
+* commit: `388b3497`, 2016-02-23
 
 ------
 ### System Error Code
