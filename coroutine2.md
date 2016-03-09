@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/coroutine2`
 * repo: `boostorg/coroutine2`
-* commit: `749dba08`, 2016-02-09
+* commit: `239e014d`, 2016-03-04
 
 ------
 ### Boost Asymmetric Coroutine (C++14)
@@ -23,7 +23,7 @@ struct coroutine {
 
 Wrappers around a `control_block<T>` pointer.
 
-* `ctor([StackAllocator,] Fn &&, bool=false)`
+* `ctor([StackAllocator,] Fn &&)`
   Constructor for the master side, allocate and create `control_block`
   By default use `fixedsize_stack` allocator.
 * `ctor(control_block*)`
@@ -48,6 +48,21 @@ Wrappers around a `control_block<T>` pointer.
 * Specialization for `T&` is provided to transfer reference instead of value.
 * Specialization for `void` is also provided, no iterator is provided in this case.
 
+#### Stack Allocator
+
+```c++
+concept bool StackAllocator<T> = Constructible_v<T,std::size_t> && requires(T a, stack_context sctx) {
+    { a.allocate() } -> stack_context;
+    { a.deallocate(sctx) } -> void;
+};
+
+using fixedsize_stack = ...; using pooled_fixedsize_stack = ...; using protected_fixedsize_stack = ...;
+using segmented_stack = ...;
+```
+
+* The stack allocators are used as optional argument for coroutine types to specify how to allocate stack frames.
+* The predefined allocator types are aliases to the allocators defined in **Boost.Context**.
+
 ------
 ### Dependency
 
@@ -64,6 +79,7 @@ Wrappers around a `control_block<T>` pointer.
 * `<boost/context/execution_context.hpp>`
 * `<boost/context/stack_context.hpp>`
 * `<boost/context/fixedsize_stack.hpp>`
+* `<boost/context/pooled_fixedsize_stack.hpp>`
 * `<boost/context/protected_fixedsize_stack.hpp>`
 * `<boost/context/segmented_stack.hpp>`
 

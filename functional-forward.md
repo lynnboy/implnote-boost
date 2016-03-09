@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/functional/forward`
 * repo: `boostorg/functional`
-* commit: `a4781864`, 2015-01-10
+* commit: `45eeb170`, 2016-02-28
 
 ------
 ### Forwarding Wrappers

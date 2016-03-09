@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/pool`
 * repo: `boostorg/pool`
-* commit: `631b6467`, 2015-12-18
+* commit: `8a8829c8`, 2016-02-27
 
 ------
 ### Simple Segregated Storage (Free-List Pool)
@@ -143,7 +143,7 @@ class [fast_]pool_allocator<T, UserAllocator, Mutex, NextSize, MaxSize>;
 
 #### Boost.Thread
 
-* `<boost/thread/mutex.hpp>` - by singleton_pool and allocators
+* `<boost/thread/mutex.hpp>` - by singleton_pool and allocators, when no `<mutex>` is available
 
 #### Boost.ThrowException
 

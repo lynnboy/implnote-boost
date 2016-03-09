@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/detail`
 * repo: `boostorg/detail`
-* commit: `32b98c75`, 2015-10-23
+* commit: `fbf832c9`, 2016-02-26
 
 ------
 ### Blank Value Type

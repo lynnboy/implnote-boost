@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/winapi`
 * repo: `boostorg/winapi`
-* commit: `0f17094a`, 2016-02-22
+* commit: `5aa44015`, 2016-03-07
 
 ------
 ### Windows API Declaration
