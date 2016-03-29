@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/tuple`
 * repo: `boostorg/tuple`
-* commit: `68eff7df`, 2016-03-02
+* commit: `158c7ef6`, 2016-03-13
 
 ------
 ### Tuple library
