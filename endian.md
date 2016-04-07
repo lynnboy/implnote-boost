@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/endian`
 * repo: `boostorg/endian`
-* commit: `1b0a41e6`, 2015-12-11
+* commit: `2db73ab8`, 2016-04-05
 
 ------
 ### Endian Conversion
