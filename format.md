@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/format`
 * repo: `boostorg/format`
-* commit: `8023d13d`, 2015-09-23
+* commit: `c81520e9`, 2016-05-11
 
 ------
 ### Format String Based Upon Stream

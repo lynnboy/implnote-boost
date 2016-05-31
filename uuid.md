@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/uuid`
 * repo: `boostorg/uuid`
-* commit: `ea165ed5`, 2015-12-30
+* commit: `1c493350`, 2016-04-25
 
 ------
 ### UUID library

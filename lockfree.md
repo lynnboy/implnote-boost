@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/lockfree`
 * repo: `boostorg/lockfree`
-* commit: `b690fd65`, 2016-04-02
+* commit: `7d960b81`, 2016-05-22
 
 ------
 ### Lockfree Data Structures
@@ -187,6 +187,10 @@ public:
 #### Boost.Utility
 
 * `<boost/utility.hpp>` - `next` used by `spsc_queue`
+
+#### Boost.Predef
+
+* `<boost/predef.hpp>` - `BOOST_ARCH_X86_64`
 
 ------
 ### Standard Facilities

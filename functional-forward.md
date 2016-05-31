@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/functional/forward`
 * repo: `boostorg/functional`
-* commit: `45eeb170`, 2016-02-28
+* commit: `739dd5df`, 2016-05-30
 
 ------
 ### Forwarding Wrappers
@@ -12,6 +12,7 @@ Header `<boost/functional/forward_adapter.hpp>` and `<boost/functional/lightweig
 * Handling _perfect forwarding_ problem via preprocessor generated code, superceded by rvalue-reference
 * Both adapters wraps a functor/function pointer into a functor
 * `lightweight_forward_adapter` requires passing `ref(x)` for lvalues, and unwraps the argument when invoking.
+* Handles 0 argument case specially because SFINAE cannot work for that.
 
 ------
 ### Dependency

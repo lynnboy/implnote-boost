@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/coroutine2`
 * repo: `boostorg/coroutine2`
-* commit: `b5ac9ba5`, 2016-03-20
+* commit: `0f247277`, 2016-05-23
 
 ------
 ### Boost Asymmetric Coroutine (C++14)

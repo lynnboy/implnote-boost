@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/optional`
 * repo: `boostorg/optional`
-* commit: `0755ab7b`, 2016-03-08
+* commit: `b99c1fdc`, 2016-05-31
 
 ------
 ### Boost Optional

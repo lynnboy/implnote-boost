@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/numeric/interval`
 * repo: `boostorg/interval`
-* commit: `538299d4`, 2015-01-09
+* commit: `de48274d`, 2016-05-19
 
 ------
 ### Interval Library
