@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/lexical_cast`
 * repo: `boostorg/lexical_cast`
-* commit: `87afdf53`, 2016-04-01
+* commit: `0bfc6c2d`, 2016-06-06
 
 ------
 ### Lexical Type Cast API

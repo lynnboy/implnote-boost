@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/type_index`
 * repo: `boostorg/type_index`
-* commit: `24708cc1`, 2016-03-30
+* commit: `31ec1d25`, 2016-06-05
 
 ------
 ### Type index solution
