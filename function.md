@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/function`
 * repo: `boostorg/function`
-* commit: `3eb89548`, 2015-7-22
+* commit: `fed32bc0`, 2016-07-11
 
 ------
 ### Polymorphic Function Wrapper
@@ -21,12 +21,14 @@ Header `<boost/function.hpp>`
 
 ```c++
 union function_buffer {
-  void* obj_ptr;          // to store functor objects, mem_fn wrapped member function pointers
-  struct { type_info* type; bool const_q; bool volatile_q; } type;
-  void (*func_ptr)();     // to store function pointers
-  struct { void (X::*memfunc_ptr)(int); void* obj_ptr; } bounded_memfun_ptr; // not used
-  struct { void* obj_ptr; bool const_q; bool volatile_q; } obj_ref;  // store reference_wrapper, remember cv
-  char data;              // used for small-obj-opt, store full functor object
+  union function_buffer_members {
+    void* obj_ptr;          // to store functor objects, mem_fn wrapped member function pointers
+    struct { type_info* type; bool const_q; bool volatile_q; } type;
+    void (*func_ptr)();     // to store function pointers
+    struct { void (X::*memfunc_ptr)(int); void* obj_ptr; } bounded_memfun_ptr; // not used
+    struct { void* obj_ptr; bool const_q; bool volatile_q; } obj_ref;  // store reference_wrapper, remember cv
+  } members;
+  char data[sizeof(members)];	    // used for small-obj-opt, store full functor object
 };
 enum functor_manager_operation_type { clone, move, destroy, check_functor_type, get_functor_type };
 struct vtable_base {

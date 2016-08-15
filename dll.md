@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/dll`
 * repo: `boostorg/dll`
-* commit: `7f3ffca9`, 2016-06-04
+* commit: `d2be74eb`, 2016-07-07
 
 ------
 ### Dynamic Library Supporting API
@@ -13,6 +13,8 @@ Main Header `<boost/dll.hpp>`
 ### Shared Library Loading
 
 Header `<boost/dll/shared_library.hpp>`
+
+The class `shared_library` handles library loading/unloading and low-level symbol finding.
 
 ```c++
 enum load_mode::type {  // dll load options, defined to be platform value, or 0 otherwise
@@ -30,6 +32,7 @@ public:
   // default ctor, copy-ctor, copy-assign, move-ctor, move-assign, dtor, swap()
   // ctors for each 'load()' signature
 
+  shared_library& assign(shared_library const&[, system::error_code& ec]);
   void load(filesystem::path const& lib_path, load_mode::type = default_mode);
   void load(filesystem::path const&, system::error_code& ec, load_mode::type = default_mode);
   void load(filesystem::path const&, load_mode::type, system::error_code& ec);
@@ -43,13 +46,15 @@ public:
 
   bool has(const char* symbol_name) const noexcept; bool has(string const& symbol_name) const noexcept;
   T& get<T>(const char* symbol_name) const;         T& get(string const& symbol_name) const;
-  T& get_alias<T>(const char* alias_name) const;   T& get_alias(string const& alias_name) const;
+  T& get_alias<T>(const char* alias_name) const;    T& get_alias(string const& alias_name) const;
 };
 // operators '==', '!=', '<', and swap()
 ```
 
 * API without `error_code` parameter will throw `system_error` on failure.
 * On Windows, use `LoadLibraryEx` family API, on POSIXs, use `dlopen` family API.
+* On Windows, use `GetModuleFileName` to get path from handle, on MacOS/iOS, iterate all loaded images for matching one.
+* On POSIXes, also specially treated for current executable's file path.
 * `get_alias` just calls `*get<T*>(alias_name)`, alias symbols are pointers to actual instance.
 * `get` and `get_alias` supports member pointer and reference types for `T`.
 * `shared_library` will unload when destroyed.
@@ -79,6 +84,7 @@ Header `<boost/dll/import.hpp>`.
 class library_function<T> {
     shared_ptr<T> f_;
 public:
+    library_function(shared_ptr<shared_library> const& l, T* fp) : f_(l, fp) {}
     operator T*() const noexcept { return f_.get(); } // for pre-C++11
     auto operator()<Args...>(Args&&... args) const { return (*f_)(args...); } // for C++11
 };
@@ -96,9 +102,9 @@ auto import[_alias]<T>(shared_library [const&|&&] lib, [const const*|string cons
 Header `<boost/dll/runtime_symbol_info.hpp>`
 
 ```c++
-filesystem::path symbol_location<T>(T const& symbol);
-inline filesystem::path this_line_location() { return symbol_location(this_line_location); }
-filesystem::path program_location(T const& symbol);
+filesystem::path symbol_location<T>(T const& symbol[, system::error_code& ec]);
+inline filesystem::path this_line_location([system::error_code& ec]) { return symbol_location(this_line_location); }
+filesystem::path program_location([system::error_code& ec]);
 ```
 
 ------
@@ -117,8 +123,7 @@ public:
 
   std::vector<std::string> sections();
   std::vector<std::string> symbols();
-  std::vector<std::string> symbols(const char* section_name);
-  std::vector<std::string> symbols(string const& section_name);
+  std::vector<std::string> symbols([const char*|string const&] section_name);
 };
 
 struct x_info_interface {
@@ -128,6 +133,7 @@ struct x_info_interface {
   virtual ~x_info_interface() noexcept {}
 };
 
+// PE
 struct IMAGE_DOS_HEADER;
 struct IMAGE_FILE_HEADER;
 struct IMAGE_DATA_DIRECTORY;
@@ -145,6 +151,7 @@ public:
 using pe_info32 = pe_info<DWORD>;
 using pe_info64 = pe_info<ULONGLONG>;
 
+// ELF
 struct Elf_Ehdr_template<AddressOffsetT>; // Elf32_Ehdr; Elf64_Ehdr;
 struct Elf_Shdr_template<AddressOffsetT>; // Elf32_Shdr; Elf64_Shdr;
 struct Elf_Sym_template<AddressOffsetT>;  // Elf32_Sym; Elf64_Sym;
@@ -158,6 +165,7 @@ public:
 using elf_info32 = pe_info<uint32_t>;
 using elf_info64 = pe_info<uint64_t>;
 
+// MACH-O
 struct mach_header_template<AddressOffsetT>; // mach_header_32; mach_header_64;
 struct load_comand;
 struct segment_command_template<AddressOffsetT>; // segment_command_32; segment_command_64;
@@ -200,28 +208,32 @@ public:
   auto get_mem_fn<T,Func>(string const&) { return _lib.get<>(_storage.get_mem_fn<T,Func>(name)); }
   constructor<T> get_constructor<T>() { return load_ctor<T>(_lib, _storage.get_constructor<T>()); }
   destructor<T> get_destructor<T>() { return load_dtor<T>(_lib, _storage.get_destructor<T>()); }
+  std::type_info& get_type_info<C>() const { return load_type_info<C>(_lib, _storage); }
   void add_type_alias<Alias>(string const&) { _storage.add_alias<Alias>(name); }
 
   bool has(const char*) const noexcept;    bool has(string const&) const noexcept; // same as `shared_library`
 };
 // ==, !=, <, swap
+auto get<T_or_Sig>(smart_library const&, std::string const&); // sm.get_variable()/sm.get_function()
+auto get<C,Sig>(smart_library const&, std::string const&); // sm.get_mem_fn()
 
 string demangle_symbol(const char* mangled_name);
 
 struct mangled_storage_impl {
     struct entry { string mangled, demangled; };
     vector<entry> storage_;
-    map<stl_type_index, string> aliases_;
+    map<typeindex::ctti_type_index, string> aliases_;
 
     // assign, swap, clear, get_storage
     // default-ctor, copy-ctor, move-ctor
 
+    std::string get_name<T>() const; // find alias for T, otherwise ctti's pretty_name()
     mangled_storage_impl(vector<string> const& symbols) { add_symbols(symbols); }
     explicit mangled_storage_impl(library_info &);              void load(library_info &);
     explicit mangled_storage_impl(path const&, bool = true);    void load(path const&, bool = true);
     
     void add_alias<Alias>(string const& n)
-    { aliases_.emplace(stl_type_index::type_id<Alias>(), n); }
+    { aliases_.emplace(ctti_type_index::type_id<Alias>(), n); }
     void add_symbols(vector<string> const& symbols)
     { for (auto& sym : symbols) storage_.emplace_back(sym, demangled_symbol(sym)); }
 
@@ -270,10 +282,72 @@ destructor<Class> load_ctor<Class,Lib>(Lib& lib, dtor_sym const& dt) {
 }
 ```
 
+* Only MSVC ABI and Itanium ABI are supported.
 * Differences between Itanium ABI and MSVC ABI mangling rules are handled accordingly.
 * Undeclared type names can be aliased by dummy type.
 * `constructor` provides either a standard or an allocating callable entry.
 * `destructor` provides either a standard or a deleting callable entry.
+
+------
+### Reference Holding API for C++
+
+* Header `<boost/dll/import_class.hpp>`
+* Header `<boost/dll/import_mangled.hpp>`
+
+```c++
+struct function_tuple<Return, ...Args> { fn _f; Return operator()(Args...); };
+struct mem_fn_tuple<Class, Return, ...Args> { mem_fn _f; Return operator()(Class*, Args...); };
+class mangled_library_function<...Ts> {
+    shared_ptr<function_tuple<Ts...>> f_;
+    auto operator()<...Args>(Args&&... args) const { return f_(forward<Args>(args)); }
+};
+class mangled_library_mem_fn<Class, ...Ts> {
+    shared_ptr<mem_fn_tuple<Ts...>> f_;
+    auto operator()<ClassIn,...Args>(ClassIn *cl, Args&&... args) const { return f_(cl, forward<Args>(args)); }
+};
+
+struct deleter<T> {
+    destructor<T> dtor; bool use_deleting;
+    void operator() (T* t) {
+	if (use_deleting) dtor.call_deleting(t);
+	else { dtor.call_standard(t); delete[] reinterpret_cast<char*>(t);
+    }
+};
+struct mem_fn_call_proxy<Class, U> {
+    Class* t; mangled_library_mem_fn<Class,U> & mem_fn;
+    auto operator()<...Args>(Args&&...args) const { mem_fn(t, forward<Args>(args)...); }
+};
+struct mem_fn_call_proxy<T, Return(Args...)> {
+    T* t; const std::string & name; smart_library & _lib;
+    Return operator()(Args...args) const; // load mem_fn, then call for t;
+};
+class imported_class<T> {
+    smart_library _lib;  unique_ptr<T, deleter<T>> _data;
+    bool _is_allocating;  size_t _size;  std::type_info& _ti;
+public:
+    static imported_class<T> make<...Args>(smart_library [const &|&&], [size_t size,] Args...);
+    // no ctors except move-ctor, move-assign
+    explicit operator bool() const;
+    bool is_[move|copy]_[constructible|assignable](); // lookup for T's ctor/assign in _lib
+    std::type_info const& get_type_info();
+    T* get();
+    imported_class<T> copy() const;  imported_class<T> move();
+    void copy_assign(imported_class<T> const&) const;  void move_assign(imported_class<T>&);
+    const mem_fn_call_proxy<T,Sig> call<[Tin,]Sig>(string const&);
+    const mem_fn_call_proxy<...> operator->*<Tin,T2>(mangled_library_mem_fn<Tin,T2>&);
+    auto import<...Args>(string const& name); // convenience
+};
+
+auto import_mangled<...Args>(filesystem::path const&, [const char*|string cosnt&] name,
+                             load_mode::type mode = load_mode::default_mode);
+auto import_mangled<...Args>([smart_library|shared_library] [const&|&&], [const char*|string cosnt&] name);
+imported_class<T> import_class<T, ...Args>(smart_library [const&|&|&&],[size_t size,][string const& alias_name,]Args...);
+```
+
+* Similar to `import`, but `import_mangled` can import set of overloaded functions.
+* `import_class` will construct an instance of an importable class.
+* When no `size` is provided for `import_class`, allocating ctor and deleting dtor should available, otherwise standard ctor and dtor should available.
+* The object created by `import_class` will be deleted automatically, and move/copy operations are supported by named members.
 
 ------
 ### Dependency
@@ -309,6 +383,7 @@ destructor<Class> load_ctor<Class,Lib>(Lib& lib, dtor_sym const& dt) {
 #### Boost.Move
 
 * `<boost/move/utility.hpp>`
+* `<boost/move/move.hpp>` - by `import_mangled`
 
 #### Boost.PreDef
 

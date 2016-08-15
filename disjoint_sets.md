@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/disjoint_sets`
 * repo: `boostorg/disjoint_sets`
-* commit: `a251afafa23e57e09372704ccd6173b123e5d375`, 2012-5-08
+* commit: `cd21877b`, 2016-07-01
 
 ------
 ### disjoint_sets

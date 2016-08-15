@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/lockfree`
 * repo: `boostorg/lockfree`
-* commit: `f368caee`, 2016-06-11
+* commit: `5200b6f5`, 2016-08-07
 
 ------
 ### Lockfree Data Structures
@@ -74,6 +74,8 @@ public:
   template <typename U> bool [unsynchronized_]pop(U & u);   // 'U' should allow 'u = t' or 'u = U(t)'
   template <typename F> bool consume_one(F [const] & f);    // invoke 'f(t)'
   template <typename F> size_t consume_all(F [const] & f);  // loops 'consume_one'
+  template <typename F> size_t consume_all_atomic(F [const] & f);  // off stack then consume
+  template <typename F> size_t consume_all_atomic_reversed(F [const] & f);
 };
 ```
 
@@ -165,12 +167,12 @@ public:
 #### Boost.TypeTraits
 
 * `<boost/type_traits/is_convertible.hpp>`
-* `<boost/type_traits/has_trivial_assign.hpp>`, `<boost/type_traits/has_trivial_destructor.hpp>`
+* `<boost/type_traits/is_copy_constructible.hpp>`
 * `<boost/aligned_storage.hpp>` - used by `spsc_queue`
 
 #### Boost.Parameter
 
-* `<boost/parameter.hpp>`
+* `<boost/parameter/parameters.hpp>`, `<boost/parameter/binding.hpp>`, `<boost/parameter/aux_/template_keyword.hpp>`
 
 #### Boost.Atomic
 

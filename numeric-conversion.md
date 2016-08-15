@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/numeric/conversion`
 * repo: `boostorg/numeric_conversion`
-* commit: `c90517da`, 2014-08-18
+* commit: `c9d7a49b`, 2016-07-06
 
 ------
 ### Numeric Conversion Traits

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/pool`
 * repo: `boostorg/pool`
-* commit: `8a8829c8`, 2016-02-27
+* commit: `f21f51aa`, 2016-07-30
 
 ------
 ### Simple Segregated Storage (Free-List Pool)

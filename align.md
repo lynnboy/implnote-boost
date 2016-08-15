@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/align`
 * repo: `boostorg/align`
-* commit: `9fa8e7e5`, 2016-04-02
+* commit: `bb7a12eb`, 2016-05-04
 
 ------
 ### Alignment Library
