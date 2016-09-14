@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/align`
 * repo: `boostorg/align`
-* commit: `bb7a12eb`, 2016-05-04
+* commit: `a55058b4`, 2016-09-01
 
 ------
 ### Alignment Library
@@ -57,6 +57,7 @@ Header `<boost/align/is_aligned.hpp>`
 ```c++
 bool is_aligned(const void* ptr, std::size_t alignment) noexcept;
 constexpr bool is_aligned(std::size_t value, std::size_t alignment) noexcept;
+bool is_aligned(std::size_t alignment, const void* ptr) noexcept;
 ```
 
 Effect: `(ptr & (alignment-1) == 0)`.

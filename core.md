@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/core`
 * repo: `boostorg/core`
-* commit: `df2f3587`, 2016-07-12
+* commit: `81562590`, 2016-09-10
 
 ------
 ### `address_of`
@@ -85,7 +85,7 @@ Standard: `is_same` trait (C++11)
 Header `<boost/core/lightweight_test.hpp>`
 Header `<boost/core/lightweight_test_trait.hpp>`
 
-* `BOOST_TEST(expr)`, `BOOST_ERROR(msg)`
+* `BOOST_TEST(expr)`, `BOOST_ERROR(msg)`, `BOOST_TEST_NOT(expr)`
 * `BOOST_TEST_EQ(expr1,expr2)`, `BOOST_TEST_NE(expr1,expr2)`
 * `BOOST_TEST_THROWS(expr,excep)`
 * `BOOST_TEST_TRAIT_TRUE(type)`, `BOOST_TEST_TRAIT_FALSE(type)`
