@@ -296,3 +296,304 @@ public:
 ------
 ### State Transition
 
+```c++
+struct event_base : rtti_base_type<counted_base> {
+    intrusive_ptr<const event_base> intrusive_from_this() const; // either add-ref-count or clone
+  protected:
+    virtual ~event_base();
+    virtual intrusive_ptr<const event_base> clone() const = 0;
+};
+struct event<MostDerived, Allocator> : rtti_derived_type<MostDerived, event_base> {
+    // new, delete
+    // protected ctor, dtor
+  private: intrusive_ptr<const event_base> clone() const
+  { return intrusive_ptr<const event_base>(new MostDerived(...)); }
+};
+
+enum reaction_result { no_reaction, do_forward_event, do_discard_event, do_defer_event, consumed };
+
+struct reaction_dispatcher<Reactions,State,EventBase,Event,ActionContext,IdType> {
+  static reaction_result react(State & stt, const EventBase& evt, const IdType& eventType) {
+    if (Event <is> EventBase) {
+      if (ActionContext <is> no_context<Event>) Reactions::react_without_action(stt);
+      else                                      Reactions::react_with_action(stt, evt);
+    } else {
+      if (ActionContext <is> no_context<Event>) Reactions::react_without_action(stt);
+      else
+        Reactions::react_with_action(stt, *polymorphic_downcast<const Event*>(&evt));
+    }
+  }
+};
+struct transition<Event,Destination,
+    TransitionContext=no_context<Event>,
+    void (TransitionContext::*)(const Event&) pAction =no_context<Event>::no_function> {
+  struct reactions<State> {
+    static result react_without_action(State & stt) { return stt.transit<Destination>(); }
+    static result react_with_action(State & stt, const Event & evt)
+    { return stt.transit<Destination>(pAction, evt); }
+  };
+  static reaction_result react<State,EventBase,IdType>(State & stt, const EventBase & evt,
+      const IdType& eventType) {
+    return reaction_dispatcher<reactions<State>, State, EventBase, Event, TransitionContext, IdType>
+      ::react(stt, evt, eventType);
+  }
+};
+
+struct in_state_reaction<Event,
+    ReactionContext=no_context<Event>,
+    void (ReactionContext::*)(const Event&) pAction =no_context<Event>::no_function> {
+  struct reactions<State> {
+    static result react_without_action(State & stt) { return stt.discard_event(); }
+    static result react_with_action(State & stt, const Event & evt)
+    { stt.context<ReactionContext>().*pAction(evt); return react_without_action(stt); }
+  };
+  static reaction_result react<State,EventBase,IdType>(State & stt, const EventBase & evt,
+      const IdType& eventType) {
+    return reaction_dispatcher<reactions<State>, State, EventBase, Event, ReactionContext, IdType>
+      ::react(stt, evt, eventType);
+  }
+};
+
+struct deferral<Event> {
+  static reaction_result react<State,EventBase,IdType>(State & stt, const EventBase & evt,
+      const IdType& eventType) {
+    if (eventType == Event::static_type()) return stt.defer_event();
+    else return no_reaction;
+  }
+};
+
+struct termination<Event> {
+  static reaction_result react<State,EventBase,IdType>(State & stt, const EventBase & evt,
+      const IdType& eventType) {
+    if (eventType == Event::static_type()) return stt.terminate();
+    else return no_reaction;
+  }
+};
+
+struct custom_reaction<Event> {
+  static reaction_result react<State,EventBase,IdType>(State & stt, const EventBase & evt,
+      const IdType& eventType) {
+    if (eventType == Event::static_type())
+      return stt.react(*polymorphic_downcast<const Event*>(&evt));
+    else return no_reaction;
+  }
+};
+```
+
+------
+### Event Processor and Asynchronous
+
+```c++
+struct event_processor<Scheduler> {
+  private:
+    virtual void initiate_impl() = 0;
+    virtual void process_event_impl(const event_base & evt) = 0;
+    virtual void terminate_impl() = 0;
+    
+    Scheduler & sch_; const processor_handle handle_;
+  protected:
+    event_processor(Scheduler::processor_context ctx)
+        : sch_(ctx.my_scheduler()), handle_(ctx.my_handle()) {}
+  public:
+    Scheduler & my_scheduler() const; processor_handle my_handle() const;
+    void initiate(); void process_event(const event_base &evt); void terminate(); // call virtuals
+    virtual ~event_processor();
+};
+
+struct processor_container<Scheduler, WorkItem, Allocator> {
+    using processor_holder_type = auto_ptr<event_processor<Scheduler>>;
+    using processor_handle = weak_ptr<processor_holder_type>;
+    struct processor_context {
+      private: Scheduler & sch_; processor_handle handle_;
+      public: Scheduler& my_scheduler() const; processor_handle & my_handle() const;
+    };
+    set<processor_holder_ptr_type> processorSet_;
+
+    WorkItem create_processor<Processor,...Arg>(processor_handle& handle, Scheduler& scheduler, Arg...arg) {
+      shared_ptr<processor_holder_ptr_type> p = make_processor_holder();
+      handle = p;
+      processor_context ctx{scheduler, handle};
+      auto impl = []{
+        processorSet_.insert(p);
+        processor_holder_type holder(new Processor(ctx, arg...));
+        *p = holder;
+      };
+      return WorkItem(impl, Allocator());
+    }
+    WorkItem destroy_processor(const processor_handle& processor) {
+      auto impl = [] {
+        const processor_holder_ptr_type p = processor.lock();
+        if (p) processorSet_.erase(p);
+      };
+      return WorkItem(impl, Allocator());
+    }
+    WorkItem initiate_processor(const processor_handle& processor) {
+      auto impl = [] {
+        const processor_holder_ptr_type p = processor.lock();
+        if (p) (*p)->initiate();
+      };
+      return WorkItem(impl, Allocator());
+    }
+    WorkItem terminate_processor(const processor_handle& processor) {
+      auto impl = [] {
+        const processor_holder_ptr_type p = processor.lock();
+        if (p) (*p)->terminate();
+      };
+      return WorkItem(impl, Allocator());
+    }
+    WorkItem queue_event(const processor_handle& processor, const intrusive_ptr<const event_base>& pEvent) {
+      auto impl = [] {
+        const processor_holder_ptr_type p = processor.lock();
+        if (p) (*p)->process_event(*pEvent);
+      };
+      return WorkItem(impl, Allocator());
+    }
+};
+
+struct fifo_worker<Allocator> {
+  using work_item = function<void()>;
+
+  bool terminated_;
+  const bool waitOnEmptyQueue_;
+  mutex mutex_; condition queueNotEmpty_;
+  list<work_item> waitOnEmptyQueue_;
+
+  fifo_worker(bool waitOnEmptyQueue=false) : waitOnEmptyQueue_(waitOnEmptyQueue), terminated_(false) {}
+
+  void queue_work_item(work_item& item) {
+    if (item.empty()) return;
+    mutex::scoped_lock lock(mutex_);
+    workQueue_.push_back(work_item()); workQueue_.back().swap(item);
+    queueNotEmpty_.notify_one();
+  }
+  void queue_work_item(const work_item& item) { work_item copy{item}; queue_work_item(copy); }
+
+  void terminate() {
+    queue_work_item(work_item([]{ terminated_ = true; }));
+  }
+  bool terminated() const { return terminated_; }
+  
+  unsigned long operator()(unsigned long maxItemCount=0) {
+    unsigned long itemCount = 0;
+    while (!terimated() && (maxItemCount==0 || itemCount < maxItemCount)) {
+        work_item item = dequeue_item(); if (item.empty()) break;
+        item(); ++itemCount;
+    }
+    return itemCount;
+  }
+  work_item dequeue_item() {
+    mutex::scoped_lock lock(mutex_);
+    if (!waitOnEmptyQueue_ && workQueue_.empty()) return work_item(); // return empty item
+    while (workQueue_.empty()) queueNotEmpty_.wait(lock);
+    work_item result; result.swap(workQueue_.front()); workQueue_.pop_front();
+    return result;
+  }
+};
+
+struct fifo_scheduler<FifoWorker=fifo_worker<>, Allocator> {
+  using container = processor_container<fifo_scheduler, FifoWorker::work_item, Allocator>;
+  private: container container_; FifoWorker worker_;
+  public:
+    processor_handle create_processor<Processor,...Arg>(Arg...arg) {
+      processor_handle result;
+      work_item item = container_.create_processor<Processor>(result, *this, arg...);
+      worker_.queue_work_item(item);
+    }
+    void destroy_processor(const processor_handle& processor) {
+      auto item = container_.destroy_processor(processor);
+      worker_.queue_work_item(item);
+    }
+    void initiate_processor(const processor_handle& processor) {
+      auto item = container_.initiate_processor(processor);
+      worker_.queue_work_item(item);
+    }
+    void terminate_processor(const processor_handle& processor) {
+      auto item = container_.terminate_processor(processor);
+      worker_.queue_work_item(item);
+    }
+    void queue_event(const processor_handle& processor, const intrusive_ptr<const event_base>& pEvent) {
+      auto item = container_.queue_event(processor, pEvent);
+      worker_.queue_work_item(item);
+    }
+    void queue_work_item([const] work_item & item) { worker_.queue_work_item(item); }
+    void terminate() { worker_.terminate(); }
+    bool terminated() { return worker_.terminated(); }
+    unsigned long operator() (unsigned long maxEventCount = 0) { return worker_(maxEventCount); }
+};
+
+struct asynchronous_state_machine<MostDerived, InitialState,
+    Scheduler=fifo_scheduler,
+    Allocator=std::allocator<void>, ExceptionTranslator=null_exception_translator> :
+  state_machine<MostDerived,InitialState,Allocator,ExceptionTranslator>,
+  event_processor<Scheduler>
+{
+    void terminate() { event_processor::terminate(); }
+    void initiate_impl() override { state_machine::initiate(); }
+    void process_event_impl(const event_base& evt) override { state_machine::process_event(evt); }
+    void terminate_impl() override { state_machine::terminate(); }
+};
+```
+
+------
+### Dependency
+
+#### Boost.Config
+
+* `<boost/config.hpp>`
+* `<boost/detail/workaround.hpp>`.
+
+#### Boost.Assert
+
+* `<boost/assert.hpp>`.
+
+#### Boost.StaticAssert
+
+* `<boost/static_assert.hpp>`.
+
+ #### Boost.ThrowException
+
+* `<boost/throw_exception.hpp>`.
+
+#### Boost.Core
+
+* `<boost/noncopyable.hpp>`
+* `<boost/ref.hpp>`
+* `<boost/get_pointer.hpp>`
+
+#### Boost.SmartPtr
+
+* `<boost/intrusive_ptr.hpp>`
+* `<boost/shared_ptr.hpp>`
+* `<boost/weak_ptr.hpp>`
+* `<boost/detail/atomic_count.hpp>`
+
+#### Boost.Conversion
+
+* `<boost/polymorphic_cast.hpp>`
+
+#### Boost.Function
+
+* `<boost/function/function0.hpp>`
+
+#### Boost.Bind
+
+* `<boost/bind.hpp>`
+
+#### Boost.Detail
+
+* `<boost/detail/allocator_utilities.hpp>`
+
+#### Boost.Thread
+
+* `<boost/thread/mutex.hpp>`, `<boost/thread/condition.hpp>`
+
+#### Boost.TypeTraits
+
+* `<boost/type_traits/*.hpp>`, is_same, is_pointer, remove_reference, is_base_of
+
+#### Boost.MPL
+
+* `<boost/mpl/*.hpp>`
+
+------
+### Standard Facilities

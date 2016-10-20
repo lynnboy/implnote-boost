@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/exception`
 * repo: `boostorg/exception`
-* commit: `c1e22846`, 2016-07-12
+* commit: `27598f92`, 2016-09-28
 
 ------
 ### Exception Storing Arbitrary Error Info
@@ -202,7 +202,7 @@ std::string to_string(exception_ptr const& p); // indent each line of diagnostic
 
 #### Boost.SmartPtr
 
-* `<boost/shared_ptr.hpp>`
+* `<boost/shared_ptr.hpp>` - when `BOOST_EXCEPTION_MINI_BOOST` is not defined.
 
 #### Boost.Tuple
 

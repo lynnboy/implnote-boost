@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/type_index`
 * repo: `boostorg/type_index`
-* commit: `6cf5288a`, 2016-08-30
+* commit: `c52fdfe3`, 2016-10-07
 
 ------
 ### Type index solution
@@ -69,6 +69,29 @@ User may provide its own `type_info` class, and at least these members of `type_
   `BOOST_TYPE_INDEX_FUNCTION_SIGNATURE` to override default compiler handling
   for extracting type from function name.
 
+### `runtime_cast` (mimic `dynamic_cast`)
+
+Header `<boost/type_index/runtime_cast.hpp>`
+
+```c++
+struct bad_runtime_cast : exception;
+
+T runtime_cast<T,U>(U [const]* u) noexcept;
+T [const]* runtime_cast<T,U>(U [const]* u) noexcept;
+
+add_reference_t<[const] T> runtime_cast<T,U>(U [const]& u); // throws
+
+std::shared_ptr<T> runtime_pointer_cast<T,U>(std::shared_ptr<U> const& u);
+boost::shared_ptr<T> runtime_pointer_cast<T,U>(boost::shared_ptr<U> const& u);
+```
+
+* `BOOST_TYPE_INDEX_REGISTER_RUNTIME_CLASS` adds a recursive lookup virtual function.
+  Arguments can be `BOOST_TYPE_INDEX_NO_BASE_CLASS` for nobase, and `(base1)(base2)...` for bases.
+  It uses `type_id<T>()` internally.
+* `runtime_cast` supports pointers, references
+* `runtime_pointer_cast`, supports std/boost `shared_ptr`.
+  It perform lookup for downcasting or sideway casting.
+
 ------
 ### Dependency
 
@@ -87,6 +110,7 @@ User may provide its own `type_info` class, and at least these members of `type_
 #### Boost.Core
 
 * `<boost/demangle.hpp>`, when `std::type_info` based implementation is chosen.
+* `<boost/core/addressof.hpp>` - runtime_cast
 
 #### Boost.TypeTraits
 
@@ -96,6 +120,14 @@ User may provide its own `type_info` class, and at least these members of `type_
 
 * `<boost/mpl/if.hpp>`, `<boost/mpl/or.hpp>`, when `std::type_info` based implementation is chosen.
 * `<boost/mpl/bool.hpp>`, when CTTI emulation implementation is chosen.
+
+#### Boost.SmartPtr
+
+* `<boost/smart_ptr/shared_ptr.hpp>` - runtime_pointer_cast.
+
+#### Boost.Preprocessor
+
+* `<boost/preprocessor/seq/for_each.hpp>` - runtime_cast
 
 ------
 ### Standard Facilities
