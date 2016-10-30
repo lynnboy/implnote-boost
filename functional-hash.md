@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/functional/hash`
 * repo: `boostorg/functional`
-* commit: `86d7f6d5`, 2016-08-14
+* commit: `1cdfd707`, 2016-10-14
 
 ------
 ### Hash

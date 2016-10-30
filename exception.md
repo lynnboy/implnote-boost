@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/exception`
 * repo: `boostorg/exception`
-* commit: `27598f92`, 2016-09-28
+* commit: `6cf23133`, 2016-10-26
 
 ------
 ### Exception Storing Arbitrary Error Info

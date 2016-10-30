@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/optional`
 * repo: `boostorg/optional`
-* commit: `d556cced`, 2016-10-07
+* commit: `4e08f0dd`, 2016-10-28
 
 ------
 ### Boost Optional
@@ -19,7 +19,7 @@ Differences from STD proposal:
 * Supports bind to lvalue-reference, specialized for reference and storing pointer for them.
 * Constructor `optional(bool, T const&)` and `make_optional(bool, T const&)`
 * Constructors/assignments for `optional<U>`, when `T` can construct from `U`
-* Constructors/assignments for _InPlaceFactory_, but no `in_place_t` constructors.
+* Constructors/assignments for _InPlaceFactory_, and `in_place_init_if_t` constructors.
 * Member and non-member `get()` and `get_ptr()`, to get reference/pointer to stored data.
 * Provide `value_or_eval(F)`
 * `boost::none` vs. `std::nullopt`
