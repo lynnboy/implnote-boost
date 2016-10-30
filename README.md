@@ -19,12 +19,12 @@ Boost C++ Libraries
 * [`compatibility`](compatibility.md) -- **Compatibility** | _Help for non-conforming standard libraries._
   * STD: `<cxxxx>`.
 
+* [`array`](array.md) -- **Array** | _STL compliant container wrapper for arrays of constant size._
+  * STD: `<array>` (tr1, C++11).
+
 * [`throw_exception`](throw_exception.md) -- **ThrowException** | _A common infrastructure for throwing exceptions from Boost libraries._
   * Add throwing position as exception error-info.
   * STD: `<exception>` `current_exception` support (C++11).
-
-* [`array`](array.md) -- **Array** | _STL compliant container wrapper for arrays of constant size._
-  * STD: `<array>` (tr1, C++11).
 
 * [`io`](io.md) -- **IO State Savers** | _The I/O sub-library of Boost helps segregate the large number of Boost headers._
   * IOS state savers.
@@ -45,9 +45,6 @@ Boost C++ Libraries
 * [`align`](align.md) -- **Align** | _Memory alignment functions, allocators, and adaptors._
   * `is_aligned`, `aligned_alloc`, `aligned_allocator`, `aligned_delete`
   * STD: `align`, `alignment_of` (C++11)
-
-* [`type_index`](type_index.md) -- **Type Index** | _Runtime/Compile time copyable type info._
-  * STD: `<typeindex>` (C++11)
 
 * [`foreach`](foreach.md) -- **Foreach** | _BOOST_FOREACH iterates over sequences for us, freeing us from having to deal directly with iterators or write predicates._
   * STD: Range based `for` (C++11)
@@ -71,9 +68,6 @@ Boost C++ Libraries
 * [`scope_exit`](scope_exit.md) -- **Scope Exit** | _Execute arbitrary code at scope exit._
   * STD: P0052 - Generic Scope Guard and RAII Wrapper for the Standard Library
 
-* [`optional`](optional.md) -- **Optional** | _A value-semantic, type-safe wrapper for representing 'optional' (or 'nullable') objects of a given type._
-  * STD: Library fundamentals v1
-
 * [`system`](system.md) -- **System** | _Operating system support, including the diagnostics support that will be part of the C++0x standard library._
   * STD: `<system_error>` (C++11)
 
@@ -93,15 +87,14 @@ Boost C++ Libraries
 * [`core/swap`](core-swap.md) -- **Swap** | _Enhanced generic swap function._
   * STD: `swap` for array (C++11)
 
-* [`coroutine2`](coroutine2.md) -- **Coroutine2** | _(C++14) Coroutine library._
-  * Asymmetric coroutine
-  * STD: P0057, P0073
-
 * [`convert`](convert.md) -- **Convert** | _An extendible and configurable type-conversion framework._
   * Pluggable conversion API, `lexical_cast`, `printf`, `stream`, `strtol`, `spirit` based converters.
 
 * [`dynamic_bitset`](dynamic_bitset.md) -- **Dynamic Bitset** | _The dynamic_bitset class represents a set of bits._
   * Dynamic version of `bitset`
+
+* [`type_index`](type_index.md) -- **Type Index** | _Runtime/Compile time copyable type info._
+  * STD: `<typeindex>` (C++11)
 
 * [`exception`](exception.md) -- **Exception** | _The Boost Exception library supports transporting of arbitrary data in exception objects, and transporting of exceptions between threads._
   * STD: `exception_ptr` (C++11)
@@ -125,14 +118,21 @@ Boost C++ Libraries
 * [`chrono/stopwatches`](chrono-stopwatches.md)
   * Stopwatch, output formatting, supersedes *Boost.Timer*
 
-* [`lockfree`](lockfree.md) -- **Lockfree** | _Lockfree data structures._
-  * Lock-free `queue`, `stack`, wait-free `spsc_queue`
+* [`optional`](optional.md) -- **Optional** | _A value-semantic, type-safe wrapper for representing 'optional' (or 'nullable') objects of a given type._
+  * STD: Library fundamentals v1
 
 * [`signals`](signals.md) -- **Signals** (deprecated) | _Managed signals & slots callback implementation._
   * Signal/slot, disconnect notify trackable targets, pullable combiner API
 
 * [`flyweight`](flyweight.md) -- **Flyweight** | _Design pattern to manage large quantities of highly redundant objects._
   * Automatic intern values in repository, flyweight wrapper for handles behave as immutable value.
+
+* [`lockfree`](lockfree.md) -- **Lockfree** | _Lockfree data structures._
+  * Lock-free `queue`, `stack`, wait-free `spsc_queue`
+
+* [`coroutine2`](coroutine2.md) -- **Coroutine2** | _(C++14) Coroutine library._
+  * Asymmetric coroutine
+  * STD: P0057, P0073
 
 * [`tti`](tti.md) -- **TTI** | _Type Traits Introspection library._
   * Query members of a type.
@@ -155,6 +155,12 @@ Boost C++ Libraries
 * [`property_map/parallel`](property_map-parallel.md)
   * Distributed property map, upon MPI
 
+* [`tr1`](tr1.md) -- **TR1** (deprecated) | _The TR1 library provides an implementation of the C++ Technical Report on Standard Library Extensions._
+  * STD: TR1
+
+* [`format`](format.md) -- **Format** | _The format library provides a class for formatting arguments according to a format-string.
+  * Formating to string.
+
 * [`functional`](functional.md) -- **Functional** | _The Boost.Function library contains a family of class templates that are function object wrappers._
   * STD: `<functional>`
 
@@ -170,24 +176,11 @@ Boost C++ Libraries
 * [`functional/overloaded_function`](functional-overloaded_function.md) -- **Functional/Overloaded Function** | _Overload different functions into a single function object._
   * STD: Proposal P0045, P0051
 
-* [`winapi`](winapi.md)
-  * Windows API declaration.
-
-* [`tr1`](tr1.md) -- **TR1** (deprecated) | _The TR1 library provides an implementation of the C++ Technical Report on Standard Library Extensions._
-  * STD: TR1
-
-* [`format`](format.md) -- **Format** | _The format library provides a class for formatting arguments according to a format-string.
-  * Formating to string.
-
-* [`dll`](dll.md) -- **DLL** | _Library for comfortable work with DLL and DSO._
-  * Declare symbol alias, import symbol
-  * Load shared library, query symbols
+* [`numeric/conversion`](numeric-conversion.md) -- **Numeric Conversion** | _Optimized Policy-based Numeric Conversions._
+  * Numeric conversion/cast with detailed control.
 
 * [`pool`](pool.md) -- **Pool** | _Memory pool management._
   * Fixed element size free-list (segregated) pool and allocators.
-
-* [`numeric/conversion`](numeric-conversion.md) -- **Numeric Conversion** | _Optimized Policy-based Numeric Conversions._
-  * Numeric conversion/cast with detailed control.
 
 * [`numeric/interval`](numeric-interval.md) -- **Interval** | _Extends the usual arithmetic functions to mathematical intervals._
   * Interval arithmetics
@@ -195,8 +188,21 @@ Boost C++ Libraries
 * [`sort`](sort.md) -- **Sort** | _High-performance templated sort functions._
   * Spread sort algorithms for integer, floating, and strings.
 
-* `statechart`
-* `parameter`
+* [`statechart`](statechart.md) -- **Statechart** | _Arbitrarily complex finite state machines can be implemented in easily readable and maintainable C++ code._
+  * Flexible structure, not so efficient as MSM.
+
+* [`dll`](dll.md) -- **DLL** | _Library for comfortable work with DLL and DSO._
+  * Declare symbol alias, import symbol
+  * Load shared library, query symbols
+
+* [`winapi`](winapi.md)
+  * Windows API declaration.
+
+* [`parameter`](parameter.md) -- **Parameter** | _Write functions that accept arguments by name._
+  * Named function parameter
+  * (lazy) default value
+  * named template parameter
+
 * `iterator`
 * `utility`
 * `predef`
@@ -907,19 +913,6 @@ Operators
     Categories
         Generic Programming, Iterators, Math and numerics
 
-Parameter
-
-    Boost.Parameter Library - Write functions that accept arguments by name.
-
-    Author(s)
-        David Abrahams and Daniel Wallin
-    First Release
-        1.33.0
-    Standard
-         
-    Categories
-        Language Features Emulation, Programming Interfaces
-
 Phoenix
 
     Define small unnamed function objects at the actual call site, and more.
@@ -1140,19 +1133,6 @@ Spirit
          
     Categories
         Parsing, String and text processing
-
-Statechart
-
-    Boost.Statechart - Arbitrarily complex finite state machines can be implemented in easily readable and maintainable C++ code.
-
-    Author(s)
-        Andreas Huber Dönni
-    First Release
-        1.34.0
-    Standard
-         
-    Categories
-        State Machines
 
 String Algo
 
