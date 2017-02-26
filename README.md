@@ -206,9 +206,12 @@ Boost C++ Libraries
   * (lazy) default value
   * named template parameter
 
-* `iterator`
+* [`iterator`](iterator.md) -- **Iterator** | _The Boost Iterator Library contains two parts. The first is a system of concepts which extend the C++ standard iterator requirements. The second is a framework of components for building iterators based on these extended concepts and includes several useful iterator adaptors._
+  * STD: `reverse_iterator`
+
+* [`predef`](predef.md) -- **Predef** | _This library defines a set of compiler, architecture, operating system, library, and other version numbers from the information it can gather of C, C++, Objective C, and Objective C++ predefined macros or those defined in generally available headers._
+
 * `utility`
-* `predef`
 * `signals2`
 * `bind`
 * `program_options`
@@ -643,19 +646,6 @@ Iostreams
     Categories
         Input/Output, String and text processing
 
-Iterator
-
-    The Boost Iterator Library contains two parts. The first is a system of concepts which extend the C++ standard iterator requirements. The second is a framework of components for building iterators based on these extended concepts and includes several useful iterator adaptors.
-
-    Author(s)
-        Dave Abrahams, Jeremy Siek and Thomas Witt
-    First Release
-        1.21.0
-    Standard
-         
-    Categories
-        Iterators
-
 Lambda
 
     Define small unnamed function objects at the actual call site, and more.
@@ -954,19 +944,6 @@ Polygon
          
     Categories
         Algorithms, Data structures, Math and numerics
-
-Predef
-
-    This library defines a set of compiler, architecture, operating system, library, and other version numbers from the information it can gather of C, C++, Objective C, and Objective C++ predefined macros or those defined in generally available headers.
-
-    Author(s)
-        Rene Rivera
-    First Release
-        1.55.0
-    Standard
-         
-    Categories
-        Miscellaneous
 
 Preprocessor
 
