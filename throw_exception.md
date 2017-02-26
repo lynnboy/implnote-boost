@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/throw_exception`
 * repo: `boostorg/throw_exception`
-* commit: `f94638e5`, 2016-09-28
+* commit: `56d65d5f`, 2017-02-20
 
 ------
 ### Boost Exception Base Class

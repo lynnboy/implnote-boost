@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/scope_exit`
 * repo: `boostorg/scope_exit`
-* commit: `0d95fd4b`, 2015-1-25
+* commit: `1c467753`, 2016-10-07
 
 ------
 ### Boost Scope Exit
@@ -60,4 +60,4 @@ The `_ID` version is needed when multiple macros used at the same code line.
 
 Language: lambda expression (C++11)
 Proposals:
-  N4189 - Generic Scope Guard and RAII Wrapper for the Standard Library
+  N4189, P0052 - Generic Scope Guard and RAII Wrapper for the Standard Library

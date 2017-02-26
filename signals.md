@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/signals`
 * repo: `boostorg/signals`
-* commit: `7dc7b478`, 2014-09-01
+* commit: `9b993243`, 2016-11-07
 
 ------
 ### Overview

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/function`
 * repo: `boostorg/function`
-* commit: `fed32bc0`, 2016-07-11
+* commit: `dd047072`, 2017-01-07
 
 ------
 ### Polymorphic Function Wrapper

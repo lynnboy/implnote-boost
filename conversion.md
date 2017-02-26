@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/conversion`
 * repo: `boostorg/conversion`
-* commit: `da8b2fe6`, 2015-12-30
+* commit: `c7047624`, 2017-02-23
 
 ------
 ### implicit_cast

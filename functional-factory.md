@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/functional/factory`
 * repo: `boostorg/functional`
-* commit: `1cdfd707`, 2016-10-14
+* commit: `1706cb59`, 2017-02-03
 
 ------
 ### Factory Wrappers

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/system`
 * repo: `boostorg/system`
-* commit: `388b3497`, 2016-02-23
+* commit: `dc985cb3`, 2017-01-23
 
 ------
 ### System Error Code
@@ -24,7 +24,7 @@
 
 Header `<boost/system/linux_error.hpp>`, `<boost/system/windows_error.hpp>` and `<boost/system/cygwin_error.hpp>`
 
-Provide platform-specific enum for additional error_code, and provide
+Provide platform-specific enum for additional `error_code`, and provide
 corresponding `make_error_code()` overload for that enum type.
 
 ------

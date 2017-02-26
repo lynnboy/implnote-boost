@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/ratio`
 * repo: `boostorg/ratio`
-* commit: `da935d6c`, 2015-9-12
+* commit: `3be1f312`, 2017-02-18
 
 ------
 ### Compile-Time Rational Number

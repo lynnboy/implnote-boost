@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/tti`
 * repo: `boostorg/tti`
-* commit: `6c82633c`, 2015-01-15
+* commit: `5bd21fc0`, 2016-11-11
 
 ------
 ### Type Trait Introspection

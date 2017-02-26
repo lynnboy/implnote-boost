@@ -2,14 +2,18 @@
 
 * lib: `boost/libs/core`
 * repo: `boostorg/core`
-* commit: `81562590`, 2016-09-10
+* commit: `1dff5587`, 2017-02-21
 
 ------
 ### `address_of`
 
 Header `<boost/core/addressof.hpp>`
 
-`addressof<T>(T&) -> T*`
+```c++
+constexpr inline addressof<T>(T&) -> T* noexcept
+```
+
+Use `__builtin_addressof` when available.
 
 Standard: `addressof` (C++11)
 
@@ -87,6 +91,8 @@ Header `<boost/core/lightweight_test_trait.hpp>`
 
 * `BOOST_TEST(expr)`, `BOOST_ERROR(msg)`, `BOOST_TEST_NOT(expr)`
 * `BOOST_TEST_EQ(expr1,expr2)`, `BOOST_TEST_NE(expr1,expr2)`
+* `BOOST_TEST_CSTR_EQ(expr1,expr2)`, `BOOST_TEST_CSTR_NE(expr1,expr2)`
+* `BOOST_TEST_ALL_EQ(begin1, end1, begin2, end2)`, `BOOST_TEST_ALL_WITH(begin1, end1, begin2, end2, predicate)`
 * `BOOST_TEST_THROWS(expr,excep)`
 * `BOOST_TEST_TRAIT_TRUE(type)`, `BOOST_TEST_TRAIT_FALSE(type)`
 * `BOOST_LIGHTWEIGHT_TEST_OSTREAM`, by default is `std::cerr`

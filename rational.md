@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/rational`
 * repo: `boostorg/rational`
-* commit: `c6ae67ff`, 2015-11-30
+* commit: `35511c16`, 2017-02-08
 
 ------
 ### Rational Number
@@ -72,6 +72,10 @@ Throw `bad_rational` whenever encounter error.
 * `<boost/config.hpp>`.
 * `<boost/detail/workaround.hpp>`.
 
+#### Boost.Core
+
+* `<boost/utility/enable_if.hpp>`
+
 #### Boost.Utility
 
 * `<boost/operators.hpp>` - Support non-function operators.
@@ -88,6 +92,12 @@ Throw `bad_rational` whenever encounter error.
 #### Boost.StaticAssert
 
 * `<boost/static_assert.hpp>`
+
+#### Boost.TypeTraits
+
+* `<boost/type_traits/is_convertible.hpp>`
+* `<boost/type_traits/is_class.hpp>`
+* `<boost/type_traits/is_same.hpp>`
 
 #### Boost.ThrowException
 

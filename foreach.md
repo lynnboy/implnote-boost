@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/foreach`
 * repo: `boostorg/foreach`
-* commit: `68645f9c`, 2015-1-22
+* commit: `875e1c11`, 2016-10-07
 
 ------
 ### for each solution

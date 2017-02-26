@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/any`
 * repo: `boostorg/any`
-* commit: `3b7c3499`, 2015-12-18
+* commit: `4ca14647`, 2017-02-23
 
 ------
 ### Any
@@ -80,6 +80,7 @@ class bad_any_cast : std::bad_cast;
 #### Boost.Core
 
 * `<boost/utility/enable_if.hpp>`
+* `<boost/core/addressof.hpp>`
 
 #### Boost.MPL
 

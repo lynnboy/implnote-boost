@@ -3,6 +3,7 @@ Boost C++ Libraries
 * [`assert`](assert.md) -- **Assert** | _Customizable assert macros._
   * Assertion custom handler support.
   * STD: `<cassert>`.
+  * `source_location` (LFTS v2).
 
 * [`static_assert`](static_assert.md) -- **Static Assert** | _Static assertions (compile time assertions)._
   * STD: `static_assert` (C++11).
@@ -14,7 +15,7 @@ Boost C++ Libraries
   * Aux algorithm.
 
 * [`any`](any.md) -- **Any** | _Safe, generic container for single values of different value types._
-  * STD: `<any>` (Library Fundamentals TS v1).
+  * STD: `<any>` (Library Fundamentals TS v1, C++17).
 
 * [`compatibility`](compatibility.md) -- **Compatibility** | _Help for non-conforming standard libraries._
   * STD: `<cxxxx>`.
@@ -46,7 +47,7 @@ Boost C++ Libraries
   * `is_aligned`, `aligned_alloc`, `aligned_allocator`, `aligned_delete`
   * STD: `align`, `alignment_of` (C++11)
 
-* [`foreach`](foreach.md) -- **Foreach** | _BOOST_FOREACH iterates over sequences for us, freeing us from having to deal directly with iterators or write predicates._
+* [`foreach`](foreach.md) -- **Foreach** | *`BOOST_FOREACH` iterates over sequences for us, freeing us from having to deal directly with iterators or write predicates.*
   * STD: Range based `for` (C++11)
 
 * [`tuple`](tuple.md) -- **Tuple** | _Ease definition of functions returning multiple values, and more._
@@ -60,7 +61,7 @@ Boost C++ Libraries
 * [`integer`](integer.md) -- **Integer** | _Take advantage of <stdint.h> types from the 1999 C standard._
   * Type selector, mask maker
   * Compile-time and Runtime GCD/LCM and Log2.
-  * STD: `<cstdint>` (C++11)
+  * STD: `<cstdint>` (C++11), gcd/lcm (LFTS v2, C++17)
 
 * [`assign`](assign.md) -- **Assign** | _Filling containers with constant or generated data has never been easier._
   * STD: `<initializer_list>` (C++11)
@@ -90,7 +91,7 @@ Boost C++ Libraries
 * [`convert`](convert.md) -- **Convert** | _An extendible and configurable type-conversion framework._
   * Pluggable conversion API, `lexical_cast`, `printf`, `stream`, `strtol`, `spirit` based converters.
 
-* [`dynamic_bitset`](dynamic_bitset.md) -- **Dynamic Bitset** | _The dynamic_bitset class represents a set of bits._
+* [`dynamic_bitset`](dynamic_bitset.md) -- **Dynamic Bitset** | *The `dynamic_bitset` class represents a set of bits.*
   * Dynamic version of `bitset`
 
 * [`type_index`](type_index.md) -- **Type Index** | _Runtime/Compile time copyable type info._
@@ -105,6 +106,7 @@ Boost C++ Libraries
 
 * [`endian`](endian.md) -- **Endian** | _Types and conversion functions for correct byte ordering and more regardless of processor endianness._
   * Endian conversion, Endian-aware buffer, Endian-aware arithmetic type
+  * STD: P0463
 
 * [`detail`](detail.md)
   * STD: `binary_search`, `codecvt_utf8` (C++11), `is_sorted` (C++11)
@@ -119,7 +121,7 @@ Boost C++ Libraries
   * Stopwatch, output formatting, supersedes *Boost.Timer*
 
 * [`optional`](optional.md) -- **Optional** | _A value-semantic, type-safe wrapper for representing 'optional' (or 'nullable') objects of a given type._
-  * STD: Library fundamentals v1
+  * STD: Library fundamentals v1, C++17
 
 * [`signals`](signals.md) -- **Signals** (deprecated) | _Managed signals & slots callback implementation._
   * Signal/slot, disconnect notify trackable targets, pullable combiner API
@@ -158,7 +160,7 @@ Boost C++ Libraries
 * [`tr1`](tr1.md) -- **TR1** (deprecated) | _The TR1 library provides an implementation of the C++ Technical Report on Standard Library Extensions._
   * STD: TR1
 
-* [`format`](format.md) -- **Format** | _The format library provides a class for formatting arguments according to a format-string.
+* [`format`](format.md) -- **Format** | _The format library provides a class for formatting arguments according to a format-string._
   * Formating to string.
 
 * [`functional`](functional.md) -- **Functional** | _The Boost.Function library contains a family of class templates that are function object wrappers._
@@ -194,6 +196,7 @@ Boost C++ Libraries
 * [`dll`](dll.md) -- **DLL** | _Library for comfortable work with DLL and DSO._
   * Declare symbol alias, import symbol
   * Load shared library, query symbols
+  * STD: P0275
 
 * [`winapi`](winapi.md)
   * Windows API declaration.

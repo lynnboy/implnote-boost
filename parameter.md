@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/parameter`
 * repo: `boostorg/parameter`
-* commit: `9a8ad86f`, 2016-10-07
+* commit: `a2da4c32`, 2016-12-24
 
 ------
 ### Parameter

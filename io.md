@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/io`
 * repo: `boostorg/io`
-* commit: `b3e349c5`, 2014-8-19
+* commit: `00ef24c8`, 2017-01-29
 
 ------
 ### IO State Savers

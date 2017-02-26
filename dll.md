@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/dll`
 * repo: `boostorg/dll`
-* commit: `6f4e9ca4`, 2016-10-17
+* commit: `89efdf05`, 2017-02-23
 
 ------
 ### Dynamic Library Supporting API
@@ -103,6 +103,7 @@ Header `<boost/dll/runtime_symbol_info.hpp>`
 
 ```c++
 filesystem::path symbol_location<T>(T const& symbol[, system::error_code& ec]);
+filesystem::path symbol_location_ptr<T>(T ptr_to_symbol[, system::error_code& ec]);
 inline filesystem::path this_line_location([system::error_code& ec]) { return symbol_location(this_line_location); }
 filesystem::path program_location([system::error_code& ec]);
 ```
@@ -295,14 +296,16 @@ destructor<Class> load_ctor<Class,Lib>(Lib& lib, dtor_sym const& dt) {
 * Header `<boost/dll/import_mangled.hpp>`
 
 ```c++
-struct function_tuple<Return, ...Args> { fn _f; Return operator()(Args...); };
-struct mem_fn_tuple<Class, Return, ...Args> { mem_fn _f; Return operator()(Class*, Args...); };
+struct function_tuple<Return, ...Args> { fn _f; Return operator()(Args...) const; };
+struct mem_fn_tuple<Class, Return, ...Args> { mem_fn _f; Return operator()(Class*, Args...) const; };
 class mangled_library_function<...Ts> {
-    shared_ptr<function_tuple<Ts...>> f_;
+    shared_ptr<shared_library> lib_;
+    function_tuple<Ts...> f_;
     auto operator()<...Args>(Args&&... args) const { return f_(forward<Args>(args)); }
 };
 class mangled_library_mem_fn<Class, ...Ts> {
-    shared_ptr<mem_fn_tuple<Ts...>> f_;
+    shared_ptr<shared_library> lib_;
+    mem_fn_tuple<Ts...> f_;
     auto operator()<ClassIn,...Args>(ClassIn *cl, Args&&... args) const { return f_(cl, forward<Args>(args)); }
 };
 
@@ -355,7 +358,6 @@ imported_class<T> import_class<T, ...Args>(smart_library [const&|&|&&],[size_t s
 #### Boost.Config
 
 * `<boost/config.hpp>`
-* `<boost/cstdint.hpp>`
 
 #### Boost.StaticAssert
 

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/chrono`
 * repo: `boostorg/chrono`
-* commit: `b62c46e3`, 2016-08-09
+* commit: `bff204f1`, 2017-02-18
 
 ------
 ### Stop Watches

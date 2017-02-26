@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/assert`
 * repo: `boostorg/assert`
-* commit: `938bfbb0`, 2015-9-12
+* commit: `89e5b86c`, 2016-11-01
 
 ------
 ### BOOST_ASSERT / BOOST_VERIFY

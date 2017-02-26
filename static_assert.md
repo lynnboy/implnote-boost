@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/static_assert`
 * repo: `boostorg/static_assert`
-* commit: `0d27f7bc`, 2016-06-14
+* commit: `c2f58a18`, 2016-10-07
 
 ------
 ### BOOST_STATIC_ASSERT

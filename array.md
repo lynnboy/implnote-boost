@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/array`
 * repo: `boostorg/array`
-* commit: `0d4fa276`, 2015-1-8
+* commit: `cef221d8`, 2017-01-23
 
 ------
 ### Class `array`

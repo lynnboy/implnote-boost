@@ -17,8 +17,8 @@
   * `raw_name() const noexcept -> const char*`
   * `name() const noexcept -> const char*`
   * `pretty_name() const -> std::string`
-  * `equal(const type_index&) const noexcept -> bool` - _Compared by `raw_name()`_
-  * `before(const type_index&) const noexcept -> bool` - _Compared by `raw_name()`_
+  * `equal(const type_index&) const noexcept -> bool` - *Compared by `raw_name()`*
+  * `before(const type_index&) const noexcept -> bool` - *Compared by `raw_name()`*
   * `hash_code() const noexcept -> std::size_t`
 * `typedef type_index::type_info_t type_info`
 * `type_id<T>() noexcept -> type_index`
@@ -110,7 +110,7 @@ boost::shared_ptr<T> runtime_pointer_cast<T,U>(boost::shared_ptr<U> const& u);
 #### Boost.Core
 
 * `<boost/demangle.hpp>`, when `std::type_info` based implementation is chosen.
-* `<boost/core/addressof.hpp>` - runtime_cast
+* `<boost/core/addressof.hpp>` - `runtime_cast`
 
 #### Boost.TypeTraits
 
@@ -123,11 +123,11 @@ boost::shared_ptr<T> runtime_pointer_cast<T,U>(boost::shared_ptr<U> const& u);
 
 #### Boost.SmartPtr
 
-* `<boost/smart_ptr/shared_ptr.hpp>` - runtime_pointer_cast.
+* `<boost/smart_ptr/shared_ptr.hpp>` - `runtime_pointer_cast`.
 
 #### Boost.Preprocessor
 
-* `<boost/preprocessor/seq/for_each.hpp>` - runtime_cast
+* `<boost/preprocessor/seq/for_each.hpp>` - `runtime_cast`
 
 ------
 ### Standard Facilities

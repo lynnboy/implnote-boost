@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/optional`
 * repo: `boostorg/optional`
-* commit: `4e08f0dd`, 2016-10-28
+* commit: `cb7641dc`, 2017-02-14
 
 ------
 ### Boost Optional
@@ -81,6 +81,8 @@ Thrown by `optional::value()` when it contains nothing.
 
 ------
 ### Standard Facilities
+
+Standard library: `<optional>` (C++17)
 
 Proposals:
   Library Fundamentals v1 - `<optional>`

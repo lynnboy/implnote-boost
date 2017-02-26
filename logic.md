@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/logic`
 * repo: `boostorg/logic`
-* commit: `b3adfec7`, 2014-11-2
+* commit: `45b45781`, 2016-10-07
 
 ------
 ### Tri-Bool Logic

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/uuid`
 * repo: `boostorg/uuid`
-* commit: `0029bc76`, 2016-10-07
+* commit: `59a01cd4`, 2017-01-11
 
 ------
 ### UUID library
@@ -143,6 +143,7 @@ Just creates NIL uuid values.
 #### Boost.Core
 
 * `<boost/core/noncopyable.hpp>`, `seed_rng` generator class is non-copyable.
+* `<boost/core/null_deleter.hpp>`
 
 #### Boost.Iterator
 

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/dynamic_bitset`
 * repo: `boostorg/dynamic_bitset`
-* commit: `7259281f`, 2016-07-01
+* commit: `e49b08a2`, 2017-01-09
 
 ------
 ### Dynamic bitset
@@ -27,18 +27,29 @@
 * Provides lookup: `find_first`, `find_next`
 * Provides ordering `<` etc.
 
+### Serialization of `dynamic_bitset`
+
+Header `<boost/dynamic_bitset/serialization.hpp>`
+
+Provide overload for `serialize`.
+
 ------
 ### Dependency
 
 #### Boost.Config
 
 * `<boost/config.hpp>`, `<boost/detail/workaround.hpp>`.
-* `<boost/limits.hpp>
+* `<boost/limits.hpp>`
+
+#### Boost.StaticAssert
+
+* `<boost/static_assert.hpp>`
 
 #### Boost.Core
 
 * `<boost/utility/addressof.hpp>`
 * `<boost/core/no_exceptions_support.hpp>`
+* `<boost/detail/iterator.hpp>`
 
 #### Boost.ThrowException
 
@@ -50,7 +61,11 @@
 
 #### Boost.Integer
 
-* `<boost/pending/integer_log2.hpp>`
+* `<boost/pending/lowest_bit.hpp>`
+
+#### Boost.Serialization
+
+* `<boost/serialization/vector.hpp>` - for serialization support
 
 ------
 ### Standard Facilities

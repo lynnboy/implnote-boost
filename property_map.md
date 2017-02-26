@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/property_map`
 * repo: `boostorg/property_map`
-* commit: `ba0bed2e`, 2014-09-01
+* commit: `1d232e43`, 2016-11-16
 
 ------
 ### Property Map Concepts
