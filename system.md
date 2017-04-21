@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/system`
 * repo: `boostorg/system`
-* commit: `dc985cb3`, 2017-01-23
+* commit: `a4120cdf`, 2017-04-02
 
 ------
 ### System Error Code

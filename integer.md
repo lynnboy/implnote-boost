@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/integer`
 * repo: `boostorg/integer`
-* commit: `13b153c6`, 2016-10-07
+* commit: `162e48d1`, 2017-03-31
 
 ------
 ### Integer Traits

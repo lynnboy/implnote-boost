@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/concept_check`
 * repo: `boostorg/concept_check`
-* commit: `3397b4df`, 2017-01-04
+* commit: `df4ced9a`, 2017-04-04
 
 ------
 ### Concept Check

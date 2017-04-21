@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/core`
 * repo: `boostorg/core`
-* commit: `1dff5587`, 2017-02-21
+* commit: `46545326`, 2017-03-16
 
 ------
 ### `address_of`
@@ -90,7 +90,7 @@ Header `<boost/core/lightweight_test.hpp>`
 Header `<boost/core/lightweight_test_trait.hpp>`
 
 * `BOOST_TEST(expr)`, `BOOST_ERROR(msg)`, `BOOST_TEST_NOT(expr)`
-* `BOOST_TEST_EQ(expr1,expr2)`, `BOOST_TEST_NE(expr1,expr2)`
+* `BOOST_TEST_EQ(expr1,expr2)`, `BOOST_TEST_NE(expr1,expr2)`, `BOOST_TEST_LT(expr1,expr2)`, `BOOST_TEST_LE(expr1,expr2)`
 * `BOOST_TEST_CSTR_EQ(expr1,expr2)`, `BOOST_TEST_CSTR_NE(expr1,expr2)`
 * `BOOST_TEST_ALL_EQ(begin1, end1, begin2, end2)`, `BOOST_TEST_ALL_WITH(begin1, end1, begin2, end2, predicate)`
 * `BOOST_TEST_THROWS(expr,excep)`

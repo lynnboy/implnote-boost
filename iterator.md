@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/iterator`
 * repo: `boostorg/iterator`
-* commit: `760da84f`, 2016-12-17
+* commit: `cccbd8c6`, 2017-04-08
 
 ------
 ### Iterator Concepts

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/exception`
 * repo: `boostorg/exception`
-* commit: `4ea85558`, 2017-02-21
+* commit: `7599ec73`, 2017-03-30
 
 ------
 ### Exception Storing Arbitrary Error Info
@@ -23,6 +23,7 @@ public:
   value() const -> value_type const &;    value() -> value_type &;
 private:
   virtual std::string name_value_string() const;
+  virtual error_info* clone() const;
   operator=(error_info const &) = delete; operator=(error_info &&) = delete;
 };
 to_string(error_info<Tag,T> const &) -> std::string;
@@ -121,7 +122,6 @@ class current_exception_std_exception_wrapper : public T, public boost::exceptio
 * Similar to C++ 11 API.
 * Only works exceptions thrown with `enable_current_exception`, or `BOOST_THROW_EXCEPTION`.
 * Type `exception_ptr` wraps a `shared_ptr<exception_detail::clone_base const>`.
-* On MSVC-Windows, cloning of exception is non-intrusive, using _SEH_ to copy C++ exception object.
 * If the captured exception isn't `clone_base`, auto detect it is one of known STD exceptions:
   * Recognized STD exception are injected with a `boost::exception` base class
   * Unrecognized exception are copied as `unknown_exception`

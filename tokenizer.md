@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/tokenizer`
 * repo: `boostorg/tokenizer`
-* commit: `8c9e9963`, 2017-01-12
+* commit: `b994cb1c`, 2017-04-16
 
 ------
 ### Tokenizer Library

@@ -1,8 +1,8 @@
-# Boost.WinAPI
+# Boost.Predef
 
 * lib: `boost/libs/predef`
 * repo: `boostorg/predef`
-* commit: `822d09f1`, 2017-01-03
+* commit: `0d56819d`, 2017-03-17
 
 ------
 ### Predefined Macros

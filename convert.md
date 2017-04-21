@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/convert`
 * repo: `boostorg/convert`
-* commit: `4b8c9c9c`, 2017-02-13
+* commit: `b96c1277`, 2017-04-02
 
 ------
 ### `convert` facade API

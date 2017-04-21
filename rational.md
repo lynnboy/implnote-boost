@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/rational`
 * repo: `boostorg/rational`
-* commit: `35511c16`, 2017-02-08
+* commit: `d1cd08fc`, 2017-03-27
 
 ------
 ### Rational Number
