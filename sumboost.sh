@@ -1,0 +1,178 @@
+#!/bin/sh
+
+cd ~/boost/libs
+
+#mv ~/boost.list ~/boost.list2
+#du -sb */include */src */extras/src */*/include */*/src | sort -n > ~/boost.list
+
+read -r -d '' list << EOM
+    static_assert
+    conversion
+    #disjoint_sets
+    assert
+    compatibility
+    array
+    ratio
+    throw_exception
+    logic
+    tokenizer
+    io
+    timer
+    rational
+    align
+    property_map
+    foreach
+    any
+    tuple
+    scope_exit
+    integer
+    function
+    convert
+    assign
+    type_index
+    property_map_parallel
+    coroutine2
+    exception
+    concept_check
+    functional
+    dynamic_bitset
+    detail
+    #chrono/stopwatches
+    crc
+    endian
+    lexical_cast
+    uuid
+    #signals
+    optional
+    flyweight
+    multi_array
+    lockfree
+    #tr1
+    format
+    numeric/conversion
+    pool
+    system
+    numeric/interval
+    statechart
+    iterator
+    tti
+    predef
+    dll
+    core
+    winapi
+    sort
+    parameter
+#
+    lambda2
+    typeof
+    parameter_python
+    compat
+    container_hash
+    describe
+    bind
+    variant2
+    stacktrace
+    stl_interfaces
+    nowide
+    scope
+    yap
+    redis
+    mp11
+    leaf
+    variant
+    static_string
+    poly_collection
+    callable_traits
+    program_options
+    signals2
+    local_function
+    heap
+    coroutine
+    safe_numerics
+    ptr_container
+    utility
+    cobalt
+    circular_buffer
+    hof
+    fiber
+    property_tree
+    chrono
+    #sync
+    smart_ptr
+    histogram
+    lambda
+    pfr
+    contract
+    bimap
+    type_erasure
+    config
+    move
+    metaparse
+    algorithm
+    accumulators
+    mpi
+    filesystem
+    context
+    multi_index
+    icl
+    range
+    unordered
+    iostreams
+    function_types
+    units
+    outcome
+    date_time
+    locale
+    vmd
+    regex
+    serialization
+    python
+    charconv
+    xpressive
+    process
+    graph_parallel
+    random
+    type_traits
+    msm
+    numeric/odeint
+    test
+    url
+    json
+    atomic
+    thread
+    wave
+    polygon
+    compute
+    mysql
+    gil
+    interprocess
+    intrusive
+    proto
+    beast
+    log
+    qvm
+    container
+    multiprecision
+    graph
+    numeric/ublas
+    hana
+    mpl
+    asio
+    spirit
+    math
+    preprocessor
+    geometry
+    fusion
+    phoenix
+    #headers
+EOM
+for d in $list
+do
+  if [[ $d != '#'* ]]; then
+    cd $d
+    pwd
+    wc -l include/boost/* include/boost/*/* include/boost/*/*/* include/boost/*/*/*/* include/boost/*/*/*/*/* include/boost/*/*/*/*/*/* include/boost/*/*/*/*/*/*/* include/boost/*/*/*/*/*/*/*/* include/boost/*/*/*/*/*/*/*/*/* src/* src/*/* src/*/*/* src/*/*/*/* extras/src/*
+    du -sb .
+    cd -
+  fi
+done
