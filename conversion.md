@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/conversion`
 * repo: `boostorg/conversion`
-* commit: `51d544e6`, 2017-03-26
+* commit: `9f285ef`, 2024-01-21
 
 ------
 ### implicit_cast
@@ -13,7 +13,7 @@
 
 #### Function
 
-* `boost::implicit_cast<T>(x)`;
+* `constexpr boost::implicit_cast<T>(x)`;
 
 ------
 ### polymorphic_cast, polymorphic_pointer_cast
@@ -31,7 +31,7 @@
 #### Rationale
 
 `polymorphic_cast` is a throwing version of pointer `dynamic_cast`.
-`polymorphic_downcast` is a pointer `static_cast` with assertion for `dynamic_cast`.
+`polymorphic_downcast` is a pointer/reference `static_cast` with assertion for `dynamic_cast`.
 `polymorphic_pointer_cast` and `polymorphic_pointer_downcast` is smartptr version of
 above casts, using `static_pointer_cast` and `dynamic_pointer_cast` instead.
 
@@ -56,7 +56,13 @@ above casts, using `static_pointer_cast` and `dynamic_pointer_cast` instead.
 
 #### Boost.TypeTraits
 
+* `<boost/type_traits/is_reference.hpp>`, `<boost/type_traits/remove_reference.hpp>`.
 * `<boost/utility/declval.hpp>`.
+
+#### Boost.Core
+
+* `<boost/core/addressof.hpp>`
+* `<boost/core/enable_if.hpp>`
 
 #### Boost.TypeOf
 

@@ -2,12 +2,12 @@
 
 * lib: `boost/libs/detail`
 * repo: `boostorg/detail`
-* commit: `6c111975`, 2016-11-06
+* commit: `5c39521`, 2024-05-21
 
 ------
 ### Blank Value Type
 
-Header `<boost/blank.hpp>`
+Header `<boost/blank.hpp>`, `<boost/blank_fwd.hpp>`
 
 * Empty `struct blank`, declared as `is_pod`, `is_empty`, `is_stateless`.
 * `==`, `<=`, `>=` always true, `!=`, `<`, `>` always false.
@@ -17,16 +17,9 @@ Header `<boost/blank.hpp>`
 
 #### Dependency
 
-##### Boost.Config
-
-* `<boost/config.hpp>`
-
-##### Boost.MPL
-
-* `<boost/mpl/bool.hpp>`
-
 ##### Boost.TypeTraits
 
+* `<boost/type_traits/integral_constant.hpp>`
 * `<boost/type_traits/is_empty.hpp>`, `<boost/type_traits/is_pod.hpp>`, `<boost/type_traits/is_stateless.hpp>`
 
 ------
@@ -43,17 +36,13 @@ Header `<boost/cstdlib.hpp>`
 
 Header `<boost/detail/allocator_utilities.hpp>`
 
-* Used by **Boost.Flyweight**, **Boost.MultiIndex**, **Boost.StateChart**.
+* Used by **Boost.Flyweight**, **Boost.StateChart**.
 
 #### Dependency
 
 ##### Boost.Config
 
 * `<boost/config.hpp>`, `<boost/detail/workaround.hpp>`
-
-##### Boost.MPL
-
-* `<boost/mpl/eval_if.hpp>`
 
 ##### Boost.TypeTraits
 
@@ -67,13 +56,7 @@ Header `<boost/detail/binary_search.hpp>`
 * Implement `lower_bound`, `upper_bound`, `equal_range`, and `binary_search`.
 * The same as STL version.
 
-* Used by **Boost.Python** and **Boost.Test**
-
-#### Dependency
-
-##### Boost.Core
-
-* `<boost/detail/iterator.hpp>` - deprecated, just introduces STL version.
+* Used by **Boost.Python**
 
 ------
 ### Bitmask Macro
@@ -87,8 +70,9 @@ Header `<boost/detail/bitmask.hpp>`
 
 #### Dependency
 
-##### Boost.Core
+##### Boost.Config
 
+* `<boost/config.hpp>`
 * `<boost/cstdint.hpp>` - for `int_least32_t`.
 
 ------
@@ -105,8 +89,7 @@ Header `<boost/detail/catch_exceptions.hpp>`
 Header `<boost/detail/container_fwd.hpp>`
 
 * Try to forward declare known standard container types, or include the STL headers
-
-* Used by **Boost.Functional/Hash**, **Boost.Lambda**, and **Boost.Phoenix**
+* No usage.
 
 #### Dependency
 
@@ -121,7 +104,7 @@ Header `<boost/detail/fenv.hpp>`
 
 * Same as `<cfenv>` of standard library (C++11).
 
-* Used by **Boost.Math**
+* Used by **Boost.Interval** and **Boost.Test**
 
 #### Dependency
 
@@ -136,13 +119,18 @@ Header `<boost/detail/has_default_constructor.hpp>`
 
 * No usage.
 
+#### Dependency
+
+##### Boost.TypeTraits
+
+* `<boost/type_traits/has_trivial_constructor.hpp>`
+
 ------
 ### Identifier
 
 Header `<boost/detail/identifier.hpp>`
 
 * A class template `identifier` used tobe base class to distinguish from each other.
-
 * No usage.
 
 #### Dependency
@@ -177,10 +165,6 @@ Header `<boost/detail/indirect_traits.hpp>`
 
 * `<boost/type_traits/*.hpp>`
 
-##### Boost.MPL
-
-* `<boost/mpl/*.hpp>`
-
 ------
 ### Trait `is_incrementable`
 
@@ -194,17 +178,12 @@ Header `<boost/detail/is_incrementable.hpp>`
 
 ##### Boost.Config
 
-* `<boost/config.hpp>`, `<boost/detail/workaround.hpp>`
+* `<boost/detail/workaround.hpp>`
 
 ##### Boost.TypeTraits
 
 * `<boost/type_traits/integral_constant.hpp>`
 * `<boost/type_traits/remove_cv.hpp>`
-
-##### Boost.MPL
-
-* `<boost/mpl/bool.hpp>`
-* `<boost/mpl/aux_/lambda_support.hpp>`
 
 ------
 ### Algorithm `is_sorted`
@@ -216,12 +195,6 @@ Header `<boost/detail/is_sorted.hpp>`
 
 * Used by **Boost.Graph.Parallel** and **Boost.Range**
 
-#### Dependency
-
-##### Boost.Core
-
-* `<boost/detail/iterator.hpp>` - deprecated, just introduce standard version.
-
 ------
 ### Template Specialization Detection Trait Making Macro
 
@@ -231,7 +204,7 @@ Header `<boost/detail/is_xxx.hpp>`
 * Generate trait `is_<name>`, detect a type is a specialization of
   template `<qualified_name>` with `nargs` type parameters.
 
-* Used by **Boost.Parameter** and **Boost.Python**
+* Used by **Boost.Python**
 
 #### Dependency
 
@@ -239,9 +212,9 @@ Header `<boost/detail/is_xxx.hpp>`
 
 * `<boost/config.hpp>`
 
-##### Boost.MPL
+##### Boost.TypeTraits
 
-* `<boost/mpl/bool.hpp>`
+* `<boost/type_traits/integral_constant.hpp>`
 
 ##### Boost.Preprocessor
 
@@ -307,7 +280,8 @@ Header `<boost/detail/numeric_traits.hpp>`
 
 ##### Boost.TypeTraits
 
-* `<boost/type_traits.hpp>`
+* `<boost/type_traits/is_signed.hpp>`
+* `<boost/type_traits/conditional.hpp>`
 
 ------
 ### Reference Data Storage
@@ -317,7 +291,7 @@ Header `<boost/detail/reference_content.hpp>`
 * Class `reference_content`, wraps a reference, disallow assignment.
 * Generator trait `make_reference_content`, just get argument type for non-reference.
 
-* Used by **Boost.Optional** and **Boost.Variant**
+* Used by **Boost.Variant**
 
 #### Dependency
 
@@ -325,13 +299,9 @@ Header `<boost/detail/reference_content.hpp>`
 
 * `<boost/config.hpp>`
 
-##### Boost.MPL
-
-* `<boost/mpl/bool.hpp>`
-* `<boost/mpl/void.hpp>`
-
 ##### Boost.TypeTraits
 
+* `<boost/type_traits/integral_constant.hpp>`
 * `<boost/type_traits/has_nothrow_copy.hpp>`
 
 ------
@@ -341,7 +311,7 @@ Header `<boost/detail/select_type.hpp>`
 
 * Meta function `if_true<bool>::template then<T,F>::type`
 
-* Used by **Boost.Unordered**, and **Boost.Detail/numeric_traits**
+* Used by **Boost.Detail/numeric_traits**
 
 ------
 ### Adaptor Macros For Old And Templated IOStream Classes
@@ -350,7 +320,13 @@ Header `<boost/detail/templated_streams.hpp>`
 
 * A set of macros to bridge old and standard `iostream` classes.
 
-* Used by **Boost.Flyweight**, and **Boost.Variant**, and **Boost.Detail/blank**
+* Used by **Boost.Flyweight**
+
+#### Dependency
+
+##### Boost.Config
+
+* `<boost/config.hpp>`
 
 ------
 ### UTF-8 Conversion Facet

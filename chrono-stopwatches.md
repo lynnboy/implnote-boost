@@ -3,6 +3,7 @@
 * lib: `boost/libs/chrono`
 * repo: `boostorg/chrono`
 * commit: `bff204f1`, 2017-02-18
+* removed officially.
 
 ------
 ### Stop Watches

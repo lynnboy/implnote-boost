@@ -2,12 +2,18 @@
 
 * lib: `boost/libs/core`
 * repo: `boostorg/core`
-* commit: `46545326`, 2017-03-16
+* commit: `3f36d50`, 2024-05-29
 
 ------
 ### Swap
 
-Header `<boost/core/swap.hpp>`
+Header `<boost/core/invoke_swap.hpp>`
+
+Header `<boost/core/swap.hpp>` is deprecated.
+
+```c++
+template<class T> void invoke_swap(T& left, T& right) noexcept(...);
+```
 
 Add support for array types, call `std::swap` for each element.
 

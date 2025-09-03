@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/any`
 * repo: `boostorg/any`
-* commit: `4ca14647`, 2017-02-23
+* commit: `9b1941c7`, 2025-06-18
 
 ------
 ### Any
@@ -36,6 +36,23 @@ class any;
 * `clear() noexcept`
 * `type() const noexcept -> const boost::typeindex::type_info &`
 
+#### Class `unique_any`
+
+```c++
+class boost::anys::unique_any;
+```
+
+'any' that internally use `unique_ptr` to hold any type, enable non-copyable & non-movable types.
+
+#### Class Template `basic_any`
+
+```c++
+template<std::size_t OptSize = sizeof(void*), std::size_t OptAlign = alignof(void*)>
+class boost::anys::basic_any;
+```
+
+'any' with small object optimization.
+
 #### Class `bad_any_cast`
 
 ```c++
@@ -46,6 +63,8 @@ class bad_any_cast : std::bad_cast;
 
 `swap(any&, any&) noexcept`
 
+And for `basic_any` and `unique_any`.
+
 #### `any_cast`s
 
 * `any_cast<ValueType>(any*) noexcept -> ValueType*`
@@ -53,6 +72,8 @@ class bad_any_cast : std::bad_cast;
 * `any_cast<ValueType>(any&) -> ValueType`
 * `any_cast<ValueType>(const any&) -> ValueType`
 * `any_cast<ValueType>(any&&) -> ValueType`
+
+And for `basic_any` and `unique_any`.
 
 ------
 ### Dependency
@@ -82,13 +103,9 @@ class bad_any_cast : std::bad_cast;
 * `<boost/utility/enable_if.hpp>`
 * `<boost/core/addressof.hpp>`
 
-#### Boost.MPL
-
-* `<boost/mpl/if.hpp>`, would be `<boost/type_traits/conditional.hpp>` better.
-
 ------
 ### Standard Facilities
 
-* Proposals:
-  * N3804 - Any library proposal.
-  * N4335 - C++ Extensions for Library Fundamentals v1.
+* Standard Library
+  * class `std::any` (C++17).
+  * class `std::experimental::any` Library Fundamentals TS (v1).

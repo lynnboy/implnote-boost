@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/dynamic_bitset`
 * repo: `boostorg/dynamic_bitset`
-* commit: `684b6117`, 2017-04-16
+* commit: `8e20aa1`, 2022-06-24
 
 ------
 ### Dynamic bitset
@@ -21,11 +21,12 @@
 * Constructors have additional allocator parameter
 * Provides Block-range oriented constructor and `assign`, `append`, and `to_block_range`, `from_block_range` functions.
 * Additionally provides move-constructor and move-assignment, and `swap`
-* Provides `vector`-like members `resize`, `clear`, `push_back`, `pop_back`, `empty`, `size`
+* Provides `vector`-like members `resize`, `clear`, `push_back`, `pop_back`, `empty`, `size`, `at`
 * Provides capacity members `num_blocks`, `max_size`, `capacity`, `reserve`, `shrink_to_fit`
 * Provides set operations `-=`, `-`, `is_subset_of`, `is_proper_subset_of`, `intersects`
 * Provides lookup: `find_first`, `find_next`
 * Provides ordering `<` etc.
+* Additional member overloads `set(n, len, val=true)`, `reset(n, len)`, `flip(n, len)`
 
 ### Serialization of `dynamic_bitset`
 
@@ -47,9 +48,10 @@ Provide overload for `serialize`.
 
 #### Boost.Core
 
-* `<boost/utility/addressof.hpp>`
+* `<boost/core/addressof.hpp>`
+* `<boost/core/allocator_access.hpp>`
 * `<boost/core/no_exceptions_support.hpp>`
-* `<boost/detail/iterator.hpp>`
+* `<boost/core/nvp.hpp>`
 
 #### Boost.ThrowException
 
@@ -61,11 +63,11 @@ Provide overload for `serialize`.
 
 #### Boost.Integer
 
-* `<boost/pending/lowest_bit.hpp>`
+* `<boost/integer/integer_log2.hpp>`
 
-#### Boost.Serialization
+#### Boost.Functional
 
-* `<boost/serialization/vector.hpp>` - for serialization support
+* `<boost/functional/hash/hash.hpp>`
 
 ------
 ### Standard Facilities

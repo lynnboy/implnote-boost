@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/align`
 * repo: `boostorg/align`
-* commit: `69040428`, 2017-04-03
+* commit: `bd7f7f5`, 2025-06-27
 
 ------
 ### Alignment Library
@@ -24,7 +24,8 @@ Header `<boost/align/align_up.hpp>`
 
 ```c++
 void* align_up(void* ptr, std::size_t alignment);
-constexpr std::size_t align_up(std::size_t value, std::size_t alignment) noexcept;
+template<class /*notpointer*/ T>
+  constexpr T align_up(T value, std::size_t alignment) noexcept;
 ```
 
 ------
@@ -34,7 +35,8 @@ Header `<boost/align/align_down.hpp>`
 
 ```c++
 void* align_down(void* ptr, std::size_t alignment);
-constexpr std::size_t align_down(std::size_t value, std::size_t alignment) noexcept;
+template<class /*notpointer*/ T>
+  constexpr T align_down(T value, std::size_t alignment) noexcept;
 ```
 
 ------
@@ -55,9 +57,10 @@ C++11 Standard library provides one.
 Header `<boost/align/is_aligned.hpp>`
 
 ```c++
-bool is_aligned(const void* ptr, std::size_t alignment) noexcept;
-constexpr bool is_aligned(std::size_t value, std::size_t alignment) noexcept;
-bool is_aligned(std::size_t alignment, const void* ptr) noexcept;
+bool is_aligned(const volatile void* ptr, std::size_t alignment) noexcept;
+template<class /*notpointer*/ T>
+  constexpr bool is_aligned(T value, std::size_t alignment) noexcept;
+bool is_aligned(std::size_t alignment, const volatile void* ptr) noexcept;
 ```
 
 Effect: `(ptr & (alignment-1) == 0)`.
@@ -123,9 +126,10 @@ Override `allocate` and friends members of base allocator.
 ------
 #### Customization
 
-User can define `BOOST_ALIGN_USE_ALLOCATE` and define
-`boost::alignment::allocate` and `boost::alignment::deallocate` for customized
-allocation, instead of default `malloc` and `free` functions.
+Instead of default `malloc` and `free` functions for `aligned_alloc` and `aligned_free`:
+* User can define `BOOST_ALIGN_USE_ALIGN` and define
+`boost::alignment::allocate` and `boost::alignment::deallocate` for customized allocation
+* Or define `BOOST_ALIGN_USE_NEW` to use global `new`/`delete`.
 
 ------
 ### Dependency
@@ -145,11 +149,7 @@ allocation, instead of default `malloc` and `free` functions.
 
 #### Boost.Core
 
-* `<boost/core/addressof.hpp>` if no C++11 `addressof`
-
-#### Boost.ThrowException
-
-* `<boost/throw_exception.hpp>`
+* `<boost/core/pointer_traits.hpp>`
 
 ------
 ### Standard Facilities

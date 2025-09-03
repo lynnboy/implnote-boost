@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/assign`
 * repo: `boostorg/assign`
-* commit: `dcc4d364`, 2015-8-15
+* commit: `ababd47`, 2022-11-10
 
 ------
 ### `list_inserter` and functions
@@ -31,6 +31,8 @@ Store a `Function` as inserter functor.
 * `operator,<T>(const T&)`, `operator,<T>(repeater<T>)`, `operator,<Fun>(const fun_repeater<Fun>&)`
 * `repeat<T>(std::size_t sz, T)`, `repeat_fun<Fun>(std::size_t sz, Fun)`
 * `range<SinglePassIterator>(first, last)`, `range<SinglePassRange>(const SinglePassRange&)`
+* `insert<T>()`, `insert<Ts...>(single_arg, Ts&&...)`, `insert<T...>(n_arg, Ts&&...)`
+* `insert<T>(repeater_arg, repeater<T>)`, `insert<F>(repeater_arg, fun_repeater<F>)`
 
 If `Argument` is not provided, the arguments for `operator()` are passed to `Function`,
 otherwise the arguments are used to construct an `Argument`, which is then passed to `Function`.
@@ -129,10 +131,6 @@ Header `<boost/assign/ptr_list_of.hpp>`
 
 * `<boost/static_assert.hpp>`
 
-#### Boost.MPL
-
-* `<boost/mpl/if.hpp>`
-
 #### Boost.TypeTraits
 
 * `<boost/type_traits/is_same.hpp>`
@@ -154,6 +152,19 @@ Header `<boost/assign/ptr_list_of.hpp>`
 #### Boost.Preprocessor
 
 * `<boost/preprocessor/*.hpp>` - used for variadic template emulation.
+
+#### Boost.ThrowException
+
+* `<boost/throw_exception.hpp>`
+
+#### Boost.Move
+
+* `<boost/move/utility.hpp>` - for `boost::forward<T>(a)`.
+
+#### Boost.Utility
+
+* `<boost/utility/enable_if.hpp>`
+* `<boost/utility/declval.hpp>`
 
 ------
 ### Standard Facilities

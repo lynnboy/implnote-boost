@@ -2,7 +2,8 @@
 
 * lib: `boost/libs/disjoint_sets`
 * repo: `boostorg/disjoint_sets`
-* commit: `b322618c`, 2017-01-12
+* commit: `e48222e`, 2022-04-28
+* Removed, moved into **Boost.Graph**
 
 ------
 ### disjoint_sets

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/crc`
 * repo: `boostorg/crc`
-* commit: `0f271ab3`, 2016-10-07
+* commit: `13f9200`, 2024-04-21
 
 ------
 ### CRC Checksum Calculator
@@ -99,23 +99,6 @@ uint_t<Bits>::fast augmented_crc(void const *, std::size_t, uint_t<Bits>::fast i
 
 ------
 ### Dependency
-
-#### Boost.Config
-
-* `<boost/config.hpp>`
-* `<boost/cstdint.hpp>`
-
-#### Boost.Array
-
-* `<boost/array.hpp>`
-
-#### Boost.Integer
-
-* `<boost/integer.hpp>`
-
-#### Boost.MPL
-
-* `<boost/mpl/bool.hpp>`, `<boost/mpl/if.hpp>`, `<boost/mpl/integral_c.hpp>`
 
 ------
 ### Standard Facilities

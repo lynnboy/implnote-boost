@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/concept_check`
 * repo: `boostorg/concept_check`
-* commit: `df4ced9a`, 2017-04-04
+* commit: `37c9bdd`, 2022-11-10
 
 ------
 ### Concept Check
@@ -74,22 +74,21 @@ Naming convention is `concept_name_archetype`.
 
 #### Boost.Config
 
-* `<boost/config.hpp>`, `<boost/detail/workaround.hpp>`
+* `<boost/config.hpp>`, `<boost/config/workaround.hpp>`
 
 #### Boost.Core
 
 * `<boost/utility/enable_if.hpp>`
 
+#### Boost.StaticAssert
+
+* `<boost/static_assert.hpp>`
+
 #### Boost.TypeTraits
 
 * `<boost/type_traits/is_same.hpp>`, `<boost/type_traits/is_void.hpp>`
 * `<boost/type_traits/conversion_traits.hpp>`
-
-#### Boost.MPL
-
-* `<boost/mpl/assert.hpp>`
-* `<boost/mpl/identity.hpp>`
-* `<boost/mpl/bool.hpp>`
+* `<boost/type_traits/integral_constant.hpp>`
 
 #### Boost.Preprocessor
 

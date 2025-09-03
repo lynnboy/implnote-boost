@@ -58,21 +58,6 @@ operator<<(boost::exception const & x, tuple<error_info<Tag,T>...> const & v);
 * `get_error_info` returns `nullptr` if not found.
 
 ------
-#### N3757-style Error Info API
-
-Header `<boost/exception/N3757.hpp>`
-
-```c++
-class exception {
-public:
-  template <class Tag> set(Tag::type const & v);
-  template <class Tag> get() const Tag::type const *;
-};
-```
-
-Implemented using `error_info<Tag, Tag::type>`.
-
-------
 ### Predefined Error Info Types
 
 Header `<boost/exception/errinfo_*.hpp>`

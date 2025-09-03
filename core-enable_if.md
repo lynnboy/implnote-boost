@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/core`
 * repo: `boostorg/core`
-* commit: `46545326`, 2017-03-16
+* commit: `3f36d50`, 2024-05-29
 
 ------
 ### `enable_if` family
@@ -12,6 +12,7 @@ Header `<boost/core/enable_if.hpp>`
 * `enable_if_c<bool, T=void>`
 * `enable_if<Cond, T=void>` - test `Cond::value`
 * `lazy_enable_if<Cond, T>` - when `Cond::value`, use (instantiate) `T::type`
+* `disable_if` counterparts. 
 
 ------
 ### Dependency

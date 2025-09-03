@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/array`
 * repo: `boostorg/array`
-* commit: `cef221d8`, 2017-01-23
+* commit: `23f6b27`, 2024-04-12
 
 ------
 ### Class `array`
@@ -62,8 +62,7 @@ class array<T, 0>; // fail on all element access operations
 
 #### Boost.Core
 
-* `<boost/swap.hpp>`.
-* `<boost/detail/iterator.hpp>`. (May be redundant.)
+* `<boost/core/invoke_swap.hpp>`.
 
 ------
 ### Standard Facilities

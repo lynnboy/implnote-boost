@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/compatibility`
 * repo: `boostorg/compatibility`
-* commit: `96e31d37`, 2015-01-25
+* commit: `d0caac5`, 2023-09-25
 
 ------
 ### Rationale

@@ -2,10 +2,10 @@
 
 * lib: `boost/libs/assert`
 * repo: `boostorg/assert`
-* commit: `89e5b86c`, 2016-11-01
+* commit: `425b5ba`, 2024-5-27
 
 ------
-### BOOST_ASSERT / BOOST_VERIFY
+### `BOOST_ASSERT` / `BOOST_VERIFY`
 
 #### Header
 
@@ -32,7 +32,7 @@
 * `boost::assertion_failed_msg`
 
 ------
-### BOOST_CURRENT_FUNCTION
+### `BOOST_CURRENT_FUNCTION`
 
 #### Header
 
@@ -42,17 +42,55 @@
 
 * `BOOST_CURRENT_FUNCTION`
 
+#### Switch Macro
+
+* `BOOST_DISABLE_CURRENT_FUNCTION` -- Use `(unknown)`.
+
+------
+### Class `source_location`
+
+#### Header
+
+* `<boost/assert/source_location.hpp>`
+
+#### Class `source_location`
+
+```c++
+struct source_location {
+  constexpr source_location() : source_location("", 0, "", 0) {}
+  constexpr source_location(char const* file, uint_least32_t line,
+            char const* function, uint_least32_t column = 0) noexcept;
+  constexpr source_location(std::source_location const&) noexcept;
+  constexpr char const* file_name() noexcept;
+  constexpr char const* function_name() noexcept;
+  constexpr uint_least32_t line() noexcept;
+  constexpr uint_least32_t column() noexcept;
+  std::string to_string() const;
+  friend bool operator==(source_location const& s1, source_location const& s2) noexcept;
+  friend bool operator!=(source_location const& s1, source_location const& s2) noexcept;
+};
+template<class E, class T>
+  std::basic_ostream<E, T>& operator<<(std::basic_ostream<E, T>& os, source_location const& loc);
+```
+
+* Macro `BOOST_CURRENT_LOCATION` used as initializer.
+  It is a `source_location` rvalue initialized with `std::source_location::current()` if available, otherwise with `__FILE__` etc.
+* Disabled by `BOOST_DISABLE_CURRENT_LOCATION`.
+* Supports `<<` on ostreams, `to_string()`.
+* Supports `==` and `!=`.
+
 ------
 ### Dependency
 
 #### Boost.Config
 
-* `<boost/config.hpp>`, when _custom handlers_ are enabled.
+* `<boost/config.hpp>`
+* `<boost/cstdint.hpp>`
 
 ------
 ### Standard Facilities
 
 * Preprocessor: `__func__`, `__FILE__`, `__LINE__`.
-* Standard Library: `<cassert>`
+* Standard Library: `<cassert>`, `source_location` (C++20)
 * Proposals:
   * N4129 - Source Code Information Capture.

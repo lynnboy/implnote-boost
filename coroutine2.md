@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/coroutine2`
 * repo: `boostorg/coroutine2`
-* commit: `353d716c`, 2017-04-08
+* commit: `b8f1065`, 2024-01-04
 
 ------
 ### Boost Asymmetric Coroutine (C++14)
@@ -42,7 +42,7 @@ Wrappers around a `control_block<T>` pointer.
 * Pull side will switch to its push counterpart to try to fetch the first data element.
 * Data item is stored in pull-side control block, which is transferred(returned) via
   context-switch from the push-side.
-* `BOOST_EXECUTION_CONTEXT` switch between `execution_context`-based and `continuation`-based implementations.
+* Implementated based on Boost.Context `fiber`.
 
 #### Specialization
 
@@ -77,20 +77,13 @@ using segmented_stack = ...;
 
 #### Boost.Context
 
-* `<boost/context/execution_context.hpp>`
 * `<boost/context/stack_context.hpp>`
 * `<boost/context/fixedsize_stack.hpp>`
 * `<boost/context/pooled_fixedsize_stack.hpp>`
 * `<boost/context/protected_fixedsize_stack.hpp>`
 * `<boost/context/segmented_stack.hpp>`
 * `<boost/context/detail/invoke.hpp>`
-* `<boost/context/execution_context.hpp>`
-* `<boost/context/continuation.hpp>`
-
-#### Boost.Fiber
-
-* `<boost/fiber/detail/config.hpp>`
-* `<boost/fiber/detail/data.hpp>`
+* `<boost/context/fiber.hpp>`
 
 ------
 ### Standard Facilities

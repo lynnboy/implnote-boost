@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/dll`
 * repo: `boostorg/dll`
-* commit: `1769f1a3`, 2017-04-05
+* commit: `6c60dde`, 2024-01-07
 
 ------
 ### Dynamic Library Supporting API
@@ -43,6 +43,7 @@ public:
   filesystem::path location(system::error_code& ec) const;
 
   static filesystem::path suffix();           // fixed on each platform, '.dll', '.so', or '.dylib'
+  static filesystem::path decorate(const filesystem::path& sl);
 
   bool has(const char* symbol_name) const noexcept; bool has(string const& symbol_name) const noexcept;
   T& get<T>(const char* symbol_name) const;         T& get(string const& symbol_name) const;
@@ -58,6 +59,7 @@ public:
 * `get_alias` just calls `*get<T*>(alias_name)`, alias symbols are pointers to actual instance.
 * `get` and `get_alias` supports member pointer and reference types for `T`.
 * `shared_library` will unload when destroyed.
+* `decorate` change `path/to/foo` to `path/to/libfoo.so`, `path/to/libfoo.dylib` or `path/to/foo.dll` (or `path/to/libfoo.dll` if not exists).
 
 ------
 ### Alias Symbol Declaration
@@ -355,32 +357,35 @@ imported_class<T> import_class<T, ...Args>(smart_library [const&|&|&&],[size_t s
 ------
 ### Dependency
 
+#### Boost.Assert
+
+* `<boost/assert.hpp>`
+
 #### Boost.Config
 
 * `<boost/config.hpp>`
-
-#### Boost.StaticAssert
-
-* `<boost/static_assert.hpp>`
+* `<boost/cstdint.hpp>`
 
 #### Boost.WinAPI
 
-* `<boost/detail/winapi/*.hpp>` - on windows (but `library_info` API doesn't require this)
+* `<boost/winapi/dll.hpp>`
+* `<boost/winapi/basic_types.hpp>`
+* `<boost/winapi/get_last_error.hpp>`
 
 #### Boost.Core
 
-* `<boost/utility/addressof.hpp>` - by `import`
-* `<boost/swap.hpp>`
-* `<boost/utility/enable_if.hpp>`
-* `<boost/utility/explicit_operator_bool.hpp>`
+* `<boost/core/addressof.hpp>` - by `import`
+* `<boost/core/invoke_swap.hpp>`
+* `<boost/core/enable_if.hpp>`
+* `<boost/core/explicit_operator_bool.hpp>`
 * `<boost/noncopyable.hpp>` - by `library_info`
 * `<boost/core/demangle.hpp>` - by `smart_library` on non-MSVC
 
 #### Boost.FileSystem
 
+When `BOOST_DLL_USE_STD_FS` is not defined:
 * `<boost/filesystem/path.hpp>`
 * `<boost/filesystem/operations.hpp>`
-* `<boost/filesystem/fstream.hpp>` - by `library_info`
 
 #### Boost.Move
 
@@ -397,16 +402,13 @@ imported_class<T> import_class<T, ...Args>(smart_library [const&|&|&&],[size_t s
 
 #### Boost.System
 
-* `<boost/system/error_code.hpp>`, `<boost/system/system_error.hpp>`
+When `BOOST_DLL_USE_STD_FS` is not defined:
+* `<boost/system/error_code.hpp>`
+* `<boost/system/system_error.hpp>`
 
 #### Boost.TypeTraits
 
 * `<boost/type_traits/*.hpp>` - pointer, reference, void, ...
-* `<boost/aligned_sotrage.hpp>` - by `library_info`
-
-#### Boost.MPL
-
-* `<boost/mpl/max_element.hpp>`, `<boost/mpl/vector_c.hpp>` - by `library_info`
 
 #### Boost.ThrowException
 
@@ -422,7 +424,7 @@ imported_class<T> import_class<T, ...Args>(smart_library [const&|&|&&],[size_t s
 
 #### Boost.TypeIndex
 
-* `<boost/type_index/stl_type_index.hpp>` - by `smart_library`
+* `<boost/type_index/ctti_type_index.hpp>`
 
 #### Boost.Spirit
 

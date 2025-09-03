@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/convert`
 * repo: `boostorg/convert`
-* commit: `b96c1277`, 2017-04-02
+* commit: `5bb638d`, 2024-03-18
 
 ------
 ### `convert` facade API
@@ -59,8 +59,9 @@ Base class `cnv::cnvbase<DerivedConverter>`, provide basic support for string-or
 
 #### Declared Keyword-recognized Parameters And Formatting Support
 
-* `adjust`, `base`, `fill`, `locale`, `notation`, `precision`, `skipws`, `uppercase`, `width`
-* Provides `operator()(Keyword value) -> DerivedConverter&` API (`locale` and `notation` are unsupported)
+* `adjust`, `base`, `fill`, `locale`, `notation`, `precision`, `skipws`, `uppercase`, `lowercase`, `width`
+* Supports both single argument and argument pack.
+* Provides `operator()(Keyword value) -> DerivedConverter&` API (`locale` is unsupported)
   * Option values are stored as `cnvbase` data members.
 * `skipws` is handled before call `str_to` of derived class.
 * A temporary buffer is used to accept output of `to_str`, then perform format adjustment
@@ -93,8 +94,8 @@ Does not handle the `base` and `precision` options
 Header `<boost/convert/stream.hpp>` and `<boost/make_default.hpp>`
 
 * Wrap a `basic_stringstream<CharT>` to perform conversion for strings, not copyable, but movable.
-* Not derived from `cnvbase`, but supports all keyword parameters, which are set on underlying
-  `stringstream` instance.
+* Not derived from `cnvbase`, but supports all named parameters, which are set on underlying
+  `stringstream` instance. Supports both single & pack arguments.
 * Also accept standard manipulators and `std::locale` by `operator()`.
 * The converted-to type use `make_default` to create temporary object.
 * Typedefs for `char` and `wchar_t` are provided as `cnv::cstream` and `cnv::wstream`.
@@ -109,12 +110,20 @@ Header `<boost/convert/printf.hpp>`
 
 #### `cnv::strtol`
 
-Header `<boost/convert/printf.hpp>`
+Header `<boost/convert/strtol.hpp>`
 
 * Use `snprintf` and `sscanf` to implement `to_str` and `str_to`
 * Supports arbitrary `base` for integer I/O, recognize `0x` and `0` format.
 * Supports `precison` for `float` and `double` output.
 * `float` and `double` input is implemented by `strtold`, and only support `char` strings.
+
+#### `cnv::charconv`
+
+Header `<boost/convert/charconv.hpp>`
+
+* Use `<charconv>`'s `std::to_chars` and `std::from_chars` to implement `to_str` and `str_to`
+* Supports `base` for integers.
+* Supports `precision` and `notation` for floatings.
 
 ------
 ### Helper Traits
@@ -152,6 +161,7 @@ template <typename T, typename R, typename ...A> concept trait_name<T, R(A...)> 
 #### Boost.Config
 
 * `<boost/config.hpp>`, `<boost/detail/workaround.hpp>`
+* `<boost/version.hpp>`
 
 #### Boost.Optional
 
@@ -159,14 +169,13 @@ template <typename T, typename R, typename ...A> concept trait_name<T, R(A...)> 
 
 #### Boost.MPL
 
-* `<boost/mpl/bool.hpp>`
+* `<boost/mpl/bool.hpp>`, `<boost/mpl/has_key.hpp>`
 * `<boost/mpl/vector.hpp>`, `<boost/mpl/find.hpp>` - used by `cnv::printf`.
 
 #### Boost.TypeTraits
 
-* `<boost/type_traits/remove_const.hpp>`
-* `<boost/type_traits/make_unsigned.hpp>`, `<boost/type_traits/is_same.hpp>`
-* `<boost/type_traits.hpp>`
+* `<boost/type_traits/function_traits.hpp>`
+* `<boost/type_traits/detail/yes_no_type.hpp>`
 
 #### Boost.Range
 
@@ -174,9 +183,7 @@ template <typename T, typename R, typename ...A> concept trait_name<T, R(A...)> 
 
 #### Boost.Core
 
-* `<boost/ref.hpp>`
-* `<boost/utility/enable_if.hpp>`
-* `<boost/core/noncopyable.hpp>` - required by `cnv::basic_stream`.
+* `<boost/core/ref.hpp>`
 
 #### Boost.FunctionTypes
 
@@ -186,7 +193,8 @@ template <typename T, typename R, typename ...A> concept trait_name<T, R(A...)> 
 
 #### Boost.Parameter
 
-* `<boost/parameter/keyword.hpp>`
+* `<boost/parameter/name.hpp>`
+* `<boost/parameter/is_argument_pack.hpp>`
 
 #### Boost.LexicalCast
 
@@ -203,5 +211,6 @@ template <typename T, typename R, typename ...A> concept trait_name<T, R(A...)> 
 ------
 ### Standard Facilities
 
+* `<charconv>`
 * Proposals
   * P0117R0 - Generic `to_string`/`to_wstring` functions
