@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/array`
 * repo: `boostorg/array`
-* commit: `23f6b27`, 2024-04-12
+* commit: `e988ef9`, 2025-04-03
 
 ------
 ### Class `array`
@@ -21,9 +21,9 @@ public:
   T elems[N];
 // Container interface: typedefs, begin/end access reverse iterators
 // operator[] and at(), front(), back()
-// size(), empty(), max_size(), static_size
-// swap(), operator=(), assign(), fill()
-// data(), c_array()
+// size(), empty(), max_size(), static_size (constant)
+// swap(), operator=(), assign() (deprecated), fill()
+// data(), c_array() (deprecated), T[N] elems (data member)
 };
 
 template<class T>
@@ -32,13 +32,15 @@ class array<T, 0>; // fail on all element access operations
 
 ##### Non-member functions
 
-* Equality & Relational comparasion operators.
+* `==`, `!=`, `<`, `>`, `<=`, `>=`, `<=>`
 * `swap(array<T,N>&, array<T,N>&)`.
-* `get_c_array(array<T,N>&) -> T(&)[N]`.
-* `get_c_array(array<T,N> const&) -> const T(&)[N]`.
 * `hash_value(const array<T,N>&) -> std::size_t`.
 * `get<size_t Idx>(array<T,N>&) noexcept -> T&`.
 * `get<size_t Idx>(array<T,N> const&) noexcept -> const T&`.
+* `to_array<T, N>(T const(&)[N]) -> array<T,N>`.
+* `to_array<T, N>(T (&&)[N]) -> array<T,N>`.
+* `get_c_array(array<T,N>&) -> T(&)[N]` (deprecated).
+* `get_c_array(array<T,N> const&) -> const T(&)[N]` (deprecated).
 
 ------
 ### Dependency
@@ -46,7 +48,7 @@ class array<T, 0>; // fail on all element access operations
 #### Boost.Config
 
 * `<boost/config.hpp>`
-* `<boost/detail/workaround.hpp>`.
+* `<boost/config/workaround.hpp>`.
 
 #### Boost.Assert
 

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/core`
 * repo: `boostorg/core`
-* commit: `3f36d50`, 2024-05-29
+* commit: `c6b098d`, 2025-08-26
 
 ------
 ### `address_of`
@@ -399,6 +399,16 @@ const nvp<T> make_nvp(const char*, T&) noexcept;
 * Macro `BOOST_NVP(obj)` give `make_nvp(#obj, obj)`
 
 ------
+### `pointer_in_range`
+
+Header `<boost/core/pointer_in_range.hpp>`
+
+```c++
+template<class T>
+constexpr bool pointer_in_range(const T* p, const T* b, const T* e);
+```
+
+------
 ### Pointer Traits
 
 Header `<boost/core/pointer_traits.hpp>`
@@ -601,16 +611,6 @@ template<class A, class T> void alloc_destroy_n(A&, T*, size_t);
 ```
 
 Deprecated by `<boost/core/allocator_access.hpp>`
-
-------
-### `pointer_in_range`
-
-Header `<boost/core/pointer_in_range.hpp>`
-
-```c++
-template<class T>
-constexpr bool pointer_in_range(const T* p, const T* b, const T* e);
-```
 
 ------
 ### String View

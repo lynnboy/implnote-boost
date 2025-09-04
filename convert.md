@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/convert`
 * repo: `boostorg/convert`
-* commit: `5bb638d`, 2024-03-18
+* commit: `6e2419c`, 2024-08-19
 
 ------
 ### `convert` facade API
@@ -211,6 +211,4 @@ template <typename T, typename R, typename ...A> concept trait_name<T, R(A...)> 
 ------
 ### Standard Facilities
 
-* `<charconv>`
-* Proposals
-  * P0117R0 - Generic `to_string`/`to_wstring` functions
+* `<charconv>`, (C++17)

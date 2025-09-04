@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/core`
 * repo: `boostorg/core`
-* commit: `3f36d50`, 2024-05-29
+* commit: `c6b098d`, 2025-08-26
 
 ------
 ### Swap
@@ -22,7 +22,7 @@ Add support for array types, call `std::swap` for each element.
 
 #### Boost.Config
 
-* `<boost/config.hpp>`
+* `<boost/config.hpp>`, `<boost/config/header_deprecated.hpp>`
 
 ------
 ### Standard Facilities

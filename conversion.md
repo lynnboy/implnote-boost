@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/conversion`
 * repo: `boostorg/conversion`
-* commit: `9f285ef`, 2024-01-21
+* commit: `b74a4c3`, 2025-06-28
 
 ------
 ### implicit_cast
@@ -54,21 +54,8 @@ above casts, using `static_pointer_cast` and `dynamic_pointer_cast` instead.
 
 * `<boost/pointer_cast.hpp>`.
 
-#### Boost.TypeTraits
-
-* `<boost/type_traits/is_reference.hpp>`, `<boost/type_traits/remove_reference.hpp>`.
-* `<boost/utility/declval.hpp>`.
-
-#### Boost.Core
-
-* `<boost/core/addressof.hpp>`
-* `<boost/core/enable_if.hpp>`
-
-#### Boost.TypeOf
-
-* `<boost/typeof.hpp>`, if compiler don't supports `decltype`.
-
 ------
 ### Standard Facilities
 
 * Language: `static_cast`, `dynamic_cast`.
+* Library: `static_pointer_cast`, `dynamic_pointer_cast`, etc (C++11/C++17/C++20).

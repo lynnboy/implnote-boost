@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/assert`
 * repo: `boostorg/assert`
-* commit: `425b5ba`, 2024-5-27
+* commit: `5dcb2af`, 2025-03-21
 
 ------
 ### `BOOST_ASSERT` / `BOOST_VERIFY`
@@ -25,6 +25,7 @@
 * `BOOST_ENABLE_ASSERT_HANDLER` -- Use _custom handlers_ instead of standard `<cassert>`.
 * `BOOST_ENABLE_ASSERT_DEBUG_HANDLER` -- Use _custom handlers_, if not defined `NDEBUG`.
 * Default behavior is to use standard `<cassert>`.
+* `BOOST_ASSERT_HANDLER_IS_NORETURN` -- Specify _custom _handlers_ are `[[noreturn]]`
 
 #### User Provided
 
@@ -92,5 +93,3 @@ template<class E, class T>
 
 * Preprocessor: `__func__`, `__FILE__`, `__LINE__`.
 * Standard Library: `<cassert>`, `source_location` (C++20)
-* Proposals:
-  * N4129 - Source Code Information Capture.

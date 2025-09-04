@@ -2,7 +2,8 @@
 
 * lib: `boost/libs/compatibility`
 * repo: `boostorg/compatibility`
-* commit: `d0caac5`, 2023-09-25
+* commit: `7be386a`, 2024-10-08
+* Removed.
 
 ------
 ### Rationale

@@ -137,7 +137,6 @@ Instead of default `malloc` and `free` functions for `aligned_alloc` and `aligne
 #### Boost.Config
 
 * `<boost/config.hpp>`
-* `<boost/cstdint.hpp>`
 
 #### Boost.Assert
 
@@ -149,12 +148,15 @@ Instead of default `malloc` and `free` functions for `aligned_alloc` and `aligne
 
 #### Boost.Core
 
-* `<boost/core/pointer_traits.hpp>`
+* `<boost/core/pointer_traits.hpp>`, for `to_address()`
 
 ------
 ### Standard Facilities
 
 * Language
-  * `alignof` operator, `alignas` attribute.
+  * `alignof` operator, `alignas` attribute. (C++11)
+  * `operator new`/`operator delete` with alignment argument (C++17).
 * Standard Library
   * `alignment_of` trait (C++11), `align` function (C++11).
+  * `aligned_alloc` (C11/C++17)
+  * `is_sufficiently_aligned` (C++26), `assume_aligned` (C++20).

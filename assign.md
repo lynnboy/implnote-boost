@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/assign`
 * repo: `boostorg/assign`
-* commit: `ababd47`, 2022-11-10
+* commit: `83ca9df`, 2025-06-28
 
 ------
 ### `list_inserter` and functions
@@ -135,6 +135,7 @@ Header `<boost/assign/ptr_list_of.hpp>`
 
 * `<boost/type_traits/is_same.hpp>`
 * `<boost/type_traits/*.hpp>`
+* `<boost/utility/declval.hpp>`
 
 #### Boost.Range
 
@@ -161,10 +162,9 @@ Header `<boost/assign/ptr_list_of.hpp>`
 
 * `<boost/move/utility.hpp>` - for `boost::forward<T>(a)`.
 
-#### Boost.Utility
+#### Boost.Core
 
 * `<boost/utility/enable_if.hpp>`
-* `<boost/utility/declval.hpp>`
 
 ------
 ### Standard Facilities

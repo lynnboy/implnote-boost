@@ -82,26 +82,17 @@ And for `basic_any` and `unique_any`.
 
 * `<boost/config.hpp>`.
 
+#### Boost.Assert
+
+* `<boost/assert.hpp>`.
+
 #### Boost.TypeIndex
 
 * `<boost/type_index.hpp>`, for RTTI.
 
-#### Boost.TypeTraits
-
-* `<boost/type_traits/*.hpp>`, several type traits.
-
 #### Boost.ThrowException
 
 * `<boost/throw_exception.hpp>`
-
-#### Boost.StaticAssert
-
-* `<boost/static_assert.hpp>`
-
-#### Boost.Core
-
-* `<boost/utility/enable_if.hpp>`
-* `<boost/core/addressof.hpp>`
 
 ------
 ### Standard Facilities

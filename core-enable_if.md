@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/core`
 * repo: `boostorg/core`
-* commit: `3f36d50`, 2024-05-29
+* commit: `c6b098d`, 2025-08-26
 
 ------
 ### `enable_if` family

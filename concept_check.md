@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/concept_check`
 * repo: `boostorg/concept_check`
-* commit: `37c9bdd`, 2022-11-10
+* commit: `e302e80`, 2025-07-02
 
 ------
 ### Concept Check
@@ -75,10 +75,6 @@ Naming convention is `concept_name_archetype`.
 #### Boost.Config
 
 * `<boost/config.hpp>`, `<boost/config/workaround.hpp>`
-
-#### Boost.Core
-
-* `<boost/utility/enable_if.hpp>`
 
 #### Boost.StaticAssert
 
