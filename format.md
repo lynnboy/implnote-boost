@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/format`
 * repo: `boostorg/format`
-* commit: `1162f080`, 2016-11-02
+* commit: `3fb39d7`, 2025-06-27
 
 ------
 ### Format String Based Upon Stream
@@ -109,18 +109,26 @@ tuple<Val> group_last(tuple<T..., Val> const&); // last, the value
 ------
 ### Dependency
 
+#### Boost.Assert
+
+* `<boost/assert.hpp>`
+
 #### Boost.Config
 
 * `<boost/config.hpp>`, `<boost/detail/workaround.hpp>`
 * `<boost/limits.hpp>`
 
-#### Boost.Assert
+#### Boost.Core
 
-* `<boost/assert.hpp>`
+* `<boost/core/allocator_access.hpp>`
 
 #### Boost.Optional
 
 * `<boost/optional.hpp>`
+
+#### Boost.SmartPtr
+
+* `<boost/shared_ptr.hpp>`
 
 #### Boost.ThrowException
 
@@ -130,9 +138,7 @@ tuple<Val> group_last(tuple<T..., Val> const&); // last, the value
 
 * `<boost/utility/base_from_member.hpp>`
 
-#### Boost.SmartPtr
-
-* `<boost/shared_ptr.hpp>`
-
 ------
 ### Standard Facilities
+
+Library: `<format>`

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/flyweight`
 * repo: `boostorg/flyweight`
-* commit: `b85af321`, 2016-01-19
+* commit: `76c84ce`, 2025-06-22
 
 ------
 ### Flyweight Framework
@@ -99,6 +99,13 @@ struct flyweight_core_tracking_helper{ // implements 'TrackingHelper'
   }
 }
 
+template<Factory, Entry, F>
+Factory::handle_type insert_and_visit(Factory& fac, const Entry& x, F f) { // Entry&&
+  handle_type h(fac.insert(x)); // fac.insert(std::forward<Entry>(x))
+  try { f(fac.entry(h)) } catch(...) { fac.erase(h); throw; }
+  return h;
+}
+
 template<ValuePolicy, Tag, TrackingPolicy, FactorySpecifier, LockingPolicy, HolderSpecifier>
 class flyweight_core {
   static bool static_init = init();                                 // statically init
@@ -120,15 +127,19 @@ public:
   static factory_type& factor(); static mutex_type& mutex();
 
   static handle_type insert<...Args>(Args...args) {
-    init(); lock_type lock(mutex());
-    base_handle_type h = factory_type::insert(entry_type(rep_type(std::forward(args)...)));
-    try { ValuePolicy::construct_value(entry(h)); } catch(...) { factory().erase(h); throw; }
-    return handle_type(h);
+    return insert_rep(rep_type(args)); // forward<Args>...
   }
-  static handle_type insert([const] value_type&[&] x);  // similar as above
+  static handle_type insert([const] value_type&[&] x) { return insert_value(x); } // std::move(x)
   static const entry_type& entry(const base_handle_type& h) { return factory().entry(h); }
   static const value_type& value(const handle_type& h) { return (rep_type const&)(entry(h)); }
   static const key_type& key(const handle_type& h) { return (rep_type const&)(entry(h)); }
+
+  static handle_type insert_rep(rep_type x) {// const& or &&
+    init(); entry_type e(x); lock_type lock(mutex()); // std::move(x)
+    insert_and_visit(factory(), std::move(e), key_construct_value());
+  }
+  static handle_type insert_value(const value_type& x); // like above, call copy_construct_value(x)
+  static handle_type insert_value(value_type&& x); // like above, call move_construct_value(std::move(x))
 };
 ```
 
@@ -136,6 +147,7 @@ public:
 * `TrackingPolicy` wraps `base_handle_type` and `rep_type` as `handle_type` and `entry_type`,
   which are convertible to the wrapped types.
 * `Tag` is just a signature aid to distinguish different instances for same value types.
+* `insert_and_visit` is necessary for concurrent factory.
 
 #### Flyweight API
 
@@ -162,6 +174,7 @@ public:
   flyweight<V>(initializer_list<V>) : h(core::insert(list)) {}
   // copy-ctor, move-ctor, copy-assign, move-assign, init-list-assign
   // operator= for copy/move value_type
+  // operator*, operator->, smartptr-like API, calling get() and addressof(get())
 
   const key_type& get_key() const { return core::key(h); }
   const value_type& get() const { return core::value(h); }
@@ -193,30 +206,31 @@ struct default_value_policy<Value> : value_marker {   // just treat Value both a
   struct rep_type {
     value_type x;
   };
-  // empty construct_value(), copy_value(), move_value() functions, no operations needed.
+  // key_construct_value(rep), copy_construct_value(rep, val), move_construct_value(rep, val): all noop
 };
 
-struct optimized_key_value<Key,Value,KeyFromValue> : value_marker {
+struct variant_key_value<Key,Value,KeyFromValue> : value_marker {
   using key_type = Key; using value_type = Value;
   struct rep_type {
-    aligned_storage<key_type, value_type> spc;  // store key before value is constructed
-    const value_type*   value_ptr;    // 'value_ptr != &spc' means construct/copy/move delayed
-    operator const key_type&() const { return KeyFromValue()(*value_ptr); }
+    mutable aligned_storage<sizeof(key_type), alignof(key_type)> key_spc;  // store key
+    mutable aligned_storage<sizeof(value_type), alignof(value_type)> value_spc;  // store value
+    mutable bool value_cted; // value constructed?
   };
-  // construct_value(), copy_value(), move_value() functions, handling 'value_ptr != &spc' case
+  // key_construct_value(rep), copy_construct_value(rep, val), move_construct_value(rep, val)
 };
 
-struct regular_key_value<Key,Value> : value_marker {
+struct product_key_value<Key,Value> : value_marker {
   using key_type = Key; using value_type = Value;
   struct rep_type { // not constructable from value_type, because key cannot be fetched wherein
-    aligned_storage<key_type, value_type> spc;  // store key before value is constructed
-    const value_type*   value_ptr;    // 'value_ptr != &spc' means construct/copy/move delayed
+    key_type key;
+    mutable aligned_storage<sizeof(value_type), alignof(value_type)> value_spc;  // store value
+    mutable bool value_cted; // value constructed?
   };
-  // copy_value(), move_value() functions are meaningless
+  // copy_construct_value, move_construct_value(): noop
 };
 
 using key_value<Key, Value, KeyFromValue> = is_same<KeyFromValue, no_key_from_value> ?
-  regular_key_value<Key,Value> : optimized_key_value<Key,Value,KeyFromValue>;
+  product_key_value<Key,Value> : variant_key_value<Key,Value,KeyFromValue>;
 ```
 
 * Any type is by default treated as both the `Key` for identifing and the `Value`, by `default_value_policy`.
@@ -259,6 +273,19 @@ class set_factory_class<Entry, Key, Compare, Allocator>
   : public assoc_container_factory<std::set<Entry,      // use std::set
       mpl::is_na<Compare> ? std::less<Key> : Compare,   // std::less by default
       mpl_is_na<Allocator> ? std::allocator<Entry> : Allocator> > {}; // std::allocator by default
+
+struct concurrent_factory<Hash=mpl::na, Pred=mpl::na, Allocator=mpl::na>; // specifier
+template <Entry> struct detail::refcounted_entry:Entry { std::atomic_long ref; }; // add_ref, release, count
+template <RCEntry> struct detail::refcounted_handle { const RCEntry* p; } // call add_ref/release on ctor/dtor
+struct concurrent_factory<Entry, Key, Hash, Pred, Allocator> : factory_marker {
+  using entry_type = refcounted_entry<Entry>;
+  using container_type = boost::concurrent_node_set<entry_type, Hash, Pred, Allocator>;
+  using handle_type = refcounted_handle<entry_type>;
+  // insert, erase, entry, insert_and_visit
+  container_type cont;
+  std::mutex m; std::condition_variable cv; bool stop; // control gc's lifetime. Set stop on dtor
+  std::thread gc; // looping for erase entries with zero refcount
+};
 ```
 
 * Default factory is `hashed_factory`
@@ -304,15 +331,20 @@ struct no_locking : locking_marker {
   struct mutex_type{}; using lock_type = mutex_type;  // thus 'lock_type l(mutex_type())' has no effect
 };
 
-using recursive_lightweight_mutex = lightweight_mutex;  // from Boost.SmartPtr, when no <pthread.h>
-struct recursive_lightweight_mutex { /*...*/ };         // on pthread_mutex, PTHREAD_MUTEX_RECURSIVE
+struct detail::recursive_lightweight_mutex : noncopyable {
+  struct scoped_lock: noncopyable { /*...*/ }; // lock on ctor, unlock on dtor
+  private: std::recursive_mutex& m_; // wrapped mutex, or pthread_mutex_t
+};
+using detail::recursive_lightweight_mutex = lightweight_mutex;  // from Boost.SmartPtr, when no stdlib or <pthread.h>
 struct simple_locking : locking_marker {
   using mutex_type = recursive_lightweight_mutex;
   using lock_type = mutex_type::scoped_lock;
 };
 ```
 
-* On posix, `simple_locking` wraps pthread's recursive mutex, otherwise use *Boost.SmartPtr*'s implementation.
+* If `<mutex>` is available, wrap `std::recursive_mutex`.
+* On posix, `simple_locking` wraps pthread's recursive mutex
+* Otherwise use *Boost.SmartPtr*'s implementation.
 
 #### Tracking Policy
 
@@ -365,46 +397,41 @@ Header `<boost/flyweight/serialize.hpp>`
 ------
 ### Dependency
 
+#### Boost.Assert
+
+* `<boost/assert.hpp>`
+
 #### Boost.Config
 
-* `<boost/config.hpp>`, `<boost/detail/workaround.hpp>`
+* `<boost/config.hpp>`, `<boost/config/workaround.hpp>`
+
+#### Boost.ContainerHash
+
+* `<boost/functional/hash_fwd.hpp>`
 
 #### Boost.Core
 
-* `<boost/utility/swap.hpp>`
-* `<boost/utility/enable_if.hpp>`
-* `<boost/detail/templated_streams.hpp>`
-* `<boost/detail/no_exceptions_support.hpp>` - serialization
+* `<boost/core/allocator_access.hpp>` - required by `set_factory`
+* `<boost/core/addressof.hpp>`
+* `<boost/core/invoke_swap.hpp>`
+* `<boost/core/enable_if.hpp>`
+* `<boost/core/no_exceptions_support.hpp>` - serialization
+* `<boost/core/serialization.hpp>`
 * `<boost/noncopyable.hpp>` - serialization
 
 #### Boost.Detail
 
-* `<boost/detail/allocator_utilities.hpp>` - required by `set_factory`
+* `<boost/detail/templated_streams.hpp>`
 
-#### Boost.TypeTraits
+#### Boost.InterProcess
 
-* `<boost/type_traits/is_same.hpp>`, `<boost/type_traits/is_base_and_derived.hpp>`
-* `<boost/type_traits/is_convertible.hpp>`
-* `<boost/type_traits/aligned_storage.hpp>`, `<boost/type_traits/alignment_of.hpp>` - serializtion, `key_value`
+* `<boost/interprocess/detail/intermodule_singleton.hpp>` - for inter module factory holder
 
 #### Boost.MPL
 
 * `<boost/mpl/apply.hpp>`, `<boost/mpl/aux_/lambda_support.hpp>`, `<boost/mpl/aux_/na.hpp>`
 * `<boost/mpl/not.hpp>`, `<boost/mpl/if.hpp>`, `<boost/mpl/or.hpp>`
 * `<boost/mpl/assert.hpp>`
-
-#### Boost.Functional/Hash
-
-* `<boost/functional/hash_fwd.hpp>`
-
-#### Boost.Preprocessor
-
-* `<boost/preprocessor/*.hpp>`
-
-#### Boost.SmartPtr
-
-* `<boost/detail/lightweight_mutex.hpp>` - on no POSIX platform
-* `<boost/detail/atomic_count.hpp>`
 
 #### Boost.MultiIndex
 
@@ -417,19 +444,25 @@ Header `<boost/flyweight/serialize.hpp>`
 * `<boost/parameter/parameters.hpp>`
 * `<boost/parameter/parameter.hpp>`, `<boost/parameter/binding.hpp>`
 
-#### Boost.Serialization
+#### Boost.Preprocessor
 
-* `<boost/serialization/serialization.hpp>` - serialization
-* `<boost/serialization/extended_type_info.hpp>` - serialization
-* `<boost/serialization/nvp.hpp>`, `<boost/serialization/split_free.hpp>` - serialization
+* `<boost/preprocessor/*.hpp>`
+
+#### Boost.SmartPtr
+
+* `<boost/smartptr/detail/lightweight_mutex.hpp>` - on no POSIX platform
+* `<boost/smartptr/detail/atomic_count.hpp>`
 
 #### Boost.ThrowException
 
 * `<boost/throw_exception.hpp>` - serialization
 
-#### Boost.InterProcess
+#### Boost.TypeTraits
 
-* `<boost/interprocess/detail/intermodule_singleton.hpp>` - for inter module factory holder
+* `<boost/type_traits/is_same.hpp>`, `<boost/type_traits/is_base_and_derived.hpp>`
+* `<boost/type_traits/is_convertible.hpp>`
+* `<boost/type_traits/declval.hpp>`
+* `<boost/type_traits/aligned_storage.hpp>`, `<boost/type_traits/alignment_of.hpp>` - serializtion, `key_value`
 
 ------
 ### Standard Facilities

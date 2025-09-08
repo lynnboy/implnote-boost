@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/function`
 * repo: `boostorg/function`
-* commit: `dd047072`, 2017-01-07
+* commit: `f6b538d`, 2024-12-14
 
 ------
 ### Polymorphic Function Wrapper
@@ -46,7 +46,7 @@ template<typename R, typename ... Ts> struct basic_vtable {
 };
 template<typename R(Ts...)>
 class function : public function_base {
-  basic_vtable<R, Ts...>* get_vtable() { return reinterpret_cast<>(vtable);
+  basic_vtable<R, Ts...>* get_vtable() { return reinterpret_cast<>(vtable); }
 };
 ```
 
@@ -63,66 +63,33 @@ class function : public function_base {
 #### Cooperation With Other Boost Libraries
 
 * For Boost.Lambda, `sig` nested template is provided.
-* For Boost.TypeOf, type `bad_function_call` and templates `function`, `functionN` are registered.
 
 ------
 ### Dependency
 
 #### Boost.Config
 
-* `<boost/config.hpp>`, `<boost/detail/workaround.hpp>`
+* `<boost/config.hpp>`, `<boost/config/workaround.hpp>`
 
 #### Boost.Assert
 
 * `<boost/assert.hpp>`
 
-#### Boost.StaticAssert
-
-* `<boost/static_assert.hpp>`
-
 #### Boost.Core
 
-* `<boost/detail/no_exception_support.hpp>`
-* `<boost/ref.hpp>`
-* `<boost/utility/enable_if.hpp>`
+* `<boost/core/no_exception_support.hpp>`
+* `<boost/core/ref.hpp>`
+* `<boost/core/typeinfo.hpp>`
 
 #### Boost.Bind
 
 * `<boost/mem_fn.hpp>`
 
-#### Boost.Preprocessor
-
-* `<boost/preprocessor/*.hpp>`
-
-#### Boost.Integer
-
-* `<boost/integer.hpp>`
-
-#### Boost.MPL
-
-* `<boost/mpl/if.hpp>`, `<boost/mpl/bool.hpp>`
-
-#### Boost.TypeIndex
-
-* `<boost/type_index.hpp>`
-
-#### Boost.TypeTraits
-
-* `<boost/type_traits/*.hpp>`
-
-#### Boost.Move
-
-* `<boost/move/utility_core.hpp>` - for `forward`.
-
 #### Boost.ThrowException
 
 * `<boost/throw_exception.hpp>`
 
-#### Boost.TypeOf
-
-* `<boost/typeof/typeof.hpp>` - for registering types.
-
 ------
 ### Standard Facilities
 
-Standard Library: `function` (C++11).
+Standard Library: `function` (C++11), `move_only_function` (C++23), `copyable_function`, `function_ref` (C++26)

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/foreach`
 * repo: `boostorg/foreach`
-* commit: `875e1c11`, 2016-10-07
+* commit: `a5ae97e`, 2025-05-03
 
 ------
 ### for each solution
@@ -48,22 +48,22 @@
 * `<boost/utility/addressof.hpp>`.
 * `<boost/utility/enable_if.hpp>`, for runtime rvalue detection.
 
-#### Boost.TypeTraits
+#### Boost.Iterator
 
-* `<boost/type_traits/*.hpp>`, array, const, rvalue, etc.
-* `<boost/aligned._storage.hpp>`, etc., for runtime rvalue detection.
+* `<boost/iterator/iterator_traits.hpp>`, for `iterator_reference`.
 
 #### Boost.MPL
 
 * `<boost/mpl/if.hpp>`, `<boost/mpl/assert.hpp>`, etc.
 
-#### Boost.Iterator
-
-* `<boost/iterator/iterator_traits.hpp>`, for `iterator_reference`.
-
 #### Boost.Range
 
 * `<boost/range/begin.hpp>`, `<boost/range/end.hpp>`, etc. range iterator support.
+
+#### Boost.TypeTraits
+
+* `<boost/type_traits/*.hpp>`, array, const, rvalue, etc.
+* `<boost/aligned._storage.hpp>`, etc., for runtime rvalue detection.
 
 ------
 ### Standard Facilities
