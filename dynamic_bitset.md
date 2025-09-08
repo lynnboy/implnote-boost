@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/dynamic_bitset`
 * repo: `boostorg/dynamic_bitset`
-* commit: `8e20aa1`, 2022-06-24
+* commit: `ead1fcb`, 2025-08-29
 
 ------
 ### Dynamic bitset
@@ -24,7 +24,7 @@
 * Provides `vector`-like members `resize`, `clear`, `push_back`, `pop_back`, `empty`, `size`, `at`
 * Provides capacity members `num_blocks`, `max_size`, `capacity`, `reserve`, `shrink_to_fit`
 * Provides set operations `-=`, `-`, `is_subset_of`, `is_proper_subset_of`, `intersects`
-* Provides lookup: `find_first`, `find_next`
+* Provides lookup: `find_first(bs, offset=0)`, `find_pos(bs, pos)`
 * Provides ordering `<` etc.
 * Additional member overloads `set(n, len, val=true)`, `reset(n, len)`, `flip(n, len)`
 
@@ -39,17 +39,21 @@ Provide overload for `serialize`.
 
 #### Boost.Config
 
-* `<boost/config.hpp>`, `<boost/detail/workaround.hpp>`.
+* `<boost/config.hpp>`
 * `<boost/limits.hpp>`
 
 #### Boost.StaticAssert
 
 * `<boost/static_assert.hpp>`
 
+#### Boost.Assert
+
+* `<boost/assert.hpp>`
+
 #### Boost.Core
 
-* `<boost/core/addressof.hpp>`
 * `<boost/core/allocator_access.hpp>`
+* `<boost/core/bit.hpp>`
 * `<boost/core/no_exceptions_support.hpp>`
 * `<boost/core/nvp.hpp>`
 
@@ -65,7 +69,7 @@ Provide overload for `serialize`.
 
 * `<boost/integer/integer_log2.hpp>`
 
-#### Boost.Functional
+#### Boost.ContainerHash
 
 * `<boost/functional/hash/hash.hpp>`
 

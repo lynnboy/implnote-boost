@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/exception`
 * repo: `boostorg/exception`
-* commit: `7599ec73`, 2017-03-30
+* commit: `95b1ead`, 2025-05-03
 
 ------
 ### Exception Storing Arbitrary Error Info
@@ -94,7 +94,9 @@ class exception_ptr;
 rethrow_exception(exception_ptr const&);
 current_exception() -> exception_ptr;
 template <class T>
-copy_exception(T const & e) -> exception_ptr; // called 'make_exception_ptr' in STD
+copy_exception(T const & e) -> exception_ptr;
+template <class T>
+make_exception_ptr(T const & e) -> exception_ptr; // same as above
 
 template <class E>
 current_exception_cast() -> E*;
@@ -106,6 +108,7 @@ class current_exception_std_exception_wrapper : public T, public boost::exceptio
 
 * Similar to C++ 11 API.
 * Only works exceptions thrown with `enable_current_exception`, or `BOOST_THROW_EXCEPTION`.
+* Or set `BOOST_ENABLE_NON_INTRUSIVE_EXCEPTION_PTR` to clone MSVC exception with internal knowledge.
 * Type `exception_ptr` wraps a `shared_ptr<exception_detail::clone_base const>`.
 * If the captured exception isn't `clone_base`, auto detect it is one of known STD exceptions:
   * Recognized STD exception are injected with a `boost::exception` base class
@@ -169,11 +172,12 @@ std::string to_string(exception_ptr const& p); // indent each line of diagnostic
 #### Boost.Config
 
 * `<boost/config.hpp>`, `<boost/detail/workaround.hpp>`
+* `<boost/config/pragma_message.hpp>`
 
 #### Boost.Assert
 
 * `<boost/assert.hpp>`
-* `<boost/current_function.hpp>`
+* `<boost/source_location.hpp>`
 
 #### Boost.ThrowException
 
@@ -183,15 +187,19 @@ std::string to_string(exception_ptr const& p); // indent each line of diagnostic
 
 * `<boost/core/demangle.hpp>`
 * `<boost/core/typeinfo.hpp>`
-* `<boost/utility/enable_if.hpp>`
+* `<boost/core/enable_if.hpp>`
 
 #### Boost.SmartPtr
 
-* `<boost/shared_ptr.hpp>` - when `BOOST_EXCEPTION_MINI_BOOST` is not defined.
+* `<boost/shared_ptr.hpp>`, `<boost/make_shared.hpp>`
 
 #### Boost.Tuple
 
 * `<boost/tuple/tuple.hpp>` - to support `tuple`-ed `error_info` setting.
+
+#### Boost.TypeTraits
+
+* `<boost/type_traits/is_nothrow_move_constructible.hpp>`
 
 ------
 ### Standard Facilities

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/detail`
 * repo: `boostorg/detail`
-* commit: `5c39521`, 2024-05-21
+* commit: `43238b7`, 2025-06-13
 
 ------
 ### Blank Value Type
@@ -65,6 +65,7 @@ Header `<boost/detail/bitmask.hpp>`
 
 * Macro `BOOST_BITMASK(Bitmask)`, Add `|`, `&`, `^`, `~`, `&=`, `|=`, and `^=` for existing enum type.
 * The same as STL version.
+* Use `underlying_type_t` for casting.
 
 * Used by **Boost.FileSystem**.
 
@@ -130,7 +131,7 @@ Header `<boost/detail/has_default_constructor.hpp>`
 
 Header `<boost/detail/identifier.hpp>`
 
-* A class template `identifier` used tobe base class to distinguish from each other.
+* A class template `identifier` used as base class to distinguish from each other.
 * No usage.
 
 #### Dependency

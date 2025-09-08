@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/dll`
 * repo: `boostorg/dll`
-* commit: `6c60dde`, 2024-01-07
+* commit: `c6d1c7f`, 2025-08-26
 
 ------
 ### Dynamic Library Supporting API
@@ -31,6 +31,7 @@ public:
 
   // default ctor, copy-ctor, copy-assign, move-ctor, move-assign, dtor, swap()
   // ctors for each 'load()' signature
+  explicit shared_library(native_handle_t handle);
 
   shared_library& assign(shared_library const&[, system::error_code& ec]);
   void load(filesystem::path const& lib_path, load_mode::type = default_mode);
@@ -150,7 +151,7 @@ public:
   explicit pe_info(filesystem::ifstream&) noexcept;
   // sections(), symbols(), symbols(section)
   static bool parsing_supported(filesystem::ifstream& f);
-}
+};
 using pe_info32 = pe_info<DWORD>;
 using pe_info64 = pe_info<ULONGLONG>;
 
@@ -278,10 +279,10 @@ struct destructor<Class> {
     bool has_deleting() const;      bool is_empty() const;
 };
 constructor<Signature> load_ctor<Signature,Lib>(Lib& lib, ctor_sym const& ct) {
-    return constructor<Signature>(lib.get<standard_t>(ct)[,lib.get<allocating_t>(ct.C3));
+    return constructor<Signature>(lib.get<standard_t>(ct)[,lib.get<allocating_t>(ct.C3)]);
 }
 destructor<Class> load_ctor<Class,Lib>(Lib& lib, dtor_sym const& dt) {
-    return destructor<Class>(lib.get<standard_t>(dt)[,lib.get<deleting_t>(dt.D0));
+    return destructor<Class>(lib.get<standard_t>(dt)[,lib.get<deleting_t>(dt.D0)]);
 }
 ```
 
@@ -364,7 +365,6 @@ imported_class<T> import_class<T, ...Args>(smart_library [const&|&|&&],[size_t s
 #### Boost.Config
 
 * `<boost/config.hpp>`
-* `<boost/cstdint.hpp>`
 
 #### Boost.WinAPI
 
@@ -374,10 +374,8 @@ imported_class<T> import_class<T, ...Args>(smart_library [const&|&|&&],[size_t s
 
 #### Boost.Core
 
-* `<boost/core/addressof.hpp>` - by `import`
 * `<boost/core/invoke_swap.hpp>`
-* `<boost/core/enable_if.hpp>`
-* `<boost/core/explicit_operator_bool.hpp>`
+* `<boost/core/detail/string_view.hpp>`
 * `<boost/noncopyable.hpp>` - by `library_info`
 * `<boost/core/demangle.hpp>` - by `smart_library` on non-MSVC
 
@@ -386,11 +384,6 @@ imported_class<T> import_class<T, ...Args>(smart_library [const&|&|&&],[size_t s
 When `BOOST_DLL_USE_STD_FS` is not defined:
 * `<boost/filesystem/path.hpp>`
 * `<boost/filesystem/operations.hpp>`
-
-#### Boost.Move
-
-* `<boost/move/utility.hpp>`
-* `<boost/move/move.hpp>` - by `import_mangled`
 
 #### Boost.PreDef
 
@@ -406,29 +399,18 @@ When `BOOST_DLL_USE_STD_FS` is not defined:
 * `<boost/system/error_code.hpp>`
 * `<boost/system/system_error.hpp>`
 
-#### Boost.TypeTraits
-
-* `<boost/type_traits/*.hpp>` - pointer, reference, void, ...
-
 #### Boost.ThrowException
 
 * `<boost/throw_exception.hpp>`
 
-#### Boost.Function
-
-* `<boost/function.hpp>` - by import on pre-C++11
-
 #### Boost.SmartPtr
 
+When `BOOST_DLL_USE_BOOST_SHARED_PTR` is defined:
 * `<boost/make_shared.hpp>` - by import
 
 #### Boost.TypeIndex
 
 * `<boost/type_index/ctti_type_index.hpp>`
-
-#### Boost.Spirit
-
-* `<boost/spirit/home/x3.hpp>` - by `smart_library` (on MSVC), used to compose C++ signature string.
 
 ------
 ### Standard Facilities

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/crc`
 * repo: `boostorg/crc`
-* commit: `13f9200`, 2024-04-21
+* commit: `d547322`, 2025-08-23
 
 ------
 ### CRC Checksum Calculator
