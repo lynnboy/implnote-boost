@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/functional/overloaded_function`
 * repo: `boostorg/functional`
-* commit: `1706cb59`, 2017-02-03
+* commit: `3c468dd`, 2025-06-26
 
 ------
 ### Overloaded Function Wrapper
