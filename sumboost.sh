@@ -10,7 +10,7 @@ read -r -d '' list << EOM
     conversion
     #disjoint_sets
     assert
-    compatibility
+    #compatibility
     array
     ratio
     throw_exception
@@ -26,10 +26,10 @@ read -r -d '' list << EOM
     tuple
     scope_exit
     integer
-    function
     convert
     assign
     type_index
+    function
     property_map_parallel
     coroutine2
     exception
@@ -37,15 +37,15 @@ read -r -d '' list << EOM
     functional
     dynamic_bitset
     detail
+    optional
     #chrono/stopwatches
     crc
     endian
     lexical_cast
     uuid
     #signals
-    optional
-    flyweight
     multi_array
+    flyweight
     lockfree
     #tr1
     format
@@ -79,9 +79,9 @@ read -r -d '' list << EOM
     redis
     mp11
     leaf
+    hash2
     variant
     static_string
-    poly_collection
     callable_traits
     program_options
     signals2
@@ -89,19 +89,20 @@ read -r -d '' list << EOM
     heap
     coroutine
     safe_numerics
+    poly_collection
     ptr_container
     utility
-    cobalt
     circular_buffer
+    cobalt
     hof
+    smart_ptr
     fiber
     property_tree
+    mqtt5
     chrono
     #sync
-    smart_ptr
     histogram
     lambda
-    pfr
     contract
     bimap
     type_erasure
@@ -116,14 +117,14 @@ read -r -d '' list << EOM
     multi_index
     icl
     range
-    unordered
     iostreams
     function_types
     units
-    outcome
     date_time
     locale
     vmd
+    outcome
+    unordered
     regex
     serialization
     python
@@ -137,17 +138,19 @@ read -r -d '' list << EOM
     numeric/odeint
     test
     url
-    json
+    pfr
     atomic
     thread
+    json
     wave
+    parser
     polygon
     compute
-    mysql
     gil
     interprocess
     intrusive
     proto
+    mysql
     beast
     log
     qvm
