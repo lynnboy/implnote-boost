@@ -249,10 +249,12 @@ struct operator_arrow_dispatch<T&,Ptr> {
 };
 
 // it[n] handling
-struct operator_brackets_proxy<Iter> {
+struct detail::operator_brackets_proxy<Iter> {
   Iter m_iter;
   operator Iter::reference () const { return *m_iter; }
-  auto& operator= (Iter::value_type const& val) { *m_iter = val; return *this; }
+  auto& operator= <T>(T && val) { *m_iter = std::move(val); return *this; } // enabled if assignable
+  Iter::reference operator->() const { return *m_iter; }
+  auto operator* <Ref=Iter::reference, Res = /*deref type of Ref*/>() const -> Ref { return **m_iter; }
 };
 using operator_bracket_result<Iter,Value,Ref> =
   !(is_copy_constructible<Value> && is_const<Value>) ? operator_brackets_proxy<Iter> : Value;
@@ -274,6 +276,19 @@ class iterator_core_access { // named iterator API
     { return *static_cast<I [const]*>(&facade); }
 };
 
+using detail::facade_iterator_category<CatOrTrav, Val, Ref>::type =
+  is_iterator_category<CatOrTrav> ? CatOrTrav : ({
+    using category = is_reference<Ref> ?
+      { case CatOrTrav -> random_access_traversal_tag: random_access_iterator_tag,
+        case CatOrTrav -> bidirectional_traversal_tag: bidirectional_iterator_tag,
+        case CatOrTrav -> forward_traversal_tag: forward_iterator_tag,
+        case CatOrTrav -> single_pass_traversal_tag && Ref -> Val: input_iterator_tag,
+        default: CatOrTrav }
+      : (CatOrTrav -> single_pass_traversal_tag && Ref -> Val) ? input_iterator_tag
+      : CatOrTrav;
+    if (CatOrTrav == iterator_category_to_triversal_t<category>) return category;
+    else return (struct iterator_category_with_traversal: CatOrTrav, category {});
+  });
 struct detail::iterator_facade_types<V,TC,R,D> {
   using value_type = remove_const<V>;
   using pointer = V*;
@@ -295,8 +310,8 @@ struct detail::iterator_facade_base<I,V,TC,R,D,true,false> : iterator_facade_bas
   I operator--(int) { I tmp{derived()}; --*this; return tmp; }
 };
 struct detail::iterator_facade_base<I,V,TC,R,D,true,true> : iterator_facade_base<I,V,TC,R,D,true,false> { // rand acc
-  operator_brackets_result<I,V,reference>::type operator[](difference_type n) const {
-    return operator_brackets_result{derived() + n};
+  operator_brackets_proxy<I> operator[](difference_type n) const {
+    return operator_brackets_proxy{derived() + n};
   };
   I& operator+=(difference_type n) { iterator_core_access::advance(derived(), n); return derived(); }
   I& operator-=(difference_type n) { iterator_core_access::advance(derived(), -n); return derived(); }
@@ -309,19 +324,22 @@ struct iterator_facade<Iter,Value,CategoryOrTraversal,Ref=Value&,Diff=ptrdiff_t>
   using iterator_facade_ = iterator_facade<Iter,Value,CategoryOrTraversal,Ref,Diff>; // self type
 };
 
-postfix_increment_result<I,V,R,TC> operator++(iterator_facade<I,V,TC,R,D>& i, int)
-  { postfix_increment_result tmp{*static_cast<I*>(&i)}; ++i; return tmp; }
-if (iteratoperable<Dr1,Dr2>) {
-  bool operator== <Dr1,V1,TC1,R1,D1,Dr2,V2,TC2,R2,D2>(
-    iterator_facade<Dr1,V1,TC1,R1,D1> const& lhs,
-    iterator_facade<Dr2,V2,TC2,R2,D2> const& rhs);
-  // also !=, <, <=, >, >=
-  ?? operator- <Dr1,V1,TC1,R1,D1,Dr2,V2,TC2,R2,D2>(
-    iterator_facade<Dr1,V1,TC1,R1,D1> const& lhs,
-    iterator_facade<Dr2,V2,TC2,R2,D2> const& rhs);
-}
-Iter operator+ <Iter,V,TC,R,D> (iterator_facade<Iter,V,TC,R,D> const&, Iter::difference_type n);
-Iter operator+ <Iter,V,TC,R,D> (Iter::difference_type n, iterator_facade<Iter,V,TC,R,D> const&);
+postfix_increment_result<I,V,R,TC>::type operator++(iterator_facade<I,V,TC,R,D>& i, int)
+  { postfix_increment_result::type tmp{*static_cast<I*>(&i)}; ++i; return tmp; }
+
+// operators, enabled according to categories.  D is derived class of iterator_facade
+template<D1,V1,TC1,R1,Diff1,D2,V2,TC2,R2,Diff2> // enable_if_interoperable
+bool operator {==|!=} (iterator_facade<D1,V1,TC1,Diff1> const& i1, iterator_facade<...2> const& i2)
+{ return [!]iterator_core_access::equal(i1, i2); }
+template<D1,V1,TC1,R1,Diff1,D2,V2,TC2,R2,Diff2> // enable_if_interoperable_and_random_access_traversal
+bool operator {<|>|<=|=>} (iterator_facade<D1,V1,TC1,Diff1> const& i1, iterator_facade<...2> const& i2)
+{ return iterator_core_access::distance_from(i1, i2) < 0; } // > 0, <= 0, >= 0
+template<D1,V1,TC1,R1,Diff1,D2,V2,TC2,R2,Diff2> // enable_if_interoperable_and_random_access_traversal
+common_type_t<Diff1,Diff2> operator - (iterator_facade<D1,V1,TC1,Diff1> const& i1, iterator_facade<...2> const& i2)
+{ return iterator_core_access::distance_from(i1, i2); }
+template<D,V,TC,R,Diff> // enable_if is_traversal_at_least<TC, random_access_traversal_tag>
+D operator + (iterator_facade<D,V,TC,R,Diff> const& i, D::Difference_type n) // and inversed args
+{ D tmp{static_cast<D const&>(i)}; return tmp += n; }
 ```
 
 Derived class of `iterator_facade` should provide following (as needed):
@@ -338,24 +356,23 @@ Derived class of `iterator_facade` should provide following (as needed):
 Header `<boost/iterator/iterator_adaptor.hpp>`
 
 ```c++
-struct use_default;
-
 using iterator_adaptor_base<Derived,Base,Value,Traversal,Ref,Diff> =
   iterator_facade<Derived,
-    Value == use_default ? iterator_value<Base> : Value,
-    Traversal == use_default ? iterator_traversal<Base> : Traversal,
-    Ref == use_default ? iterator_reference<Base> : add_reference<Value>,
-    Diff == use_default ? iterator_difference<Base> : Diff>;
+    Value == use_default ? Ref == use_default ? iterator_value_t<Base> : remove_reference_t<Ref> : Value,
+    Traversal == use_default ? iterator_traversal_t<Base> : Traversal,
+    Ref == use_default ? Value == use_default ? iterator_reference_t<Base> : add_lvalue_reference_t<Value> : Ref,
+    Diff == use_default ? iterator_difference_t<Base> : Diff>;
 
 struct iterator_adaptor<Derived,Base,V=use_default,Tr=use_default,Ref=use_default,Diff=use_default>
   : iterator_adaptor_base<Derived,Base,V,Tr,Ref,Diff> {
   using base_type = Base;
   using iterator_adaptor_ = iterator_adaptor<Derived,Base,V,Tr,Ref,Diff>;
-  Base m_iterator;
   iterator_adaptor() = default;
   explicit iterator_adaptor(Base const& iter) : m_iterator(iter) { }
   Base const& base() const { return m_iterator; }
   Base [const]& base_reference() [const] { return m_iterator; }
+private:
+  Base m_iterator; // adapted iterator
   reference dereference() const { return *m_iterator; }
   bool equal<A,I,V,C,R,D>(iterator_adaptor<A,I,V,C,R,D> const& x) const
   { return m_iterator == x.base(); }
@@ -367,6 +384,8 @@ struct iterator_adaptor<Derived,Base,V=use_default,Tr=use_default,Ref=use_defaul
 };
 ```
 
+Adapts an iterator-like type into `iterator_facade`.
+
 ------
 ### Iterators and Iterator Adaptors
 
@@ -375,11 +394,12 @@ struct iterator_adaptor<Derived,Base,V=use_default,Tr=use_default,Ref=use_defaul
 Header `<boost/iterator/counting_iterator.hpp>`
 
 ```c++
-class counting_iterator<Incrementable,CatOrTrav=use_default,Diff=use_default>;
+class counting_iterator<Incrementable,CatOrTrav=use_default,Diff=use_default>
 counting_iterator<Inc> make_counting_iterator<Inc>(Inc x);
 ```
 
 Use an incrementable type (such as int) to serve as iterator, like a generator.
+If not `use_default`, treat numeric `Incrementable` as random_access, otherwise treate it as iterator.
 
 #### Filter Iterator
 
@@ -391,7 +411,7 @@ filter_iterator<Pred,Iter> make_filter_iterator<Pred,Iter>(Pred f, Iter x, Iter 
 filter_iterator<Pred,Iter> make_filter_iterator<Pred,Iter>(Iter x, Iter end=Iter());
 ```
 
-Apply filter predicate on base iterator.
+Apply filter predicate on base iterator. Random access falls into bidirectional.
 
 #### Function Input Iterator
 
@@ -399,9 +419,12 @@ Header `<boost/iterator/function_input_iterator.hpp>`
 
 ```c++
 class function_input_iterator<Function,Input> : iterator_facade<...> {
-  Function* f; // ptr to fun obj or fun
-  Input state;
-  optional<result_of_t<Function()>> value;
+  Function* m_f; // ptr to fun obj or fun, or `Function f` when Function is function pointer
+  Input m_state;
+  optional<result_of_t<Function()>> m_value;
+  void increment() { if (m_value) m_value.reset(); else (*m_f)(); ++m_state; }
+  reference dereference() const { if (!m_value) m_value = (*m_f)(); return m_value.get(); }
+  bool equal(const& other) const { return m_f == other.m_f && m_state == other.m_state; }
 };
 function_input_iterator<F,I> make_function_input_iterator<F,I>(F& f, I state);
 function_input_iterator<F*,I>make_function_input_iterator<F,I>(F* f, I state);
@@ -409,6 +432,7 @@ struct infinite;
 ```
 
 * Single pass, generator.
+* `value` cache result of one step call.
 * `state` remembers the increment step count, thus serve as the `end` condition for a range.
 * `infinite` compares false, thus infinite generator.
 
@@ -424,7 +448,7 @@ class function_output_iterator<UnaryFunc> {
   UnaryFunc m_f;
   struct proxy { // disable copy/move-assign, defaulted copy-ctor
     UnaryFunc& m_f;
-    proxy const& operator= <T> (T [const]&[&] value) const { m_f(value); return *this; } // forwarding for &&, T != proxy
+    proxy const& operator= <T> (T&& value) const { m_f(forwad<T&&>(value)); return *this; } // forwarding for &&, T != proxy
   };
   auto operator*() { return proxy{m_f}; }
   // ++ just return *this
@@ -498,10 +522,11 @@ Header `<boost/iterator/zip_iterator.hpp>`
 ```c++
 class zip_iterator<IterTuple> : ... {
   IterTuple m_iterator_tuple;
-  // ctor, etc
+public:  // ctor, etc
   using reference = mpl::transform<IterTuple, iterator_reference<_1>>::type;
   reference dereference() const { return fusion::transform(m_iterator_tuple, *_1); }
-  // other members likewisely
+  // other members likewisely, fusion::foreach on each iterator
+  IterTuple const& get_iterator_tuple() const { return m_iterator_tuple; }
 };
 zip_iterator<IterTuple> make_zip_iterator<Itertuple>(IterTuple t);
 ```
@@ -571,5 +596,4 @@ Superseded by function input iterator.
 ------
 ### Standard Facilities
 
-* Standard Library:
-* Proposals:
+* Standard Library: `<ranges>`, range views (C++20). `<generator>` (C++23).
