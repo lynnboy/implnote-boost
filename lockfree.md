@@ -2,25 +2,68 @@
 
 * lib: `boost/libs/lockfree`
 * repo: `boostorg/lockfree`
-* commit: `96001aa7`, 2017-03-02
+* commit: `5493605`, 2025-08-25
 
 ------
 ### Lockfree Data Structures
 
 #### Header
 
+* `<boost/lockfree/lockfree_forward.hpp>`
 * `<boost/lockfree/policies.hpp>`
 * `<boost/lockfree/queue.hpp>`
 * `<boost/lockfree/stack.hpp>`
 * `<boost/lockfree/spsc_queue.hpp>`
+* `<boost/lockfree/spsc_value.hpp>`
 
 ------
-#### Customization Policies
+#### Customization Policies and Details
 
 ```c++
+// `template_keyword` from Boost.Parameter
 template <bool> fixed_sized;
 template <size_t> capacity;
 template <class Alloc=std::allocator> allocator;
+template <bool> allow_multiple_reads;
+
+using std::atomic; using std::memory_order_[aquire|consume|release|relaxed];
+
+struct uses_optional_t {}; inline cosntexpr uses_optional_t uses_optional;
+
+// extract for keyword parameter
+using detail::extract_fixed_size<bound_args, def=false> = ... || def;
+struct detail::extract_capacity<bound_args> { static constexpr size_t capacity; bool has_capacity; };
+struct detail::extract_allocator<bound_args, T> {
+  static constexpr bool has_allocator;
+  using type = allocator_rebind<..., T>;
+};
+using detail::extract_allocator_t<bound_args, T> = detail::extract_allocator<bound_args, T>::type;
+using detail::extract_allow_multiple_reads<bound_args, def=false> = ... || def;
+
+void detail::copy_payload<T,U>(T& t, U& u) {
+  if constexpr (is_convertible_v<T, U>) u = t; else u = U(t);
+}
+inline constexpr size_t detail::cacheline_bytes = 256; // 128, 64, depends on CPU arch
+#define BOOST_LOCKFREE_PTR_COMPRESSION 1 // for x86_64, or ARM >= 8.0 except Android
+
+template<class T>
+class alignas(2*sizeof(void*)) tagged_ptr { // generic implementation
+  T* ptr; tag_t tag; // keep ptr and tag in the same cache line
+public:
+  using tag_t = size_t;
+  tagged_ptr(T*p, tag_t t=0) : ptr(p), tag(t) {}
+  // def-ctor, copy-ctor, copy-ass, operator==, operator!=
+  void set(T*, tag_t); T* get_ptr() const; void set_ptr(T*);
+  tag_t get_tag() const; void set_tag(tag_t); tag_t get_next_tag() const; // tag+1, wrap unsigned
+  T& operator*() const; T* operator->() const; operator bool() const; // pointer API
+};
+template<class T>
+class tagged_ptr { // compressed pointer implementation
+  uint64_t ptr; // high 16-bits is the tag, low 48-bits is the pointer
+public:
+  using tag_t = uint16_t;
+  // same API as above
+};
 ```
 
 * Based on **Boost.Parameter** named template parameter style.
@@ -29,12 +72,16 @@ template <class Alloc=std::allocator> allocator;
   * Provide `fixed_sized` without `capacity` means allocated fixed sized storage on construction
   * `allocator` is used by `fixed_sized` or runtime allocated storage.
 * For `spsc_queue`, `fixed_sized` is unused and ignored, either can be compile-time sized or fixed sized.
+* `allow_multiple_reads` is used for `spsc_value`.
+
+* Define `BOOST_LOCKFREE_FORCE_BOOST_ATOMIC` to use Boost.Atomic instead of stdlib's.
 
 ------
 #### Queue and Stack
 
 ```c++
-template<typename T, ... Options>
+template<typename T, typename... Options>
+  requires is_copy_assignable_v<T> && is_trivially_copy_assignable_v<T> && is_trivially_destructible_v<T>
 class queue {
 public:
   typedef T value_type;     // also 'allocator' and 'size_type'
@@ -42,7 +89,7 @@ public:
 
   queue([allocator const&]);          // for 'capacity' is specified
   explicit queue(size_type n[, allocator const&]); // either 'fixed_sized' or dynamic sized
-  ~queue();
+  ~queue(); // comsume_all
 
   void reserve[_unsafe](size_type);   // only for dynamic sized
   bool empty() const;
@@ -54,7 +101,8 @@ public:
   template <typename F> size_t consume_all(F [const] & f);  // loops 'consume_one'
 };
 
-template<typename T, ... Options>
+template<typename T, typename... Options>
+  requires is_copy_assignable_v<T> || is_move_assignable_v<T>
 class stack {
 public:
   typedef T value_type;     // also 'allocator' and 'size_type'
@@ -62,7 +110,7 @@ public:
 
   stack([allocator const&]);          // for 'capacity' is specified
   explicit stack(size_type n[, allocator const&]); // either 'fixed_sized' or dynamic sized
-  ~stack();
+  ~stack(); // comsume_all
 
   void reserve[_unsafe](size_type);   // only for dynamic sized
   bool empty() const;
@@ -93,17 +141,18 @@ public:
 * Pool type provides translating between tagged value and pointer/tag values
 
 ------
-#### SPSC (Single Producer Single Comsumer) Queue
+#### SPSC (Single Producer Single Comsumer) Queue and Value
 
 ```c++
-template<typename T, ... Options>
+template<typename T, typename... Options>
+  requires is_default_constructible_v<T> && is_move_assignable_v<T> || is_copy_assignable_v<T>
 class spsc_queue {
 public:
   typedef T value_type;     // also 'allocator' and 'size_type'
 
   spsc_queue([allocator const&]);     // for 'capacity' is specified
   explicit spsc_queue(size_type n[, allocator const&]); // for dynamic sized
-  ~spsc_queue();
+  ~spsc_queue(); // comsume_all
   
   void reset();
 
@@ -121,6 +170,9 @@ public:
   template <typename F> bool consume_one(F [const] & f);    // invoke 'f(t)'
   template <typename F> size_t consume_all(F [const] & f);  // loops 'consume_one'
 };
+
+template<typename T, typename... Options>
+struct spsc_value;
 ```
 
 * Implemented upon a _ring buffer_
@@ -135,64 +187,55 @@ public:
 ------
 ### Dependency
 
-#### Boost.Config
-
-* `<boost/config.hpp>`
-* `<boost/cstdint.hpp>`
-
 #### Boost.Align
 
-* `<boost/align/align_up.hpp>`, `<boost/align/aligned_allocator_adaptor.hpp>`
-
-#### Boost.Array
-
-* `<boost/array.hpp>`
+* `<boost/align/align_up.hpp>`
+* `<boost/align/aligned_allocator.hpp>`
+* `<boost/align/aligned_allocator_adaptor.hpp>`
 
 #### Boost.Assert
 
 * `<boost/assert.hpp>`
 
-#### Boost.StaticAssert
-
-* `<boost/static_assert.hpp>`
-
-#### Boost.Core
-
-* `<boost/utility/enable_if.hpp>`
-
-#### Boost.MPL
-
-* `<boost/mpl/if.hpp>`, `<boost/mpl/bool.hpp>`, `<boost/mpl/size_t.hpp>`, `<boost/mpl/void.hpp>`
-
-#### Boost.TypeTraits
-
-* `<boost/type_traits/is_convertible.hpp>`
-* `<boost/type_traits/is_copy_constructible.hpp>`
-* `<boost/aligned_storage.hpp>` - used by `spsc_queue`
-
-#### Boost.Parameter
-
-* `<boost/parameter/parameters.hpp>`, `<boost/parameter/binding.hpp>`, `<boost/parameter/aux_/template_keyword.hpp>`
-
 #### Boost.Atomic
 
 * `<boost/atomic.hpp>` - fallback version when `<atomic>` is not available
 
-#### Boost.Tuple
+#### Boost.Config
 
-* `<boost/tuple/tuple.hpp>` - internally used by `stack`
+* `<boost/config.hpp>`
 
-#### Boost.Integer
+#### Boost.Core
 
-* `<boost/integer_traits.hpp>` - internally used by `stack`
+x* `<boost/utility/enable_if.hpp>`
+* `<boost/core/allocator_access.hpp>`
+* `<boost/core/span.hpp>`
+* `<boost/core/no_exceptions_support.hpp>`
 
-#### Boost.Utility
+#### Boost.Parameter
 
-* `<boost/utility.hpp>` - `next` used by `spsc_queue`
+* `<boost/parameter/binding.hpp>`
+* `<boost/parameter/parameters.hpp>`
+* `<boost/parameter/optional.hpp>`
+* `<boost/parameter/template_keyword.hpp>`
 
 #### Boost.Predef
 
-* `<boost/predef.hpp>` - `BOOST_ARCH_X86_64`
+x* `<boost/predef.hpp>`
+
+#### Boost.StaticAssert
+
+* `<boost/static_assert.hpp>`
+
+#### Boost.ThrowException
+
+* `<boost/throw_exception.hpp>`
+
+#### Boost.TypeTraits
+
+x* `<boost/type_traits/is_convertible.hpp>`
+x* `<boost/type_traits/is_copy_constructible.hpp>`
+* `<boost/aligned_storage.hpp>` - used by `spsc_queue`
 
 ------
 ### Standard Facilities
