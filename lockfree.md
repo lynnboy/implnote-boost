@@ -47,7 +47,7 @@ inline constexpr size_t detail::cacheline_bytes = 256; // 128, 64, depends on CP
 #define BOOST_LOCKFREE_PTR_COMPRESSION 1 // for x86_64, or ARM >= 8.0 except Android
 
 template<class T>
-class alignas(2*sizeof(void*)) tagged_ptr { // generic implementation
+class alignas(2*sizeof(void*)) detail::tagged_ptr { // generic implementation
   T* ptr; tag_t tag; // keep ptr and tag in the same cache line
 public:
   using tag_t = size_t;
@@ -58,11 +58,69 @@ public:
   T& operator*() const; T* operator->() const; operator bool() const; // pointer API
 };
 template<class T>
-class tagged_ptr { // compressed pointer implementation
+class detail::tagged_ptr { // compressed pointer implementation
   uint64_t ptr; // high 16-bits is the tag, low 48-bits is the pointer
 public:
   using tag_t = uint16_t;
   // same API as above
+};
+
+template<typename T, typename Alloc=std::allocator<T>>
+class alignas(cacheline_bytes) detail::freelist_stack : Alloc { // priv impl for convenient
+  using tagged_node_ptr = tagged_ptr<struct freelist_node>; // T**
+  struct freelist_node { tagged_node_ptr next; };
+  atomic<tagged_node_ptr> pool_; // head pointer
+public:
+  using index_t = T*; using tagged_node_handle = tagged_ptr<T>; // T*
+  freelist_stack<Alloc2>(Alloc2 const& alloc, size_t n=0); // put initial n nodes to list
+  void reserve<bool ThreadSafe>(size_t count);
+  T* construct<bool ThreadSafe, bool Bounded, ...Args>(Args &&...args);
+  void destruct<bool ThreadSafe>(T* node); void destruct<bool ThreadSafe>(tagged_node_handle const& node);
+  ~freelist_stack(); // dealloc all nodes to underlying allocator
+  bool is_lock_free() const;
+  // `get_handle`/`get_pointer`, convert between T* and handle; `null_handle()` return nullptr
+protected: // above API calls these funcs
+  T* allocate<bool ThreadSafe, bool Bounded>(); // get node from linked list
+  void deallocate<bool ThreadSafe>(T* node); // put back node to linked list
+};
+
+class detail::tagged_index { // similar to tagged_ptr
+protected: index_t index; tag_t tag;
+public:
+  using index_t = tag_t = uint16_t;
+  // ctor, copy-ctor, ctor(index_t, tag_t=0), operator==, operator!=
+  // get_index, set_index, get_tag, set_tag, get_next_tag
+};
+
+template<class T, size_t size>
+struct detail::compiletime_sized_freelist_storage; // wrap `std::array<char, size*sizeof(T) + 64>` as buffer
+template<class T, class Alloc=std::allocator<T>>
+struct detail::runtime_sized_freelist_storage; // allocate buffer by ctor(alloc, count), deallocate buffer at dtor
+template<class T, class NodeStorage=runtime_sized_freelist_storage>
+class detail::fixed_size_freelist : NodeStorage { // priv impl for convenient
+  struct freelist_node { tagged_index next; }; // just store index is enough
+  atomic<tagged_index> pool_; // head index
+public:
+  using index_t = tagged_index::index_t; using tagged_node_handle = tagged_index;
+  fixed_size_freelist<Alloc2>(Alloc2 const& alloc, size_t n=0); // initialize buffer of n nodes
+  void reserve<bool ThreadSafe>(size_t count);
+  T* construct<bool ThreadSafe, bool Bounded, ...Args>(Args &&...args);
+  void destruct<bool ThreadSafe>(T* node); void destruct<bool ThreadSafe>(tagged_node_handle const& node);
+  ~fixed_size_freelist(); // dealloc all nodes to underlying allocator
+  bool is_lock_free() const;
+  // `get_handle`/`get_pointer`, convert between T*, index_t and handle; `null_handle()` return end index
+protected: // above API calls these funcs
+  index_t allocate<bool ThreadSafe>(); // get node from linked list
+  void deallocate<bool ThreadSafe>(index_t index); // put back node to linked list
+};
+
+using detail::select_freelist_t<T,Alloc,isCompSized,isFixedSize,size> =
+  isCompSized ? fixed_size_freelist<compiletime_sized_freelist_storage<T,size>> :
+  isFixeSized ? fixed_size_freelist<runtime_sized_freelist_storage<T,Alloc>> :
+                freelist_stack<T,Alloc>;
+struct select_tagged_handle<T,isNodeBased> {
+  using tagged_handle_type = isNodeBased ? tagged_ptr<T> : tagged_index;
+  using handle_type = isNodeBased ? T* : tagged_index::index_t; // T* or uint16_t
 };
 ```
 
@@ -75,6 +133,14 @@ public:
 * `allow_multiple_reads` is used for `spsc_value`.
 
 * Define `BOOST_LOCKFREE_FORCE_BOOST_ATOMIC` to use Boost.Atomic instead of stdlib's.
+* Free lists are lock-free singlely linked list.
+* `freelist_stack` implementation based on tagged pointer into dynamic allocated nodes.
+  - `ThreadSafe` version run `compare_exchange_weak` in loop until success.
+  - `Bounded` disable alloc of new node from underlying allocator.
+  - `allocate` increments head pointer's tag value.
+* `fixed_size_freelist` implementation based on tagged index into a fixed (array or malloced) buffer.
+  - `ThreadSafe` version run `compare_exchange_weak` in loop until success.
+  - `allocate` increments head index's tag value.
 
 ------
 #### Queue and Stack
@@ -83,43 +149,64 @@ public:
 template<typename T, typename... Options>
   requires is_copy_assignable_v<T> && is_trivially_copy_assignable_v<T> && is_trivially_destructible_v<T>
 class queue {
+  static constexpr bool has_capacity, fixed_sized; static constexpr size_t capacity // extract from Options
+  static constexpr bool node_based=!(has_capacity||fixed_sized), compile_time_sized=has_capacity;
+  struct alignas(cacheline_bytes) node {atomic<tagged_node_handle> next; T data; };
+  using pool_t = select_freelist_t<>; using tagged_node_handle = ...; using handle_type = ...;
+
+  atomic<tagged_node_handle> head_, tail_; // Doubly linked list, padded to align at cache line
+  pool_t pool; // free node list
 public:
-  typedef T value_type;     // also 'allocator' and 'size_type'
+  using allocator = Options/* extract from Options */;
+  using value_type = T; using size_type = size_t;
   bool is_lock_free() const;          // whether underlying storage and atomic are all lock_free
 
-  queue([allocator const&]);          // for 'capacity' is specified
-  explicit queue(size_type n[, allocator const&]); // either 'fixed_sized' or dynamic sized
+  queue([allocator const&]);  queue<U>(allocator<U>const&); // has_capacity (comptime)
+  explicit queue(size_type n[, allocator<U> const&]); // !has_capacity (runtime/fixed)
   ~queue(); // comsume_all
+  // not copyable, not moveable
 
-  void reserve[_unsafe](size_type);   // only for dynamic sized
+  void reserve(size_type); void reserve_unsafe(size_type);  // only for dynamic sized
   bool empty() const;
-  bool [unsynchronized_]push(T const &);  // allocation might occur
-  bool bounded_push(T const &);           // force no allocation
-  bool [unsynchronized_]pop(T &);
-  template <typename U> bool [unsynchronized_]pop(U & u);   // 'U' should allow 'u = t' or 'u = U(t)'
+  bool push(T&&); bool bounded_push(T&&); // w/wo allocation, also `T const&`
+  bool unsynchronized_push(T&&); // not atomic, no compare_exchange_weak loop
+  bool pop(T&); bool pop<U>(U&); std::optional<U> pop<U>(uses_optional_t);
+  bool unsynchronized_pop<U>(T&); // not atomic, no compare_exchange_weak loop
   template <typename F> bool consume_one(F [const] & f);    // invoke 'f(t)'
   template <typename F> size_t consume_all(F [const] & f);  // loops 'consume_one'
 };
+```
 
+```c++
 template<typename T, typename... Options>
   requires is_copy_assignable_v<T> || is_move_assignable_v<T>
 class stack {
+  static constexpr bool has_capacity, fixed_sized; static constexpr size_t capacity // extract from Options
+  static constexpr bool node_based=!(has_capacity||fixed_sized), compile_time_sized=has_capacity;
+  struct node {atomic<tagged_node_handle> next; T data; };
+  using pool_t = select_freelist_t<>; using tagged_node_handle = ...; using handle_type = ...;
+
+  atomic<tagged_node_handle> tos; // Singlely linked list
+  pool_t pool; // free node list
 public:
-  typedef T value_type;     // also 'allocator' and 'size_type'
+  using allocator = Options/* extract from Options */;
+  using value_type = T; using size_type = size_t;
   bool is_lock_free() const;          // whether underlying storage and atomic are all lock_free
 
-  stack([allocator const&]);          // for 'capacity' is specified
-  explicit stack(size_type n[, allocator const&]); // either 'fixed_sized' or dynamic sized
+  stack([allocator const&]);  stack<U>(allocator<U>const&); // has_capacity (comptime)
+  explicit stack(size_type n[, allocator<U> const&]); // !has_capacity (runtime/fixed)
   ~stack(); // comsume_all
+  // not copyable, not moveable
 
-  void reserve[_unsafe](size_type);   // only for dynamic sized
+  void reserve(size_type); void reserve_unsafe(size_type);  // only for dynamic sized
   bool empty() const;
-  bool [unsynchronized_]push(T const &);  // allocation might occur
-  bool bounded_push(T const &);           // force no allocation
-  ConstIterator [unsynchronized_]push(ConstIterator, ConstIterator);  // allocation might occur
-  ConstIterator bounded_push(ConstIterator, ConstIterator);           // force no allocation
-  bool [unsynchronized_]pop(T &);
-  template <typename U> bool [unsynchronized_]pop(U & u);   // 'U' should allow 'u = t' or 'u = U(t)'
+  bool push(T&&); bool bounded_push(T&&); // w/wo allocation, also `T const&`
+  ConstIter push<ConstIter>(ConstIter b, ConstIter e); // for range, also `bounded_`
+  size_type push<Extend>(span<const T, Extent>); // for span, also `bounded_`
+  bool unsynchronized_push(T&&); // not atomic, no compare_exchange_weak loop, also `T const&`, Iter pair, `span`
+  bool pop(T&); bool pop<U>(U&); std::optional<U> pop<U>(uses_optional_t);
+  bool unsynchronized_pop<U>(T&); // not atomic, no compare_exchange_weak loop
+
   template <typename F> bool consume_one(F [const] & f);    // invoke 'f(t)'
   template <typename F> size_t consume_all(F [const] & f);  // loops 'consume_one'
   template <typename F> size_t consume_all_atomic(F [const] & f);  // off stack then consume
