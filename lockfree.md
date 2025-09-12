@@ -143,7 +143,7 @@ struct select_tagged_handle<T,isNodeBased> {
   - `allocate` increments head index's tag value.
 
 ------
-#### Queue and Stack
+#### Queue and Stack (Tagged value based)
 
 ```c++
 template<typename T, typename... Options>
@@ -231,35 +231,70 @@ public:
 #### SPSC (Single Producer Single Comsumer) Queue and Value
 
 ```c++
-template<typename T, typename... Options>
-  requires is_default_constructible_v<T> && is_move_assignable_v<T> || is_copy_assignable_v<T>
-class spsc_queue {
-public:
-  typedef T value_type;     // also 'allocator' and 'size_type'
-
-  spsc_queue([allocator const&]);     // for 'capacity' is specified
-  explicit spsc_queue(size_type n[, allocator const&]); // for dynamic sized
-  ~spsc_queue(); // comsume_all
-  
-  void reset();
-
-  size_type read_available() const;   // size
-  size_type write_available() const;  // free space
-  [const] T & front() [const];
-
-  bool push(T const &);
-  size_type push(T const *, size_type); size_type push<size>(T const (&)[size]); // array version
-  ConstIterator push(ConstIterator, ConstIterator); // range version
-  bool pop();
-  template <typename U> bool pop(U & u);  // 'U' should allow 'u = t' or 'u = U(t)'
-  size_type pop(T *, size_type); size_type pop<size>(T (&)[size]);  // array version
-  size_type pop(OutputIterator);          // range (generator) version
-  template <typename F> bool consume_one(F [const] & f);    // invoke 'f(t)'
-  template <typename F> size_t consume_all(F [const] & f);  // loops 'consume_one'
+template<typename T>
+class detail::ringbuffer_base {
+  atomic<size_t> write_index_, read_index_; // padded to align cacheline
+protected: // API that operate on `T* buffer, size_t max`
+  T& front(T*); const T& front(const T*) const;
+  size_t next_index(size_t i, size_t max); // ringbuffer calculate API
+  static size_t read_available(size_t w, size_t r, size_t max); size_t read_available(size_t max) const;
+  static size_t write_available(size_t w, size_t r, size_t max); size_t write_available(size_t max) const;
+  bool push(T&&, T*buffer, size_t max);
+  bool push(T const* p, size_t c, T*buffer, size_t max);
+  bool push<ConstIter>(ConstIter b, ConstIter e, T*buffer, size_t max);
+  size_t pop(T* p, size_t c, T*buffer, size_t max);
+  size_t pop_to_output_iterator<Iter>(Iter, T*buffer, size_t max);
+  bool consume_one<Fun>(Fun&&, T*buffer, size_t max);
+  size_t consume_all<Fun>(Fun&&, T*buffer, size_t max);
+public: // API provided for `spsc_queue`
+  void reset(); // consume_all, reset indexes to 0
+  bool empty(); bool is_lock_free() const;
 };
 
+template<typename T, size_t Max>
+class detail::compile_time_sized_ringbuffer : public ringbuffer_base<T> {
+  constexpr size_t max_size = Max + 1
+  boost::aligned_storage<max_size*sizeof(T), alignment_of_v<T>> storage_;
+public: // API, implemented on base API
+  size_t max_number_of_elements() const;
+  T& front(); const T& front() const;
+  bool push(T&&); bool push(const T&);
+  size_t push(T const*, size_t); size_t push<size>(T const(&)[size]); ConstIter push(ConstIter, ConstIter);
+  size_t pop(T*, size); size_t pop_to_output_iterator(Iter it);
+  bool consume_one<Fun>(Fun&&); size_t consume_all<Fun>(Fun&&);
+};
+
+template<typename T, typename Alloc> // fixed sized
+class detail::runtime_sized_ringbuffer : public ringbuffer_base<T>, private Alloc {
+  using Tr = std::allocator_traits<ALloc>;
+  Tr::pointer array_; // buffer pointer
+  size_t max_elements_; // buffer size
+public: // API, implemented on base API
+  ctor(size_t max_elements); ~dtor(); // allocate buffer on ctor; deallocate on dtor
+  ctor<U>(allocator_rebind<Alloc,U> const& alloc, size_t max_elements);
+  // other API just the same as compile_time_sized_ringbuffer
+};
+
+using detail::make_ringbuffer::ringbuffer_type<T, ...Options> = // extract from Options
+  !has_capacity ? runtime_sized_ringbuffer<T, allocator> : compile_time_sized_ringbuffer<T, capacity>;
+
 template<typename T, typename... Options>
-struct spsc_value;
+  requires is_default_constructible_v<T> && is_move_assignable_v<T> || is_copy_assignable_v<T>
+class spsc_queue : public make_ringbuffer<T, Options> {
+public:
+  using allocator = Options/* extract from Options */;
+  using value_type = T; using size_type = size_t;
+
+  spsc_queue([allocator const&]);  spsc_queue<U>(allocator<U>const&); // has_capacity (comptime)
+  explicit spsc_queue(size_type n[, allocator<U> const&]); // !has_capacity (runtime/fixed)
+  ~spsc_queue(); // comsume_all
+  // not copyable, not moveable
+
+  // API implemented forward to buffer API:
+  // push, pop, front, consume_one, consume_all, read_available, write_available, reset
+  optional<U> pop<U>(uses_optional_t);
+  size_t pop(Iter); // call pop_to_output_iterator, enabled when convertible
+};
 ```
 
 * Implemented upon a _ring buffer_
@@ -270,6 +305,33 @@ struct spsc_value;
   * `push` and `pop` don't require loop and tag checking
   * `spsc_queue` is *lockfree* and *waitfree* - no waiting at all.
 * Loading owned value is `relaxed`, loading the other is `acquire`; storing is `release`
+
+```c++
+template<typename T, typename... Options>
+class spsc_value {
+  constexpr bool allow_multiple_reads = Options;// extract
+  struct tagged_index { uint8_t byte; }; // bits 0-2 is index (range 0-7), bits 3 is tag (true/false, means `is_consumable`)
+  struct alignas(cacheline_bytes) cache_aligned_value { T value; };
+
+  std::array<cache_aligned_value, 3> m_buffer; //
+  tagged_index m_write_index{0};
+  atomic<tagged_index> m_available_index{1};
+  tagged_index m_read_index{2};
+
+  void swap_write_buffer(); bool swap_read_buffer();
+public:
+  explicit spsc_value(); // if `allow_multiple_reads`, write default value at buf[0]
+  explicit spsc_value(T v); // write initial v at buf[0]
+  void write(const T&); void write (T&&);
+  bool read(T&); optional<T> read(uses_optional_t);
+  bool consume<Fun>(Fun&&);
+};
+```
+
+* Implemented on three slots: reading, writing and free_available.
+  * reading and writing are never conflict
+  * just swap with free slot on read/write.
+* if not `allow_multiple_reads`, check slot index tag for readed state, then move the value instead of copying it.
 
 ------
 ### Dependency
