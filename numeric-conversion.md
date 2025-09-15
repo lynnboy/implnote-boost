@@ -2,12 +2,12 @@
 
 * lib: `boost/libs/numeric/conversion`
 * repo: `boostorg/numeric_conversion`
-* commit: `c9d7a49b`, 2016-07-06
+* commit: `d1b479f`, 2025-06-26
 
 ------
 ### Numeric Conversion Traits
 
-Header `<boost/numeric/conversion/conversion_traits.hpp>`
+Header `<boost/numeric/conversion/bounds.hpp>`
 
 ```c++
 struct bounds<N> {
@@ -16,54 +16,64 @@ struct bounds<N> {
   static N highest() { return limits::max(); }
   static N smallest() { return limits::is_integer ? 1 : limits::min(); }
 };
+```
 
-enum sign_mixture_enum { {signed|unsigned}_to_{signed|unsigned} };
+Header `<boost/numeric/conversion/conversion_traits.hpp>`
+
+```c++
+enum sign_mixture_enum { unsigned_to_unsigned, signed_to_signed, signed_to_unsigned, unsigned_to_signed };
+enum int_float_mixture_enum { integral_to_integral, integral_to_float, float_to_integral, float_to_float };
+enum udt_builtin_mixture_enum { builtin_to_builtin, builtin_to_udt, udt_to_builtin, udt_to_udt };
+
+using detail::get_sign_mixture<T,S>::type = integral_constant<sign_mixture_enum,
+  switch (is_signed_v<S>, is_signed_v<T>) { 0,0 => unsigned_to_unsigned, ...}>;
+using detail::get_int_float_mixture<T,S>::type = integral_constant<int_float_mixture_enum, ...>;
+using detail::get_udt_builtin_mixture<T,S>::type = integral_constant<udt_builtin_mixture_enum, ...>;
+
+struct detail::get_is_subranged<T, S> = {
+  using exp<N> = numeric_limits<N>::max_exponent; using dig<N> = numeric_limits<N>::digits;
+  using type = is_same<T,S> ? false :
+    switch(get_udt_builtin_mixture<T,S>) {
+      case builtin_to_builtin:
+        switch (get_int_float_mixture<T,S>) {
+          case integral_to_integral:
+            switch (get_sign_mixture<T,S>) {
+              case signed_to_unsigned: true;
+              case unsigned_to_signed: dig<T>+1 < dig<S>*2;
+              default: dig<T> < dig<S>;
+            }
+          case integral_to_float: false;
+          case float_to_integral: true;
+          case float_to_float: exp<T> < exp<S> || (exp<T> == exp<S> && dig<T> < dig<S>);
+        }
+      case udt_to_builtin: true;
+      case builtin_to_udt: false;
+      default: false; // udt_to_udt
+    }
+};
+
 struct sign_mixture<T, S> : get_sign_mixture<remove_cv<T>, remove_cv<S>>::type {};
-
-enum int_float_mixture_enum { {integral|float}_to_{integral|float} };
 struct int_float_mixture<T, S> : get_int_float_mixture<remove_cv<T>, remove_cv<S>>::type {};
-
-enum udt_builtin_mixture_enum { {builtin|udt}_to_{builtin|udt} };
 struct udt_builtin_mixture<T, S> : get_udt_builtin_mixture<remove_cv<T>, remove_cv<S>>::type {};
 
-struct get_is_subranged<T, S> {
-  using exp<N> = numeric_limits<N>::max_exponent; using dig<N> = numeric_limits<N>::digits;
-  using type =
-    if_ <is_same<T,S>> .then <false_>
-    .else_<
-      switch_<get_udt_builtin_mixture<T,S>>
-      .case_<builtin_to_builtin>.then<
-        switch_<get_int_float_mixture<T,S>>
-        .case_<integral_to_integral>.then<        // int -> int
-          switch_<get_sign_mixture<T,S>>
-          .case_<signed_to_unsigned>.then<true_>  // signed -> unsigned, always subrange, loss negative
-          .case_<unsigned_to_signed>.then< dig<T>+1 < dig<S>*2 >  // assume integers always have 2^N size
-          .default< dig<T> < dig<S> >             // same sign, less digits cause subrange
-        >
-        .case_<integral_to_float>.then<false_>    // int -> float not subranged
-        .case_<float_to_integral>.then<true_>     // float -> int subranged
-        .case_<float_to_float>.then< exp<T> < exp<S> || (exp<T> == exp<S> && dig<T> < dig<S>) >
-      >
-      .case_<udt_to_builtin>.then<true_>          // assume UDT types are always supertypes of builtins
-      .default_<false_>
-    >;
-};
 struct is_subranged<T, S> : get_is_subranged<remove_cv<T>, remove_cv<S>>::type {};
 
-struct get_conversion_traits<T, S> {
+struct detail::get_conversion_traits<T, S> {
+  using int_float_mixture = get_int_float_mixture<T,S>::type;
+  using sign_mixture = get_sign_mixture<T,S>::type;
+  using udt_builtin_mixture = get_udt_builtin_mixture<T,S>::type;
+
+  using subranged = trivial ? false : get_is_subranged<T,S>::type;
+  using trivial = is_same<T,S>;    // trivial means no conversion
+
   using target_type = T; using source_type = S;
+  using result_type = trivial ? T const& : T;
+  using argument_type = trivial ? S const& : is_arithmetic_v<S> ? S : S const&;
 
-  using trivial = is_same<S,T> ? true_ : false_;    // trivial means no conversion
-  using result_type = trivial ? T const& : T; using argument_type = is_arithmetic<S> ? S : S const&;
-
-  using subranged = trivial ? false_ : get_is_subranged<T,S>::type;
   using supertype = subranged ? S : T; using subtype = subranged ? T : S;
 
-  using int_float_mixture = get_int_float_mixture<T,S>;
-  using sign_mixture = get_sign_mixture<T,S>;
-  using udt_builtin_mixture = get_udt_builtin_mixture<T,S>;
 };
-struct conversion_traits<T, S> : get_conversion_traits<remove_cv<T>,remove_cv<S>>::type {};
+struct conversion_traits<T, S> : get_conversion_traits<remove_cv<T>,remove_cv<S>> {};
 
 concept bool ConversionTraits<Tr> = requires {
   typename Tr::source_type, Tr::target_type, Tr::result_type, Tr::argument_type;
@@ -150,24 +160,24 @@ struct GetRC<Traits, OverflowHandler, Float2IntRounder> { // internal used
 
   static range_check_result out_of_range(argument_type s) {
     bool n = false; bool p = false;
-    if_ (Traits::udt_builtin_mixture != builtin_to_builtin) return cInRange;  // dummy
-    switch_ (Traits::int_float_mixture) {
-    case_ integral_to_float:  return cInRange;
-    case_ float_to_float:
-      if_ (Traits::subranged) { n = LT_LoT(s); p = GT_HiT(s); }       // [l, h]
-      else_ return cInRange;
-    case_ float_to_integral:
-      switch_ (Float2IntRounder::round_style) {
-      case_ std::round_toward_zero: { n = LE_PrevLoT(s); p = GE_SuccHiT(s); } // (l-1, h+1)
-      case_ std::round_to_nearest: { n = LT_HalfPrevLoT(s); p = GT_HalfSuccHiT(s); } // [l-0.5,h+0.5]
-      case_ std::round_toward_infinity: { n = LE_PrevLoT; p = GT_HiT; } // (l-1, h]
-      case_ std::round_toward_neg_infinity: { n = LT_LoT; p = GE_SuccHiT; } // [l, h+1)
+    if constexpr (Traits::udt_builtin_mixture != builtin_to_builtin) return cInRange;  // dummy
+    switch (Traits::int_float_mixture) {
+    case integral_to_float:  return cInRange;
+    case float_to_float:
+      if (Traits::subranged) { n = LT_LoT(s); p = GT_HiT(s); }       // [l, h]
+      else return cInRange;
+    case float_to_integral:
+      switch (Float2IntRounder::round_style) {
+      case std::round_toward_zero: { n = LE_PrevLoT(s); p = GE_SuccHiT(s); } // (l-1, h+1)
+      case std::round_to_nearest: { n = LT_HalfPrevLoT(s); p = GT_HalfSuccHiT(s); } // [l-0.5,h+0.5]
+      case std::round_toward_infinity: { n = LE_PrevLoT; p = GT_HiT; } // (l-1, h]
+      case std::round_toward_neg_infinity: { n = LT_LoT; p = GE_SuccHiT; } // [l, h+1)
       }
-    case_ integral_to_integral:
-      switch_ (Traits::sign_mixture) {
-      case_ signed_to_unsigned: { n = LT_Zero; p = GT_HiT; } // [0, h]
-      case_ unsigned_to_signed: { p = GT_HiT; } // [0, h]
-      default_:                 { n = LT_LoT; p = GT_HiT; } // [l, h]
+    case integral_to_integral:
+      switch (Traits::sign_mixture) {
+      case signed_to_unsigned: { n = LT_Zero; p = GT_HiT; } // [0, h]
+      case unsigned_to_signed: { p = GT_HiT; } // [0, h]
+      default:                 { n = LT_LoT; p = GT_HiT; } // [l, h]
       }
     }
     return n ? cNegOverflow : p ? cPosOverflow : cInRange;
@@ -189,28 +199,28 @@ struct converter<T, S, Traits = conversion_traits<T,S>,
 
   // Range Checker API
   static range_check_result out_of_range(argument_type s) {
-    if_ (traits::trivial) return cInRange;                    // dummy
+    if constexpr (traits::trivial) return cInRange;                    // dummy
     return RangeChecker::out_of_range(s);
   }
   static void validate_range(argument_type s) {
-    if_ (traits::trivial) return;                             // dummy
+    if constexpr (traits::trivial) return;                             // dummy
     RangeChecker::validate_range(s);
   }
 
   // Converter API
   static result_type low_level_convert(argument_type s) {
-    if_ (traits::trivial) return s;
+    if constexpr (traits::trivial) return s;
     return RawConverter::low_level_convert(s);
   }
   static source_type nearbyint(argument_type s) {
-    if_ (traits::trivial) return s;
-    if_ (traits::int_float_mixture != float_to_integer) return s;
+    if constexpr (traits::trivial) return s;
+    if constexpr (traits::int_float_mixture != float_to_integral) return s;
     return Float2IntRounder::nearbyint(s);
   }
   static result_type convert(argument_type s) {
-    if_ (traits::trivial) return s;
+    if constexpr (traits::trivial) return s;
     validate_range(s);
-    if_ (traits::int_float_mixture == float_to_integer) s = nearbyint(s);
+    if constexpr (traits::int_float_mixture == float_to_integral) s = nearbyint(s);
     return low_level_convert(s);
   }
 
@@ -270,6 +280,7 @@ Target numeric_cast<Target, Source>(Source arg) {
 
 * `<boost/type_traits/is_arithmetic.hpp>`, `<boost/type_traits/is_same.hpp>`
 * `<boost/type_traits/remove_cv.hpp>`
+* `<boost/type_traits/integral_constant.hpp>`
 
 #### Boost.ThrowException
 
@@ -282,10 +293,7 @@ Target numeric_cast<Target, Source>(Source arg) {
 
 #### Boost.MPL
 
-* `<boost/mpl/if.hpp>`, `<boost/mpl/eval_if.hpp>`, `<bool/mpl/identity.hpp>`
-* `<boost/mpl/not.hpp>`, `<boost/mpl/and.hpp>`, `<bool/mpl/bool.hpp>`
-* `<boost/mpl/integral_c.hpp>`, `<boost/mpl/int.hpp>`
-* `<boost/mpl/multiplies.hpp>`, `<boost/mpl/less.hpp>`, `<boost/mpl/equal_to.hpp>`
+* `<boost/mpl/*.hpp>`
 
 ------
 ### Standard Facilities

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/parameter`
 * repo: `boostorg/parameter`
-* commit: `a2da4c32`, 2016-12-24
+* commit: `2592296`, 2025-08-26
 
 ------
 ### Parameter
@@ -10,21 +10,25 @@
 Header `<boost/parameter.hpp>`
 
 ------
-#### Facilitie
+#### Facilities
+
+Decide `BOOST_PARAMETER_HAS_PERFECT_FORWARDING` and `BOOST_PARAMETER_CAN_USE_MP11` via config.
 
 ```c++
 struct void_{};
-void_& void_reference(); // placeholder for (void)
+void_& aux::void_reference(); // placeholder for (void)
+char aux::yes_tag; char aux::no_tag[2];
+yes_tag|no_tag aux::to_yesno(mpl::true_|false_);
+yes_tag|no_tag aux::to_yesno(mp11::mp_true|mp_false);
 
-yes_tag|no_tag to_yesno(mpl::true_|false_);
+using is_cv_reference_wrapper<T> = ; // reference_wrapper<T> const volatile or its reference
+using unwrap_cv_reference<T> = is_cv_reference_wrapper<T> ? T::type : remove_reference_t<T>;
 
-using unwrap_cv_reference<T> = is_cv_reference_wrapper<T> ? T::type : T;
+struct aux::template_keyword_base {};
+using aux::is_template_keyword<T> = is_base_of<template_keyword_base, remove_const_t<remove_reference_T<T>>>;
 
-struct template_keyword_tag {};
-struct template_keyword<Tag, T> : template_keyword_tag {
-    using key_type = Tag, value_type = T, reference = T;
-};
-using is_template_keyword<T> = !is_reference<T> && is_convertible<T*, template_keyword_tag*>;
+struct aux::use_default_tag {};
+struct aux::use_default{};
 
 struct default_<KW, V> {
   V& value;
@@ -35,14 +39,14 @@ struct lazy_default<KW, DefComputer> {
   lazy_default(const DefComputer& x) : compute_default(x) {} // implicit
 }
 
-struct tagged_argument_base {};
-struct tagged_argument<KW, Arg> : tagged_argument_base {
-  using key_type = KW, value_type = Arg, reference = Arg&;
+struct aux::tagged_argument_base {};
+struct aux::tagged_argument<Keyword, Arg> : tagged_argument_base {
+  using key_type = Keyword, value_type = Arg, reference = Arg&;
   reference value;  // stored argument value
     
   tagged_argument(reference x) : value(x) {}
     
-  arg_list<tagged_argument<KW, Arg>, arg_list<tagged_argument<KW2, Arg2>>
+  arg_list<tagged_argument<Keyword, Arg>, arg_list<tagged_argument<KW2, Arg2>>
   operator,<KW2, Arg2> (tagged_argument<KW2, Arg2> x) const; // combine at call site arg list
     
   // value fetching
@@ -52,8 +56,14 @@ struct tagged_argument<KW, Arg> : tagged_argument_base {
   Def& operator[]<KW2,Def>(default_<KW2, Def> const& x) const { return x.value; }
   result_of_t<F()> operator[]<KW2,F>(lazy_default<KW2, F> const& x) const { return x.compute_default(); }
 };
-using is_tagged_argument<T> = !is_reference<T> && is_convertible<T*, tagged_argument_base*>;
-struct tag<KW, ActualArg> { using type = tagged_argument<KW, unwrap_cv_reference<ActualArg>>; }
+using aux::is_tagged_argument<T> = is_base_of<tagged_argument_base, remove_const_t<remove_reference_t<T>>>;
+struct aux::tag<Keyword, ActualArg> {
+  using Arg = unwrap_cv_reference<ActualArg>; using ConstArg = const Arg; using MutArg = remove_const_t<Arg>;
+  using type = (is_lvalue_reference<ActualArg> || is_cv_reference_wrapper<ActualArg>) ?
+    tagged_argument_list_of<tagged_argument<Keyword, Arg>> : is_scalar<MutArg> ?
+      tagged_argument_list_of<tagged_argument<Keyword, ConstArg>>
+      tagged_argument_list_of<tagged_argument_rref<Keyword, Arg>>
+};
 
 struct parameter_requirements<KW, Pred, HasDef> { using keyword = KW, predicate = Pred, has_default = HasDef; }
 
@@ -181,36 +191,43 @@ struct parameters<Ps...> {
 
 #### Boost.Config
 
-* `<boost/config.hpp>`, `<boost/detail/workaround.hpp>`
-
-#### Boost.Detail
-
-* `<boost/detail/is_xxx.hpp>`
+* `<boost/config.hpp>`, `<boost/config/workaround.hpp>`
 
 #### Boost.Core
 
-* `<boost/utility/enable_if.hpp>`
+* `<boost/core/enable_if.hpp>`
+
+#### Boost.Function
+
+* `<boost/function.hpp>` -- when no std `<functional>`
+
+#### Boost.Fusion
+
+* `<boost/fusion/*.hpp>`
+
+#### Boost.MP11
+
+* `<boost/mp11/*.hpp>`
 
 #### Boost.MPL
 
-`<boost/mpl/*.hpp>`
-
-#### Boost.TypeTraits
-
-`<boost/type_traits/*.hpp>`
-`<boost/aligned_storage.hpp>`
-
-#### Boost.Utility
-
-`<boost/utility/result_of.hpp>`
+* `<boost/mpl/*.hpp>`
 
 #### Boost.Optional
 
-`<boost/optional.hpp>`
+* `<boost/optional.hpp>`
 
 #### Boost.Preprocessor
 
-`<boost/preprocessor/*>`
+* `<boost/preprocessor/*>`
+
+#### Boost.TypeTraits
+
+* `<boost/type_traits/*.hpp>`
+
+#### Boost.Utility
+
+* `<boost/utility/result_of.hpp>`
 
 ------
 ### Standard Facilities

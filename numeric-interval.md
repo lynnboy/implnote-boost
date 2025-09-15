@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/numeric/interval`
 * repo: `boostorg/interval`
-* commit: `5dad1782`, 2017-02-28
+* commit: `26800d3`, 2025-07-02
 
 ------
 ### Interval Library
@@ -81,17 +81,20 @@ public:
 ------
 #### Basic Access And Constants
 
+Header `<boost/numeric/interval/utility_fwd.hpp>`, `<boost/numeric/interval/utility.hpp>`
+
 ```c++
 Interval pi<Interval>(); Interval pi_half<Interval>(); Interval pi_twice<Interval>(); // PI constants
 
-T const& [checked_]{lower|upper}(interval<T,P> const&);  // checked version return 'nan' for 'empty'
+T const& lower(interval<T,P> const&); T const& upper(interval<T,P> const&);
+T const& checked_lower(interval<T,P> const&);  // checked version return 'nan' for 'empty'
 
 T width(interval<T,P> const&);  // return 0 for 'empty'
 T median(interval<T,P> const&);  // return 'nan' for 'empty'
 interval<T,P> widen(interval<T,P> const&, T const&);  // enclose value in interval, return 'empty' for 'empty'
 
 bool empty(interval<T,P> const&); bool singleton(interval<T,P> const&);
-bool zero_in(interval<T,P> const&); bool in(T const&, (interval<T,P> const&);
+bool zero_in(interval<T,P> const&); bool in(T const&, interval<T,P> const&);
 bool [proper_]subset(interval<T,P1> const&, interval<T,P2> const&);
 bool {overlap|equal}(interval<T,P1> const&, interval<T,P2> const&);    // equal is range/set equal, not '=='
 interval<T,P> intersect(interval<T,P> const&, interval<T,P> const&);

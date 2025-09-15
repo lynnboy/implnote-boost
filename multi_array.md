@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/multi_array`
 * repo: `boostorg/multi_array`
-* commit: `83c37385`, 2016-10-07
+* commit: `333c304`, 2025-06-26
 
 ------
 ### Multi-dimensional Array
@@ -542,8 +542,4 @@ Recursively copy each dimension from `source` to `dest`.
 ------
 ### Standard Facilities
 
-* Proposals:
-  * N4355 - Shared Multidimensional Arrays with Polymorphic Layout
-  * N4512 - Multidimensional bounds, offset and array_view, revision 7, Fundamentals TS V2
-  * P0009r00 - Polymorphic Multidimensional Array View
-  * P0122R0 - `array_view` : bounds-safe views for sequences of objects
+Standard library: `<mdspan>` (C++23)
