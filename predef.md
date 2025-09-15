@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/predef`
 * repo: `boostorg/predef`
-* commit: `0d56819d`, 2017-03-17
+* commit: `a2a5010`, 2025-02-03
 
 ------
 ### Predefined Macros
@@ -11,15 +11,18 @@
 
 * `<boost/predef.h>`
 
-Language: C, C++ ObjC
-Architecture: Alpha, ARM, BlackFin, Convex, IA64, M68K, MIPS, PARISC, PowerPC, Pyramid, RS6K, Spark, SuperH, Sys370, Sys390, x86, x86-64, Z
-Compiler: Borland, clang, Comeau, Compaq, Diab, DigitalMars, Dignus, EDG, EkoPath, GCC, GCC\_XML, Green Hills, HP ACC, IAR, IBM, Intel, KAI, LLVM, Metaware, MetroWerks, MicroTeC, MPW, Palm, PGI, SGI MIPS Pro, SunPro, Tendra, Visual C++, Watcom
-C Library: GNU, UC, VMS, ZOS
-C++ Std Library: libc++, dinkumware, libcomo, modena, MSL, Roguewave, SGI, stdc++v3, STLport, vacpp
-OS: BSDI, DragonFly BSD, FreeBSD, NetBSD, OpenBSD, AIX, AmigaOS, Android, BeOS, Cygwin, Haiku, HPUX, iOS, IRIX, Linux, MacOS, OS400, QNXnto, Solaris, Unix, VMS, Windows
-Endian
-Platform: MingW, Windows Desktop, Windows Phone, Windows Runtime, Windows Store
-Hardware SIMD: ARM, PowerPC, X86, X86 (AMD)
+* Languages: C, C++, ObjC, CUDA
+* Architectures: Alpha, ARM, BlackFin, Convex, E2K, IA64, LoongArch, M68K, MIPS, PARISC, PowerPC, PTX, Pyramid, RISC V, RS6K, Spark, SuperH, Sys370, Sys390, x86, x86-64, Z
+* Compilers: Borland, clang, Comeau, Compaq, Diab, DigitalMars, Dignus, EDG, EkoPath, GCC, GCC\_XML, Green Hills, HP ACC, IAR, IBM, Intel, KAI, LLVM, Metaware, MetroWerks, MicroTeC, MPW, NVCC, Palm, PGI, SGI MIPS Pro, SunPro, Tiny CC, Tendra, Visual C++, Watcom
+* C Library: CloudABI, GNU, UC, VMS, ZOS
+* C++ Std Library: libc++, dinkumware, libcomo, modena, MSL, MSVC, Roguewave, SGI, stdc++v3, STLport, vacpp
+* OS: BSDI, DragonFly BSD, FreeBSD, NetBSD, OpenBSD, AIX, AmigaOS, BeOS, Cygwin, Haiku, HPUX, iOS, IRIX, Linux, MacOS, OS400, QNXnto, Solaris, Unix, VMS, Windows
+* Endian
+* Platforms: Android, CloudABI, MingW, MingW32, MingW64, Windows Desktop, Windows Phone, Windows Server, Windows Store, Windows UWP, Windows System, Windows Runtime (deprecated), iOS
+* Hardware SIMD: ARM, PowerPC, X86, X86 (AMD)
+* Word size: `BOOST_ARCH_WORD_BITS`, and `BOOST_ARCH_WORD_BITS_{16|32|64}`
+* Workaround: `BOOST_PREDEF_WORKAROUND` and `BOOST_PREDEF_TESTED_AT`
+
 
 ------
 ### Dependency
