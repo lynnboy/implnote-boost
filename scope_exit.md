@@ -12,9 +12,9 @@ Header `<boost/scope_exit.hpp>`
 #### Macros
 
 * `BOOST_SCOPE_EXIT(capture_list)`, `BOOST_SCOPE_EXIT_ID(id, capture_list)`
-* `BOOST_SCOPE_EXIT_TPL(cl)`, `BOOST_SCOPE_EXIT_TPL_ID(id, cl)`
+* `BOOST_SCOPE_EXIT_TPL(capture_list)`, `BOOST_SCOPE_EXIT_ID_TPL(id, capture_list)`
   Used within template code, to workaround some GCC version.
-* `BOOST_SCOPE_EXIT_ALL(cl)`, `BOOST_SCOPE_EXIT_ALL_ID(id, cl)`
+* `BOOST_SCOPE_EXIT_ALL(capture_list)`, `BOOST_SCOPE_EXIT_ALL_ID(id, capture_list)`
   Only available for C++11 mode
 * `BOOST_SCOPE_EXIT_END`, `BOOST_SCOPE_EXIT_END_ID(id)`
   On C++11 mode, can be simply `;`
@@ -35,25 +35,21 @@ The `_ID` version is needed when multiple macros used at the same code line.
 
 * `<boost/config.hpp>`, `<boost/detail/workaround.hpp>`
 
-#### Boost.Core
-
-* `<boost/utility/enable_if.hpp>`
-
-#### Boost.MPL
-
-* `<boost/mpl/assert.hpp>`, `<boost/mpl/int.hpp>`
-
 #### Boost.Function
 
 * `<boost/function.hpp>`
+
+#### Boost.Preprocessor
+
+* `<boost/preprocessor/*.hpp>`
 
 #### Boost.TypeOf
 
 * `<boost/typeof/typeof.hpp>`
 
-#### Boost.Preprocessor
+#### Boost.TypeTraits
 
-* `<boost/preprocessor/*.hpp>`
+* `<boost/type_traits/enable_if.hpp>`, `<boost/type_traits/integral_constant.hpp>`
 
 ------
 ### Standard Facilities

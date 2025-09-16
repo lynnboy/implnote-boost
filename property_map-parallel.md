@@ -1,13 +1,15 @@
 # Boost.PropertyMap/Parallel
 
-* lib: `boost/libs/property_map`
-* repo: `boostorg/property_map`
-* commit: `1d232e43`, 2016-11-16
+* lib: `boost/libs/property_map_parallel`
+* repo: `boostorg/property_map_parallel`
+* commit: `d04a8f0`, 2025-05-03
 
 ------
 ### Parallel Property Map Concepts
 
-#### Process Group
+#### Process Group & Triggers
+
+* Header `<boost/property_map/parallel/process_group.hpp>`
 
 ```c++
 struct attach_distributed_object {}; // ctor selecting tag
@@ -16,37 +18,36 @@ enum trigger_receive_context {
 };
 
 struct process_group_tag {};  // tag type root, virtual inheritance
-  // linear
-  // messaging: immediate, bsp, batch
-  // locking
-  // spawning
+  //    / linear    / immediate
+  // pg - messaging - bsp
+  //    \ locking   \ batch
+  //    \ spawning
 
-concept bool ProcessGroup<PG,T> = Serializable<T> &&
-  require (PG& pg, const PG& cpg, T& val, T const& cval, T pval[], std::size_t n,
-      PG::process_id_type id, int tag) {
+concept ProcessGroup<PG,T> = Serializable<T> &&
+  require (PG& pg, const PG& cpg, T& val, T const& cval, T pval[], std::size_t n, PG::process_id_type id, int tag) {
     typename PG::process_id_type;
-    PG();
-    PG(cpg, attach_distributed_object()); { cpg.base() } -> PG;
-    wait(pg);
+    { PG() }; { PG(cpg, attach_distributed_object()); }; // ctors
+    { cpg.base() } -> convertible_to<PG>; // helper operations
+    { pg.poll() }; // helper operations
+
     { probe(cpg) } -> optional<std::pair<int,int>>; // source id and tag
-    synchronize(pg);
-    { process_id(cpg) } -> PG::process_id_type;
-    { num_processes(cpg) } -> int;
-    send(pg, id, tag, cval);
+    { wait(pg) }; { synchronize(pg) };
+    { process_id(cpg) } -> PG::process_id_type; { num_processes(cpg) } -> int; // process query
+    { send(cpg, id, tag, cval) }; // message transmission
     { receive(cpg, id, tag, val) } -> PG::process_id_type;
-    { receive(cpg, tag, pval, n) } -> std::pair<PG::process_id_type, std::size_t>;
-    { receive(cpg, id, tag, pval, n) } -> std::pair<PG::process_id_type, std::size_t>;
+    { receive(cpg, tag, pval, n) } -> pair<PG::process_id_type, size_t>;
+    { receive(cpg, id, tag, pval, n) } -> pair<PG::process_id_type, size_t>;
 };
 
 concept bool OobProcessGroup<PG,T,U,F1,F2,Result> = ProcessGroup<PG,T> &&
   require (PG& pg, PG const& cpg, F1 const& f1, F2 const& f2, int tag, int id, T& v, T const& cv, U& u) {
-    pg.template trigger<T>(tag, f1);
-    pg.template trigger_with_reply<T>(tag, f2);
-    { cpg.trigger_context() } -> trc;
-    send_oob(cpg, id, tag, cv);
-    send_oob_with_reply(cpg, id, tag, cv, u);
-    receive_oob(cpg, id, tag, v);
-    pg.poll();
+    { pg.template trigger<T>(tag, f1) };
+    { pg.template trigger_with_reply<T>(tag, f2) };
+    { cpg.trigger_context() } -> trigger_receive_context;
+
+    { send_oob(cpg, id, tag, cv) };
+    { send_oob_with_reply(cpg, id, tag, cv, u) };
+    { receive_oob(cpg, id, tag, v) };
 };
 ```
 
@@ -59,13 +60,17 @@ concept bool OobProcessGroup<PG,T,U,F1,F2,Result> = ProcessGroup<PG,T> &&
 Header `<boost/property_map/parallel/parallel_property_maps.hpp>`
 
 ```c++
-concept bool Reduce<Red, Key, T> = requires(Red const& r, Key const& k, T const local, T const& remote) {
+concept bool Reduce<Red, Key, T> = requires(Red const& r, Key const& k, T const& local, T const& remote) {
   { T::non_default_resolver } -> bool;      // flag whether 'r(k)' is unusable for default value
   { r(k) } -> T;                            // Make a default value for ghost cell
   { r(k, local, remote) } -> T;             // Make a value from local and remote
 };
 
-struct basic_reduce<T>;     // return default 'T()' for ghost, always use remote for combine
+struct basic_reduce<T> {     // return default 'T()' for ghost, always use remote for combine
+  static const bool non_default_resolver = false;
+  T operator() <Key> (Key const&) const { return T(); }
+  T operator() <Key> (Key const&, T const&, T const& remote) const { return remote; }
+};
 
 enum consistency_model {    // combinable bit flags
   cm_forward = 0b1,
@@ -76,20 +81,30 @@ enum consistency_model {    // combinable bit flags
   cm_clear = 0b10000,
 };
 
-class distributed_property_map<PG, GM, SM>
-  requires ProcessGroup<PG> && ReadablePropertyMap<GM> && PropertyMap<SM>
-{
+template<PropertyGroup PG, ReadablePropertyMap GMap, PropertyMap SMap> // Global, Storage
+class distributed_property_map {
   enum property_map_messages {        // totally 5 messages used to implement dist-pm
     pm_put, pm_get, pm_multiget, pm_multiget_reply, pm_multiput
   };
+  using local_category = TR<SMap>::category; using local_key_type = TR<SMap>::key_type;
+  using owner_local_pair = TR<GMap>::value_type;
+  using process_id_type = PG::process_id_type;
+
+public:
+  using key_type = TR<GMap>::key_type;
+  using value_type = TR<SMap>::value_type; using reference = TR<SMap>::reference;
+  using category = is_base_of<lvalue_property_map_tag, local_category> ? read_write_property_map_tag : local_category;
+  using process_group_type = PG;
 
   using ghost_cells_type = multi_index_container<pair<key_type, value_type>,  // how to store ghost cells
-                            sequenced<>, hashed_unique<pair_first>>;
+                            indexed_by<sequenced<>, hashed_unique<[](auto& p){p.first}>>>;
+  using iterator = ghost_cells_type::iterator;
+  using key_iterator = ghost_cells_type::nth_index<1>::type::iterator;
 
   struct data_t {               // data holder type
     PG        process_group;    // the process group;
-    GM        global;           // maps key to <owner, local_key> pair
-    SM        storage;          // local map
+    GMap      global;           // maps key to <owner, local_key> pair
+    SMap      storage;          // local map
     shared_ptr<ghost_cells_type>    ghost_cells;        // storage for ghost cells
     size_t    max_ghost_cells = 1000000;    // 0 for infinite
     function<value_type(key_type)>  get_default_value;  // get default value for ghost
@@ -98,7 +113,7 @@ class distributed_property_map<PG, GM, SM>
     function<void()>      reset;            // resets all ghost cells to default
     void      clear() { ghost_cells->clear(); }         // clear out all ghost cells
     void      flush() {                     // flush all values destined for remote processes
-      vector<vector<pair<SM::key_type, value_type>>> values(num_processes(process_group));
+      vector<vector<pair<local_key_type, value_type>>> values(num_processes(process_group));
       for (auto cell : ghost_cells) {
         auto g = get(global, cell.first);   // get owner/local_key pair for each cell
         values[g.first].emplace_back(g.second, cell.second); // put each owner's cell
@@ -117,14 +132,10 @@ class distributed_property_map<PG, GM, SM>
   shared_ptr<data_t>  data;     // all data
 
 public:
-  using key_type = GM::key_type;      // a key go through GM and becomes <owner, local_key> pair
-  using value_type = SM::value_type;  // value_type and reference are the same as local storage map's
-  using reference = SM::reference;
-  using category = SM::category == lvalue_property_map_tag ? read_write_property_map_tag : SM::category;
-
-  distributed_property_map<Reduce=basic_reduce>(PG const& pg, GM const& gm, SM const& sm, // ctor
-          Reduce const& r=Reduce()) {
-    data.reset(new data_t {pg, gm, sm});
+  // def-ctor
+  distributed_property_map<Reduce=basic_reduce<value_type>>(PG const& pg, GMap const& gm, SMap const& sm, Reduce const& r=Reduce())
+    : data(new data_t(pg, gm, sm, r, Reduce::non_default_resolver)) {
+    data->ghost_cells.reset(new ghost_cells_type());
     set_reduce(r);
   }
   ~distributed_property_map();
@@ -136,8 +147,8 @@ public:
   }
   
   PG process_group() const { return data->process_group.base(); }
-  SM [const]& base() [const] { return data->storage; }
-  GM [const]& global() [const] { return data->global; }
+  SMap [const]& base() [const] { return data->storage; }
+  GMap [const]& global() [const] { return data->global; }
 
   void set_reduce<Reduce>(Reduce const& r) {
     data->process_group.replace_handler([] { assert(false); }); // all messages are handled by triggers
@@ -319,11 +330,12 @@ auto make_distributed_property_map(PG const&, GM global, SM storage,[Reduce])
 class caching_property_map<PM> requires DistributedPropertyMap<PM> {
   PM property_map;
 public:
-  // process_group_type, value_type, key_type, reference, category
-  // ctor(pm), base()
+  // value_type, key_type, reference, category
+  // ctor(pm), base() [const] init/get `property_map`
   // set_reduce(r), reset() forward to 'property_map'
 };
-// get(), put(), local_put(), cache()
+// get(), local_put(), cache(), forward to `pm.base()`'s
+void put<PM,K,V>(caching_property_map<PM> const& pm, K cosnt& k, V const& v) { local_put(pm.base(), k, v); }
 auto make_caching_property_map<PM>(PM const&) -> caching_property_map<PM>;
 ```
 
@@ -333,17 +345,19 @@ auto make_caching_property_map<PM>(PM const&) -> caching_property_map<PM>;
 #### Local Property Map
 
 ```c++
-class distributed_property_map<PG, GM, SM>
-  requires ProcessGroup<PG> && ReadablePropertyMap<GM> && PropertyMap<SM>
-{
-  PG process_group; GM global; SM storage;
+template<ProcessGroup PG, ReadablePropertyMap GMap, PropertyMap SMap>
+class local_property_map {
+  PG process_group;  mutable GMap global_; mutable SMap storage;
 public:
-  // process_group_type, value_type, key_type, reference, category
+  // `process_group_type`, `value_type`, `reference`, `category` from SMap, `key_type` from GMap
   // ctor(), ctor(pg, gm, sm)
-  reference operator[]
-  // global(), base(), process_group()
+  reference operator[] (key_type const& k) { return storage[get(global_, k).second]; }
+  // getters: global(), base(), process_group()[const]
 };
-// get(), put()
+reference get<PG,GMap,SMap>(local_property_map const& pm, key_type const& k)
+{ return get(pm.base(), get(pm.global(),k).second); }
+void put<PG,GMap,SMap>(local_property_map const& pm, key_type const&k, value_type const& v)
+{ put(pm.base(), get(pm.global(), k).second, v); }
 ```
 
 * Provides same API as `distributed_property_map`, but don't use `process_group` at all, just wraps a local map
@@ -352,13 +366,13 @@ public:
 #### Global Index Map
 
 ```c++
-class global_index_map<IndexMap, GM> {
-  GM global; IndexMap index_map;
+class global_index_map<IndexMap, GMap> {
+  GMap global; IndexMap index_map;
   share_ptr<vector<value_type>> starting_index; // store index ranges for each process
 public:
-  using key_type = IndexMap::key_type; using value_type = IndexMap::value_type;
-  using category readable_property_map_tag;     // only readable, data prepared on ctor
-  global_index_map<PG>(PG pg, value_type num_local_indices, IndexMap index_map, GM gm)
+  using key_type = IndexMap::key_type; using value_type = IndexMap::value_type; using reference = value_type;
+  using category = readable_property_map_tag;     // only readable, data prepared on ctor
+  global_index_map<PG>(PG pg, value_type num_local_indices, IndexMap index_map, GMap gm)
     : index_map(index_map), global(gm) {
     starting_index.reset(new vector(num_processes(pg) + 1));    // process 0 is master node
     send(pg, 0, 0, num_local_indices);  // report self capacity to process 0
@@ -378,7 +392,7 @@ public:
     }
   }
 };
-value_type get(global_index_map const& gim, key_type const& key) {
+value_type get<IndexMap,GMap>(global_index_map const& gim, key_type const& key) {
   auto owner = get(gim.global, key).first;
   auto offset = get(gim.index_map, key);
   return (*gim.starting_index)[owner] + offset;
@@ -401,6 +415,7 @@ auto make_iterator_property_map(RAIter, local_property_map<PG,GM,SM>)
     -> distributed_property_map<PG, GM, iterator_property_map<RA,SM>>;
 ```
 
+* Specializations of Boost.PropertyMap's `iterator_property_map` and `safe_iterator_property_map` templates.
 * Inject a `distributed_property_map` to serve as index map.
 
 #### Vector Property Maps
@@ -412,6 +427,7 @@ class vector_property_map<T, distributed_property_map<PG,GM,SM>>
   : public distributed_property_map<PG,GM, vector_property_map<T,SM>>;
 ```
 
+* Specializations of Boost.PropertyMap's `vector_property_map` template.
 * Inject a `distributed_property_map` to serve as index map.
 
 ------
@@ -419,68 +435,63 @@ class vector_property_map<T, distributed_property_map<PG,GM,SM>>
 
 #### Boost.PropertyMap
 
+#### Boost.Assert
+
+* `<boost/assert.hpp>`
+
+#### Boost.ConceptCheck
+
+* `<boost/concept_archetype.hpp>`
+
 #### Boost.Config
 
 * `<boost/config.hpp>`
 * `<boost/version.hpp>`
 * `<boost/cstdint.hpp>`
 
-#### Boost.Assert
+#### Boost.Function
 
-* `<boost/assert.hpp>`
+* `<boost/function/function1.hpp>`
 
-#### Boost.StaticAssert
+#### Boost.MPI
 
-* `<boost/static_assert.hpp>`
-
-#### Boost.Core
-
-* `<boost/detail/iterator.hpp>` - deprecated
-
-#### Boost.TypeTraits
-
-* `<boost/type_traits.hpp>`
-* `<boost/type_traits/is_same.hpp>`, `<boost/type_traits/is_base_and_derived.hpp>`
+* `<boost/mpi/datatype.hpp>`
 
 #### Boost.MPL
 
 * `<boost/mpl/if.hpp>`, `<boost/mpl/bool.hpp>`, `<boost/mpl/assert.hpp>`
 * `<boost/mpl/or.hpp>`, `<boost/mpl/and.hpp>`, `<boost/mpl/has_xxx.hpp>`
 
-#### Boost.ConceptCheck
+#### Boost.MultiIndex
 
-* `<boost/concept_check.hpp>`
-* `<boost/concept_archetype.hpp>`
+* `<boost/multi_index_container.hpp>`
+* `<boost/multi_index/hashed_index.hpp>`, `<boost/multi_index/member.hpp>`, `<boost/multi_index/sequenced_index.hpp>`
+
+#### Boost.Optional
+
+* `<boost/optional.hpp>`
+
+#### Boost.PropertyMap
+
+* `<boost/property_map/property_map.hpp>`
 
 #### Boost.Serialization
 
 * `<boost/serialization/is_bitwise_serializable.hpp>`
 * `<boost/serialization/utility.hpp>`
 
-#### Boost.MPI
-
-* `<boost/mpi/datatype.hpp>`
-
 #### Boost.SmartPtr
 
 * `<boost/shared_ptr.hpp>`, `<boost/weak_ptr.hpp>`
 
-#### Boost.Bind
+#### Boost.StaticAssert
 
-* `<boost/bind.hpp>`
+* `<boost/static_assert.hpp>`
 
-#### Boost.Optional
+#### Boost.TypeTraits
 
-* `<boost/optional.hpp>`
-
-#### Boost.Function
-
-* `<boost/function/function1.hpp>`
-
-#### Boost.MultiIndex
-
-* `<boost/multi_index_container.hpp>`
-* `<boost/multi_index/hashed_index.hpp>`, `<boost/multi_index/member.hpp>`, `<boost/multi_index/sequenced_index.hpp>`
+* `<boost/type_traits.hpp>`
+* `<boost/type_traits/is_same.hpp>`, `<boost/type_traits/is_base_and_derived.hpp>`
 
 ------
 ### Standard Facilities
