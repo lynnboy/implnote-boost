@@ -15,7 +15,7 @@ Header `<boost/scope_exit.hpp>`
 * `BOOST_SCOPE_EXIT_TPL(capture_list)`, `BOOST_SCOPE_EXIT_ID_TPL(id, capture_list)`
   Used within template code, to workaround some GCC version.
 * `BOOST_SCOPE_EXIT_ALL(capture_list)`, `BOOST_SCOPE_EXIT_ALL_ID(id, capture_list)`
-  Only available for C++11 mode
+  Only available for C++11 mode, using lambda.
 * `BOOST_SCOPE_EXIT_END`, `BOOST_SCOPE_EXIT_END_ID(id)`
   On C++11 mode, can be simply `;`
 

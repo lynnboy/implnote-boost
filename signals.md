@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/signals`
 * repo: `boostorg/signals`
-* commit: `9b993243`, 2016-11-07
+* commit: `f898edf`, 2019-04-27
 
 ------
 ### Overview
@@ -247,10 +247,21 @@ public:
 ------
 ### Dependency
 
+#### Boost.Any
+
+* `<boost/any.hpp>`
+
 #### Boost.Config
 
 * `<boost/config.hpp>`
 * `<boost/config/auto_link.hpp>` - for library naming
+
+#### Boost.Core
+
+* `<boost/noncopyable.hpp>`
+* `<boost/utility/addressof.hpp>`
+* `<boost/ref.hpp>`
+* `<boost/visit_each.hpp>`
 
 #### Boost.Iterator
 
@@ -260,28 +271,6 @@ public:
 
 * `<boost/function.hpp>`
 
-#### Boost.SmartPtr
-
-* `<boost/shared_ptr.hpp>`
-
-#### Boost.Any
-
-* `<boost/any.hpp>`
-
-#### Boost.Core
-
-* `<boost/noncopyable.hpp>`
-* `<boost/utility/addressof.hpp>`
-* `<boost/ref.hpp>`
-* `<boost/visit_each.hpp>`
-
-#### Boost.TypeTraits
-
-* `<boost/type_traits/conversion_traits.hpp>`
-* `<boost/type_traits/function_traits.hpp>`
-* `<boost/type_traits/is_convertible.hpp>`
-* `<boost/type_traits.hpp>`
-
 #### Boost.MPL
 
 * `<boost/mpl/bool.hpp>`
@@ -289,6 +278,17 @@ public:
 #### Boost.Optional
 
 * `<boost/optional.hpp>`
+
+#### Boost.SmartPtr
+
+* `<boost/shared_ptr.hpp>`
+
+#### Boost.TypeTraits
+
+* `<boost/type_traits/conversion_traits.hpp>`
+* `<boost/type_traits/function_traits.hpp>`
+* `<boost/type_traits/is_convertible.hpp>`
+* `<boost/type_traits.hpp>`
 
 #### Boost.Utility
 
