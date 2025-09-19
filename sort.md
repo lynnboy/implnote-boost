@@ -37,8 +37,8 @@ using util::enable_if_integral<T> = enable_if_t<is_integral_v<T>>; // and enable
 using util::enable_if_string<T> = enable_if_t<is_same<T,std::string>>; // and enable_if_not_string
 struct util::constructor<T> { void operator()(auto&&...args); }; // wrap invoke of T's ctor.
 
-// algorithms
 uint32_t util::nbits32(uint32_t n) noexcept; // and `nbits64`. Get required bitwidth for n
+// algorithms
 void util::construct_object<T, ...Args>(T* p, Args&&... args); // placement-new call ctor with arg forwarding
 void util::destroy_object<T>(T* p); // call dtor
 void util::initialize<It,T=value_iter<It>> (It f, It l, T& v); // move construct v to *f, and move construct each value to next, the move assign *(l-1) to v
@@ -205,6 +205,10 @@ struct merge_block<It,Compare,Power2=10> {
 #### Indirect Sort via Indexing, Rearrangement
 
 ```c++
+struct less_ptr_no_null<It,Compare=compare_iter<It>> { // indirect compare
+  Compare comp; ctor(Compare c={}) : comp(c) {}
+  bool operator() (It i1, It i2) const { return comp(*i1, i2); }
+};
 void create_index<It>(It f, It l, std::vector<It>& index); // place iterators over [f,l) into index
 void sort_index<It>(It global_first, std::vector<It>& index); // move rearrange elements accordingly
 void indirect_sort<Sorter,It,Compare=compare_iter<It>> (Sorter sort, It f, It l, Compare comp) {
@@ -308,33 +312,127 @@ Header `<boost/sort/sort.hpp>` or `<boost/sort/spreadsort/spreadsort.hpp>`
 
 ```c++
 template<RandomAccessIterator RAIter>
-  void spreadsort(RAIter first, RAIter last);
+void spreadsort(RAIter first, RAIter last) {
+  if constexpr (numeric_limits<iterator_traits<RAIter>::value_type>::is_integer) integer_sort(first, last);
+  else if constexpr (numeric_limits<iterator_traits<RAIter>::value_type>::is_iec559) float_sort(first, last);
+  if constexpr (is_same_v<iterator_traits<RAIter>::value_type, string>) string_sort(first, last);
+  if constexpr (is_same_v<iterator_traits<RAIter>::value_type, wstring>) string_sort(first, last, uint16_t{0});
+}
 template<Range R>
-  void spreadsort(Range auto& r);
+void spreadsort(Range auto& r) { spreadsort(begin(r), end(r)); }
 
-template<RandomAccessIterator RAIter>
-  void integer_sort(RAIter first, RAIter last[, RShift][, Comp]);
-template<Range R>
-  void integer_sort(R& r[, RShift][, Comp]);
+// tunning constants:
+static const int max_splits = 11, max_finishing_splits = max_splits + 1,
+      int_log_mean_bin_size = 2, int_log_min_split_count = 9, int_log_finishing_count = 31,
+      float_log_mean_bin_size = 2, float_log_min_split_count = 8, float_log_finishing_count = 4,
+      min_sort_size = 1000;
 
-template<RandomAccessIterator RAIter>
-  void float_sort(RAIter first, RAIter last[, RShift][, Comp]);
-template<Range R>
-  void float_sort(R& r[, RShift][, Comp]);
+//Gets the minimum size to call spreadsort on to control worst-case runtime.
+template<unsigned log_mean_bin_size, unsigned log_min_split_count, unsigned log_finishing_count>
+size_t detail::get_min_count(unsigned log_range);
+// Resizes the bin cache and bin sizes, and initializes each bin size to 0.
+RAIter* detail::size_bins<RAIter>(size_t* bin_sizes, std::vector<RAIter>& bin_cache, unsigned cache_offset, unsigned& cache_end, unsigned bin_count);
 
-Cast_type float_mem_cast<Cast_type>(const Data_Type&)
-    requires sizeof(Cast_type) == sizeof(Data_Type) &&
-              numeric_limits<Data_type>::is_iec559 && numeric_limits<Cast_type>::is_integer;
+// *** integer_sort ***
+bool detail::is_sorted_or_find_extremes<RAIter[,Compare]>(RAIter current, RAIter last, RAIter& max, RAIter& min[, Compare comp]);
+int detail::get_log_divisor<log_mean_bin_size>(size_t count, int log_range);
+// recursive integer sorting
+void detail::swap_loop<RAIter,Div_type,Right_shift>(RAIter* bins, RAIter& next_bin_start, unsigned ii, Right_shift& rshift, const size_t* bin_sizes, unsigned log_divisor, Div_type div_min);
+template <class RAIter, class Div_type, class Right_shift=decltype([](auto v,auto n){return v>>n;}), class Compare=std::less, class Size_type,
+  unsigned log_mean_bin_size=int_log_mean_bin_size, unsigned log_min_split_count=int_log_min_split_count, unsigned log_finishing_count=int_log_finishing_count>
+void detail::spreadsort_rec(RAIter f, RAIter l, std::vector<RAIter>& bin_cache, unsigned cache_offset, size_t* bin_sizes, Right_shift rshift={}, Compare comp={});
+template<RandomAccessIterator RAIter, class Div_type, class Right_shift=/*(v,n)=>v>>n*/,class Compare=std::less>
+void detail::integer_sort(RAIter first, RAIter last, Div_type, Right_shift rshift={}, Compare comp={}) {
+  if constexpr(sizeof(Div_type) <= std::max(sizeof(size_t), sizeof(uintmax_t))) {
+    using Size_type = sizeof(Div_type) <= sizeof(size_t) ? size_t : uintmax_t;
+    size_t bin_sizes[1<<max_finishing_splits]; std::vector<RAIter> bin_cache;
+    spreadsort_rec<RAIter,Div_type, Size_type>(first, last, bin_cache, 0, bin_sizes, rshift, comp);
+  } else pdqsort(first, last);
+}
 
-template<RandomAccessIterator RAIter>
-  void [reverse_]string_sort<UCharT=unsigned char>(RAIter first, RAIter last);
-template<Range R>
-  void [reverse_]string_sort<UCharT=unsigned char>(R& r);
+void integer_sort<RAIter, Right_shift=/*(v,n)=>v>>n*/,Compare=std::less>(RAIter first, last, Right_shift rs={},Compare comp={}) {
+  if (last - first < min_sort_size) pdqsort(first, last);
+  else detail::integer_sort(first, last, *first >> 0, rs, comp);
+}
+void integer_sort<Range, Right_shift=/*(v,n)=>v>>n*/,Compare=std::less>(Range& r, Right_shift rs={}, Compare comp={});
 
-template<RandomAccessIterator RAIter>
-  void [reverse_]string_sort(RAIter first, RAIter last, Get_char, Get_length[, Comp]);
-template<Range R>
-  void [reverse_]string_sort(R& r, Get_char, Get_length[, Comp]);
+// *** float_sort ***
+//bool detail::is_sorted_or_find_extremes<RAIter, Div_type, Right_shift[,Compare]>(RAIter current, RAIter last, Div_type& max, Div_type& min, Right_Shift rs[, Compare comp]);
+bool detail::is_sorted_or_find_extremes<RAIter, Cast_type>(RAIter current, RAIter last, Cast_type& max, Cast_type& min);
+void detail::float_swap_loop<RAIter,Div_type>(RAIter* bins, RAIter& next_bin_start, unsigned ii, const size_t* bin_sizes, unsigned log_divisor, Div_type div_min);
+void detail::positive_float_sort_rec<RAIter,Div_type,Size_type>(RAIter f, RAIter l, std::vector<RAIter>& bin_cache, unsigned cache_offset, size_t* bin_sizes);
+void detail::negative_float_sort_rec<RAIter,Div_type,Right_shift=/**/,Compare=std::less,Size_type>(RAIter f, RAIter l, std::vector<RAIter>& bin_cache, unsigned cache_offset, size_t* bin_sizes, Right_shift rs={},Compare comp={});
+// recursive, call negative_float_sort_rec for negative values (reversed-bin spreadsort)
+void detail::float_sort_rec<RAIter,Div_type,Right_shift=/**/,Compare=std::less,Size_type>(RAIter f, RAIter l, std::vector<RAIter>& bin_cache, unsigned cache_offset, size_t* bin_sizes, Right_shift rs={},Compare comp={});
+void detail::float_sort<RAIter>(RAIter first, RAIter last) {
+  using T = iterator_traits<RAIter>::value_type;
+  if constexpr(sizeof(T) == sizeof(uint64_t) /*or uint32_t*/ && numeric_limits<RAIter::value_type::is_iec559>) {
+    size_t bin_sizes[1<<max_finishing_splits]; std::vector<RAIter> bin_cache;
+    using intT = sizeof(T)==sizeof(uint64_t)? int64_t : int32_t; using uintT = sizeof(T)==sizeof(uint64_t)? uint64_t : uint32_t
+    float_sort_rec<RAIter,intT,uintT>(first, last, bin_cache, 0, bin_sizes);
+  } else pdqsort(first, last);
+}
+void detail::float_sort<RAIter,Div_type,Right_shift,Compare=std::less>(RAIter f, RAIter l, Div_type, Right_shift rs, Compare comp={}) {
+  if constexpr(sizeof(Div_type) <= std::max(sizeof(size_t), sizeof(uintmax_t))) {
+    using Size_type = sizeof(Div_type) <= sizeof(size_t) ? size_t : uintmax_t;
+    size_t bin_sizes[1<<max_finishing_splits]; std::vector<RAIter> bin_cache;
+    float_sort_rec<RAIter,Div_type,Right_shift,Size_type>(f, l, bin_cache, 0, bin_sizes, rs, comp);
+  } else pdqsort(f, l);
+}
+
+Cast_type float_mem_cast<Data_type, Cast_type>(const Data_Type&)
+    requires sizeof(Cast_type) == sizeof(Data_Type) && numeric_limits<Data_type>::is_iec559 && numeric_limits<Cast_type>::is_integer;
+void float_sort<RAIter,Right_shift=/*(v,n)->v>>n*/,Compare=std::less>(RAIter first, RAIter last, Right_shift rs={}, Compare comp={}) {
+  if (last - first < min_sort_size) pdqsort(first, last);
+  else detail::float_sort(first, last, rs(*first,0), rs, comp);
+}
+void float_sort<Range, Right_shift=/*(v,n)=>v>>n*/,Compare=std::less>(Range& r, Right_shift rs={}, Compare comp={});
+
+// *** string_sort & reverse_string_sort ***
+static const int detail::max_step_size = 64;
+void detail::update_offset<RAIter,Unsigned_char_type>(RAIter f, RAIter l, size_t& char_offset); // batched memcmp version, RAIter points to std::string like objects
+void detail::update_offset<RAIter,Get_char,Get_length>(RAIter f, RAIter l, size_t& char_offset); // generic version
+struct detail::offset_less_than<Data_type, Unsigned_char_type> {size_t fchar_offset;}; // functor to compare strings
+struct detail::offset_greater_than<Data_type, Unsigned_char_type> {size_t fchar_offset;}; // functor to compare strings
+struct detail::offset_char_less_than<Data_type, Get_char, Get_length> {size_t fchar_offset; Get_char get_character; Get_length length; }; // generic version
+// batch version
+void detail::string_sort_rec<RAIter,Unsigned_char_type>(RAIter f, RAIter l, size_t char_offset, vector<RAIter>& bin_cache, unsigned cache_offset, size_t* bin_sizes);
+void detail::reverse_string_sort_rec<RAIter,Unsigned_char_type>(RAIter f, RAIter l, size_t char_offset, vector<RAIter>& bin_cache, unsigned cache_offset, size_t* bin_sizes);
+// generic version
+void detail::string_sort_rec<RAIter,Unsigned_char_type,Get_char,Get_length,Compare=std::less>(RAIter f, RAIter l, size_t char_offset, vector<RAIter>& bin_cache, unsigned cache_offset, size_t* bin_sizes, Get_char get_character, Get_length length,Compare comp={});
+void detail::reverse_string_sort_rec<RAIter,Unsigned_char_type,Get_char,Get_length,Compare=std::less>(RAIter f, RAIter l, size_t char_offset, vector<RAIter>& bin_cache, unsigned cache_offset, size_t* bin_sizes, Get_char get_character, Get_length length,Compare comp={});
+void detail::string_sort<RAIter,Unsigned_char_type>(RAIter first, RAIter last, Unsigne_char_type) {
+  if constexpr (sizeof(Unsigned_char_type) <= 2) {
+    size_t bin_sizes[(1<<8*sizeof(Unsigned_char_type)) + 1]; std::vector<RAIter> bin_cache;
+    string_sort_rec<RAIter,Unsigned_char_type>(first, last, 0, bin_cache, 0, bin_sizes);
+  } else pdqsort(first, last);
+}
+void detail::reverse_string_sort<RAIter,Unsigned_char_type>(RAIter first, RAIter last, Unsigne_char_type);
+// generic version
+void detail::string_sort_rec<RAIter,Get_char,Get_length,Compare=std::less,Unsigned_char_type>(RAIter f, RAIter l, Get_char get_character, Get_length length, Compare comp={}, Unsigned_char_type);
+void detail::reverse_string_sort_rec<RAIter,Get_char,Get_length,Compare=std::less,Unsigned_char_type>(RAIter f, RAIter l, Get_char get_character, Get_length length, Compare comp={}, Unsigned_char_type);
+
+void string_sort<RAIter,Unsigned_char_type=unsigned char>(RAIter first, RAIter last, Unsigned_char_type tag='\0') {
+  if (last - first < min_sort_size) pdqsort(first, last);
+  else detail::string_sort(first, last, tag);
+}
+void string_sort<Range,Unsigned_char_type=unsigned char>(Range& range, Unsigned_char_type tag='\0');
+void reverse_string_sort<RAIter,Compare,Unsigned_char_type=unsigned char>(RAIter first, RAIter last, Compare comp, Unsigned_char_type tag) {
+  if (last - first < min_sort_size) pdqsort(first, last, comp);
+  else detail::reverse_string_sort(first, last, tag);
+}
+void reverse_string_sort<Range,Compare,Unsigned_char_type=unsigned char>(Range& range, Compare comp, Unsigned_char_type tag);
+// generic version
+void string_sort<RAIter,Get_char,Get_length[,Compare]>(RAIter f, RAIter l, Get_char get_character, Get_length length[, Compare comp]) {
+  if (last - first < min_sort_size>) pdqsort(f, l[, comp]);
+  else { /*skip empties*/ string_sort(f, l, get_character, length, [comp,] get_character(*first, 0)); }
+}
+void string_sort<Range,Get_char,Get_length[,Compare]>(Range& range, Get_char get_character, Get_length length[, Compare comp]);
+void reverse_string_sort<RAIter,Get_char,Get_length,Compare>(RAIter f, RAIter l, Get_char get_character, Get_length length, Compare comp) {
+  if (last - first < min_sort_size>) pdqsort(f, l, comp);
+  else { /*skip empties*/ reverse_string_sort(f, l, get_character, length, comp, get_character(*first, 0)); }
+}
+void reverse_string_sort<Range,Get_char,Get_length,Compare>(Range& range, Get_char get_character, Get_length length, Compare comp);
 ```
 
 * `spreadsort` is an extremely fast hybrid radix sort algorithm.
@@ -353,6 +451,21 @@ template<Range R>
 Header `<boost/sort/sort.hpp>` or `<boost/sort/pdqsort/pdqsort.hpp>`
 
 ```c++
+static const int insertion_sort_threshold = 24, ninther_threshold = 128,
+  partial_insertion_sort_limit = 8, block_size = 64, cacheline_size = 64;
+using detail::is_default_compare<T> = (T == std::less<T> || T == std::greater<T>) ? true_type : false_type;
+void detail::insertion_sort<Iter,Compare>(Iter b, Iter e, Compare comp);
+void detail::unguarded_insertion_sort<Iter,Compare>(Iter b, Iter e, Compare comp); // assume b[-1] <= every of [b,e)
+void detail::partial_insertion_sort<Iter,Compare>(Iter b, Iter e, Compare comp); // limited to move partial_insertion_sort_limit elements
+void detail::swap_offsets<Iter>(Iter f, Iter l, unsigned char* offsets_l, unsigned char* offsets_r, size_t num, bool use_swaps);
+std::pair<Iter,bool> detail::partition_right_branchless<Iter,Compare>(Iter b, Iter e, Compare comp);
+std::pair<Iter,bool> detail::partition_right<Iter,Compare>(Iter b, Iter e, Compare comp);
+Iter detail::partition_left<Iter,Compare>(Iter b, Iter e, Compare comp);
+// recursion implementation
+void detail::pdqsort_loop<Iter,Compare,branchless>(Iter b, Iter e, Compare comp, int bad_allowed, bool leftmost=true);
+
+void pdqsort_branchless<Iter,Compare=std::less<iterator_traits<Iter>::value_type>> (Iter first, Iter last, Compare comp={});
+void pdqsort<Iter,Compare=std::less<iterator_traits<Iter>::value_type>> (Iter first, Iter last, Compare comp={});
 ```
 
 * `pdqsort` is a improvement of the quick sort algorithm. 
@@ -363,6 +476,34 @@ Header `<boost/sort/sort.hpp>` or `<boost/sort/pdqsort/pdqsort.hpp>`
 Header `<boost/sort/sort.hpp>` or `<boost/sort/spinsort/spinsort.hpp>`
 
 ```c++
+void detail::insert_partial_sort<It1,It2,Compare> (It1 f, It1 mid, It1 l, Compare comp, const range<It2>& space);
+bool detail::check_stable_sort<It1,It2,Compare> (range<It1> const& r, range<It2> const& space, Compare comp);
+void detail::range_sort<It1,It2,Compare> (range<It1> const& r1, range<It2>const& r2, Compare comp, uint32_t level);
+void detail::sort_range_sort<It1,It2,Compare> (range<It1>const& r, range<It2> const& space, Compare comp);
+
+class detail::spinsort<It,Compare=compare_iter<It>> {
+  using value_t value_iter<It>; using range_it = range<It>; using range_buf = range<value_t>;
+  static const uint32_t Sort_min = 36;
+  value_t* ptr; size_t nptr; bool construct = false, owner = false; // auxiliary space
+  ctor(It f, It l, Compare comp, value_t* buf, size_t n) : ptr(buf), nptr(n) {
+    range_it range_input{f,l}; size_t nelem = range_input.size(), nelem_1 = (nelem+1)>>2, nelem_2 = nelem-nelem_1;
+    if (nelem <= (Sort_min*2)) { insert_sort(fl,l, comp); return; } // optimize for small size
+    // check already sorted and return
+    range_buf range_aux{ptr, (ptr + nelem_1)}; // malloc buffer for nelem_1 * sizeof(value_t)
+    range_it r1{f,f+nelem_1}, r2{f+nelem_1,l}; // or split by nelem_2 for an even level count
+    // recursively call range_sort on r1 and r2, then merge_half()
+  }
+public:
+  ctor(It f, It l, Compare comp={}); // make own buffer
+  ctor(It f, It l, Compare comp, range_buf buffer); // accept not-owned buffer
+  ~dtor(); // destroy elements, and free buffer if it is owned
+};
+
+void spinsort<It,Compare=compare_iter<It>> (It f, It l, Compare comp={});
+void indirect_spinsort<It,Compare=compare_iter<It>> (It f, It l, Compare comp={}) {
+  using itx_iter = std::vector<It>::iterator; using itx_comp = common::less_ptr_no_null<It,Compare>;
+  common::indirect_sort(spinsort<itx_iter,itx_comp>, f, l, comp);
+}
 ```
 
 * `spinsort` is a stable sort that is fast with random or nearly sorted data.
@@ -373,6 +514,33 @@ Header `<boost/sort/sort.hpp>` or `<boost/sort/spinsort/spinsort.hpp>`
 Header `<boost/sort/sort.hpp>` or `<boost/sort/flat_stable_sort/flat_stable_sort.hpp>`
 
 ```c++
+class detail::flat_stable_sort<It,Compare=compare_iter<It>,Power2=10> : common::merge_block<It,Compare,Power2> {
+  using merge_block_t = common::merge_block<It,Compare,Power2>;
+  // member types, constants, and functions from merge_block base
+public:
+  ctor(It f, It l, Compare comp={}, circular_t* pcirc=nullptr) : merge_block_t(f,l,comp,pcirc) {
+    divide(index.begin(), index.end());
+    rearrange_with_index();
+  }
+  // call sort_small on block count < 5, otherwise recursively divide to two range then merge_range_pos
+  void divide(it_index f, it_index l);
+  void sort_small(it_index f, it_index l); // call range_sort_data on 2nd half and range_sort_buffer on 1st half, then merge_half
+  bool is_sorted_forward(it_index f, it_index l);
+  bool is_sorted_backward(it_index f, it_index l);
+};
+
+void flat_stable_sort<It,Compare=compare_iter<It>> (It f, It l, Compare comp={}) {
+  if constexpr (enable_if_string<value_iter<It>>) detail::flat_stable_sort<It,Compare,6>(f,l,comp);
+  else {
+    constexpr const uint32_t sz[] = {10, 10, 10, 9, 8, 7, 6, 6};
+    using BitsSize = min(log2(sizeof(value_iter<It>)),8) - 1;
+    detail::flat_stable_sort<It,Compare,sz[BitsSize]>(f,l,comp);
+  }
+}
+void indirect_flat_stable_sort<It,Compare=compare_iter<It>> (It f, It l, Compare comp={}) {
+  using itx_iter = std::vector<It>::iterator; using itx_comp = common::less_ptr_no_null<It,Compare>;
+  common::indirect_sort(flat_stable_sort<itx_iter,itx_comp>, f, l, comp);
+}
 ```
 
 * `flat_stable_sort` is a stable sort that uses very little additional memory (around 1% of the size of the data), providing 80% - 90% of the speed of `spinsort`.
@@ -398,7 +566,7 @@ Header `<boost/sort/sort.hpp>` or `<boost/sort/sample_sort/sample_sort.hpp>`
 * `sample_sort` is a implementation of the Samplesort algorithm.
 
 ------
-#### Spin Sort Algorithm
+#### Parallel Stable Sort
 
 Header `<boost/sort/sort.hpp>` or `<boost/sort/parallel_stable_sort/parallel_stable_sort.hpp>`
 
