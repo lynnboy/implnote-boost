@@ -551,6 +551,114 @@ void indirect_flat_stable_sort<It,Compare=compare_iter<It>> (It f, It l, Compare
 Header `<boost/sort/sort.hpp>` or `<boost/sort/block_indirect_sort/block_indirect_sort.hpp>`
 
 ```c++
+class detail::block_pos {
+  size_t num; // combined store for pos and side flag
+  ctor(size_t pos, bool side=false) { num = pos * 2 + side; } // make 1 bit for side value
+  size_t pos() const; void set_pos(size_t); bool side() const; void set_side(bool);
+};
+struct detail::block<Block_size, It> { // compile-time sized buffer
+  It first;
+  ctor(It);
+  range<It> get_range();
+};
+bool detail::compare_block<Block_size,It,Compare>(block<Block_size,It> b1, b2, Compare cmp={}) {return cmp(*b1.first,*b2,first);}
+struct compare_block_pos<Block_size,It,Compare>{ // functor
+  It global_first; Compare comp;
+  ctor(It, Compare cmp);
+  bool operator()(block_pos pos1, block_pos pos2) const {
+    return comp(*(global_first + pos1.pos()*Block_size), *(global_first + pos2.pos()*Block_size));
+  }
+};
+struct detail::backbone<Block_size, It, Compare> {
+  using value_t = iterator_traits<It>::value_type;
+  using atomic_t = std::atomic<uint32_t>;
+  using range_pos = range<size_t>; using range_it = range<It>; using range_buf = range<value_t>;
+  using function_t = std::function<void()>;
+  using block_t = block<Block_size,It>;
+
+  range_it global_range;
+  std::vector<block_pos> index;
+  size_t nelem, nblock, ntail;
+  Compare cmp;
+  range_it range_tail;
+  static thread_local value_t* buf; // per thread
+  stack_cnc<function_t> works;
+  bool error;
+
+  ctor(It f, It l, Compare comp); //
+  block_t get_block(size_t pos) const;
+  range_it get_range(size_t pos) const;
+  range_buf get_range_buf() const;
+  void exec(<value_t* pbuf,> atomic_t& counter); // run loop to pop and call from `works`, until counter becomes 0.
+};
+struct detail::move_blocks<Block_size, Group_size, It, Compare> {
+  // value_t, atomic_t, range_xxx, function_t types same as backbone<>
+  using backbone_t = backbone<Block_size, It, Compare>;
+  backbone_t& bk;
+
+  ctor(backbone_t& bkb);
+  void move_sequence(std::vector<size_t> const& init_seq);
+  void move_long_sequence(std::vector<size_t> const& init_seq);
+  void function_move_sequence(std::vector<size_t> const& seq, atomic_t& counter, bool& error);
+  void function_move_long_sequence(std::vector<size_t> const& seq, atomic_t& counter, bool& error);
+};
+struct detail::merge_blocks<Block_size, Group_size, It, Compare> {
+  // value_t, range_xxx, function_t types same as backbone<>
+  using backbone_t = backbone<Block_size, It, Compare>;
+  using compare_block_pos_t = compare_block_pos<Block_size, It, Compare>;
+  backbone_t& bk;
+
+  ctor(backbone_t& bkb, size_t pos_i1, size_t pos_i2, size_t pos_i3);
+  void tail_process(std::vector<block_pos>& vblkpos1, std::vector<block_pos>& vblkpos2);
+  void cut_range(range_pos rng);
+  void merge_range_pos(range_pos rng);
+  void extract_ranges(range_pos range_input);
+  void function_merge_range_pos(range_pos const& rng_input, atomic_t& counter, bool& error);
+  void function_cut_range(range_pos const&, atomic_t& counter, bool& error);
+};
+struct detail::parallel_sort<Block_size, It, Compare> {
+  // value_t, atomic_t, function_t types same as backbone<>
+  using backbone_t = backbone<Block_size, It, Compare>;
+  backbone_t& bk;
+  size_t max_per_thread;
+  atomic_t counter;
+
+  ctor(backbone_t& bkb, It f, It l);
+  void divide_sort(It f, It l, uint32_t level);
+  void function_divide_sort(It f, It l, uint32_t level, atomic_t& counter, bool& error);
+};
+struct detail::block_indirect_sort<Block_size, Group_size, It, Compare=compare_iter<It>> {
+  // value_t, atomic_t, range_xxx, block_t, function_t types same as backbone<>
+  using block_pos_t = block_pos;
+  using backbone_t = backbone<Block_size, It, Compare>;
+  using parallel_sort_t = parallel_sort<Block_size, It, Compare>;
+  using merge_blocks_t = merge_blocks<Block_size, Group_size, It, Compare>;
+  using move_blocks_t = move_blocks<Block_size, Group_size, It, Compare>;
+  using compare_blocks_pos_t = compare_blocks_pos<Block_size, It, Compare>;
+
+  backbone_t& bk;
+  atomic_t counter;
+  value_t* ptr; bool construct;
+  range_buf rglobal_buf;
+  uint32_t nthread;
+
+  ctor(It f, It l, Compare cmp={}, uint32_t nthr = std::thread::hardware_concurrency());
+  ~dtor();
+  void destroy_all();
+  void split_range(size_t pos_i1, size_t pos_i2, uint32_t level_thread);
+  void start_function();
+};
+void detail::block_indirect_sort_call<It,Compare>(It f, It l, Compare cmp, uint32_t nthr) {
+  if constexpr (enabled_if_string<value_t>)
+    block_indirect_sort<128,128,It,Compare>(f,l,cmp,nthr);
+  else {
+    constexpr const uint32_t sz[10] = {4096, 4096, 4096, 4096, 2048, 1024, 768, 512, 256, 128};
+    using BitsSize = min(log2(sizeof(value_iter<It>)),9) - 1;
+    block_indirect_sort<sz[BitsSize],64,It,Compare>(f,l,cmp,nthr);
+  }
+}
+void block_indirect_sort<It>(It first, It last, uint32_t nthread=std::thread::hardware_concurrency());
+void block_indirect_sort<It, Compare>(It first, It last, Compare comp, uint32_t nthread=std::thread::hardware_concurrency()); // Compare is not integral
 ```
 
 * `block_indirect_sort` is a novel high-speed parallel sort algorithm with low additional memory consumption.
@@ -561,6 +669,39 @@ Header `<boost/sort/sort.hpp>` or `<boost/sort/block_indirect_sort/block_indirec
 Header `<boost/sort/sort.hpp>` or `<boost/sort/sample_sort/sample_sort.hpp>`
 
 ```c++
+struct detail::sample_sort<It, Compare> {
+  using value_t = value_iter<It>;
+  using range_it = range<It>; using range_buf = range<value_t*>;
+  static const uint32_t thread_min = 1<<16; // min elements to trigger parallel
+
+  uint32_t nthread, ninterval; // thread count, job count
+  bool construct=false, owner=false;
+  Compare comp;
+  range_it global_range;
+  range_buf global_buf;
+  std::vector<std::future<void>> vfuture;
+  std::vector<std::vector<range_it>> vv_range_it;
+  std::vector<std::vector<range_buf>> vv_range_buf;
+  std::vector<range_it> vrange_it_ini;
+  std::vector<range_buf> vrange_buf_ini;
+  std::atomic<uint32_t> njob;
+  bool error;
+
+  // call spinsort for small size, check for already sorted, allocate buffer
+  // then initial_configuration, first_merge/final_merge
+  ctor(It f, It l, Compare cmp={},
+      uint32_t num_thread=std::thread::hardware_concurrency(),
+      value_t* paux=nullptr, size_t naux=0);
+  ctor(It f, It l, Compare cmp, uint32_t num_thread, range_buf range_buf_init);
+  void initial_configuration();
+  ~dtor(); void destroy_all();
+  void execute_first(); // split to ninterval jobs, call uninit_merge_level4
+  void execute(); // split to ninterval jobs, call merge_vector4
+  void first_merge(); void final_merge(); // launch `execute_first`/`execute` for nthread times and join them
+};
+
+void sample_sort<It>(It first, It last, uint32_t nthread=std::thread::hardware_concurrency());
+void sample_sort<It,Compare>(It first, It last, Compare comp, uint32_t nthread=std::thread::hardware_concurrency());
 ```
 
 * `sample_sort` is a implementation of the Samplesort algorithm.
@@ -571,6 +712,16 @@ Header `<boost/sort/sort.hpp>` or `<boost/sort/sample_sort/sample_sort.hpp>`
 Header `<boost/sort/sort.hpp>` or `<boost/sort/parallel_stable_sort/parallel_stable_sort.hpp>`
 
 ```c++
+struct detail::parallel_stable_sort<It,Compare=compare_iter<It>> {
+  using value_t = value_iter<It>;
+  static const size_t nelem_min = 1<<16;
+  size_t nelem; value_t* ptr;
+  // call sample_sort on two halfs then merge_half
+  ctor(It f, It l, Compare cmp={}, uint32_t num_thread=hardware_concurrency());
+  ~dtor(); void destroy_all();
+};
+void parallel_stable_sort<It>(It first, It last, uint32_t nthread=std::thread::hardware_concurrency());
+void parallel_stable_sort<It,Compare>(It first, It last, Compare comp, uint32_t nthread=std::thread::hardware_concurrency());
 ```
 
 * `parallel_stable_sort` is based on the Samplesort algorithm, but using a half of the memory used by `sample_sort`.

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/statechart`
 * repo: `boostorg/statechart`
-* commit: `21225fa0`, 2015-01-25
+* commit: `2b1270f`, 2025-05-03
 
 ------
 ### State Chart
@@ -537,22 +537,18 @@ struct asynchronous_state_machine<MostDerived, InitialState,
 ------
 ### Dependency
 
-#### Boost.Config
-
-* `<boost/config.hpp>`
-* `<boost/detail/workaround.hpp>`.
-
 #### Boost.Assert
 
 * `<boost/assert.hpp>`.
 
-#### Boost.StaticAssert
+#### Boost.Bind
 
-* `<boost/static_assert.hpp>`.
+* `<boost/bind.hpp>`
 
- #### Boost.ThrowException
+#### Boost.Config
 
-* `<boost/throw_exception.hpp>`.
+* `<boost/config.hpp>`
+* `<boost/detail/workaround.hpp>`.
 
 #### Boost.Core
 
@@ -560,28 +556,28 @@ struct asynchronous_state_machine<MostDerived, InitialState,
 * `<boost/ref.hpp>`
 * `<boost/get_pointer.hpp>`
 
-#### Boost.SmartPtr
+#### Boost.Detail
 
-* `<boost/intrusive_ptr.hpp>`
-* `<boost/shared_ptr.hpp>`
-* `<boost/weak_ptr.hpp>`
-* `<boost/detail/atomic_count.hpp>`
-
-#### Boost.Conversion
-
-* `<boost/polymorphic_cast.hpp>`
+* `<boost/detail/allocator_utilities.hpp>`
 
 #### Boost.Function
 
 * `<boost/function/function0.hpp>`
 
-#### Boost.Bind
+#### Boost.MPL
 
-* `<boost/bind.hpp>`
+* `<boost/mpl/*.hpp>`
 
-#### Boost.Detail
+#### Boost.SmartPtr
 
-* `<boost/detail/allocator_utilities.hpp>`
+* `<boost/intrusive_ptr.hpp>`
+* `<boost/shared_ptr.hpp>`
+* `<boost/weak_ptr.hpp>`
+* `<boost/smart_ptr/detail/atomic_count.hpp>`
+
+#### Boost.StaticAssert
+
+* `<boost/static_assert.hpp>`.
 
 #### Boost.Thread
 
@@ -590,10 +586,6 @@ struct asynchronous_state_machine<MostDerived, InitialState,
 #### Boost.TypeTraits
 
 * `<boost/type_traits/*.hpp>`, is_same, is_pointer, remove_reference, is_base_of
-
-#### Boost.MPL
-
-* `<boost/mpl/*.hpp>`
 
 ------
 ### Standard Facilities

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/timer`
 * repo: `boostorg/timer`
-* commit: `da677f67`, 2015-10-27
+* commit: `b7f65f0`, 2024-12-14
 
 ------
 ### Timer Version 1 (Deprecated)
@@ -58,6 +58,9 @@ Superseded by **Boost.Chrono/Stopwatches**
 #### Struct `cpu_times`
 
 ```c++
+using nanosecond_type = int_least64_t;
+const short default_places = 6;
+
 struct cpu_times {
   nanosecond_type wall, user, system;
   void clear() { wall = user = system = 0LL; }
@@ -78,28 +81,66 @@ std::string format(const cpu_times& times, short places = default_places);
 
 #### Class `cpu_timer`
 
-* `cpu_timer() noexcept`
-* `is_stopped() const noexcept`
-* `elapsed() const noexcept -> cpu_times`
-* `format(...) const -> std::string`
-* `start() noexcept`
-* `stop() noexcept`
-* `resume() noexcept`
+```c++
+class cpu_timer {
+  cpu_times m_times; bool m_is_stopped;
+public:
+  ctor() noexcept { start(); } ~dtor();
+
+  bool is_stopped() const noexcept { return m_is_stopped; }
+  cpu_times elapsed() const noexcept;
+  std::string format(short places=default_places, const std::string& format) const;
+  std::string format(short places=default_places) const;
+
+  void start() noexcept; void stop() noexcept; void resume() noexcept;
+};
+```
 
 #### Class `auto_cpu_timer`
 
 ```c++
-class auto_cpu_timer : public cpu_timer;
+const std::string default_fmt{" %ws wall, %us user + %ss system = %ts CPU (%p%)\n"};
+
+class auto_cpu_timer : public cpu_timer {
+  short m_places; std::string m_format; std::ostream* m_os;
+public:
+  explicit ctor(short places=default_places);
+  ctor(short places, const std::string& format);
+  explicit ctor(const std::string& format);
+  ctor(std::ostream& os, short places, const std::string& format);
+  explicit ctor(std::ostream& os, short places=default_places);
+  ctor(std::ostream& os, const std::string& format);
+  ~dtor();
+
+  std::ostream& ostream() const { return *m_os; }
+  short places() const { return m_places; }
+  const std::string& format_string() const { return m_format; }
+};
 ```
 
-##### Members
+#### class `progress_display`
 
-* `auto_cpu_timer([std::ostream &], [short places], [const std::string& format])`
-* `~auto_cpu_timer()` - print result on output stream.
-* `ostream() const -> std::ostream&`
-* `places() const -> short`
-* `format_string() const -> const std::string&`
-* `report()` - Write current elapsed string to output stream
+```c++
+class progress_display { // non-copyable
+  std::ostream& m_os;
+  const std::string m_s1, m_s2, m_3;
+  unsigned long _count=0, _expected_count, _nex_tic_count=0;
+  unsigned int _tic=0;
+public:
+  explicit ctor(unsigned long expected_count, std::ostream& os =std::cout,
+    const std::string& s1="\n", const std::string& s1="", const std::string& s1="");
+  void restart(unsigned long expected_count);
+  unsigned long operator+= (unsigned long increment);
+};
+```
+
+prints:
+
+```
+{s1}0%   10   20   30   40   50   60   70   80   90   100%
+{s2}|----|----|----|----|----|----|----|----|----|----|
+{s3}********
+```
 
 ------
 ### Rationale
@@ -115,25 +156,7 @@ class auto_cpu_timer : public cpu_timer;
 * `<boost/config.hpp>`
 * `<boost/config/auto_link.hpp>` - For timer library linkage.
 * `<boost/cstdint.hpp>`
-* `<boost/config/warning_disable.hpp>`
 * `<boost/config/abi_prefix.hpp>`, `<boost/config/abi_suffix.hpp>`
-
-#### Boost.System
-
-* `<boost/system/api_config.hpp>` - Detect POSIX/Windows.
-* `<boost/cerrno.hpp>`.
-
-#### Boost.Chrono
-
-* `<boost/chrono/chrono.hpp>`
-
-#### Boost.IO
-
-* `<boost/io/ios_state.hpp>` - IOS state saver
-
-#### Boost.ThrowException
-
-* `<boost/throw_exception.hpp>`
 
 ------
 ### Standard Facilities
