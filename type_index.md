@@ -13,6 +13,19 @@
 
 #### API
 
+```c++
+#ifdef BOOST_TYPE_INDEX_USER_TYPEINDEX
+#include BOOST_TYPE_INDEX_USER_TYPEINDEX
+#elif BOOST_NO_RTTI || defined(BOOST_TYPE_INDEX_FORCE_NO_RTTI_COMPATIBILITY)
+using type_index = ctti_type_index;
+#else
+using type_index = stl_type_index;
+#endif
+type_index type_id<T>() noexcept { return type_index::type_id<T>(); }
+type_index type_id_with_cvr<T>() noexcept { return type_index::type_id_with_cvr<T>(); }
+type_index type_id_runtime<T>(const T& runtime_val) noexcept { return type_index::type_id_runtime(runtime_val); }
+```
+
 * `typedef xxxxx type_index`
   * `raw_name() const noexcept -> const char*`
   * `name() const noexcept -> const char*`
@@ -35,16 +48,31 @@
 * Detected **RTTI** support, to select `std::type_index` or simulated **CTTI** solution.
 * Macro `BOOST_TYPE_INDEX_FORCE_NO_RTTI_COMPATIBILITY`,
   force use **CTTI** even if **RTTI** is available.
-* Macro `BOOST_TYPE_INDEX_USER_TYPEINDEX`, defined to be user-provided
+* Macro `BOOST_TYPE_INDEX_USER_TYPEINDEX`, path to a header, including user-provided
   `type_index` implementation.
 
 #### Extensibility
 
-Derive from `type_index_facade`:
+Compatible `type_index` class should derive from `type_index_facade`:
 
 ```c++
 template <class Derived, class TypeInfo>
-class type_index_facade { /* ... */ }
+class type_index_facade { // CRTP base
+  const Derived& derived() const noexcept; // cast *this to Derived
+public:
+  using type_info_t TypeInfo;
+  const char* name() const noexcept { return derived().raw_name(); }
+  std::string pretty_name() const { return derived().name(); }
+  bool equal(const Derived&) const noexcept; // compare raw_name()
+  bool before(const Derived&) const noexcept; // compare raw_name()
+  size_t hash_code() const noexcept; // hash_range on raw_name;
+};
+constexpr bool operator== <D,TI> (const type_index_facade<D,TI>&, const type_index_facade<D,TI>&) noexcept;
+constexpr bool operator== <D,TI> (const TI&, const type_index_facade<D,TI>&) noexcept;
+constexpr bool operator== <D,TI> (const type_index_facade<D,TI>&, const TI&) noexcept;
+// and also !=, <, >, <=, >=
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr> (std::basic_ostream<Ch,Tr>&, const type_index_facade<D,TI>&); // pretty_name
+size_t hash_value<D,TI> (const type_index_facade<D,TI>&) noexcept; // hash_code
 ```
 
 User may provide its own `type_info` class, and at least these members of `type_index`:
@@ -56,11 +84,76 @@ User may provide its own `type_info` class, and at least these members of `type_
 
 #### Implementation based on `std::type_info`
 
+```c++
+class detail::cvr_saver<T>{};
+
+class stl_type_index : public type_index_facade<stl_type_index, std::type_info> {
+  const std::type_info* data_;
+public:
+  using type_info_t = std::type_info;
+  ctor(const type_info_t& data=typeid(void)) noexcept; //
+  const type_info_t& type_info() const noexcept;
+  const char* raw_name() const noexcept;
+  const char* name() const noexcept;
+  std::string pretty_name() const; // use core::scoped_demangled_name, treate cvr_saver
+
+  size_t hash_code() const noexcept;
+  bool equal(const stl_type_index&) const noexcept;
+  bool before(const stl_type_index&) const noexcept;
+
+  static stl_type_index type_id<T> () noexcept;
+  static stl_type_index type_id_with_cvr<T> () noexcept; // wrap with cvr_saver if T has any of cvr
+  static stl_type_index type_id_runtime<T> (const T& value) noexcept;
+};
+
+const std::type_info& detail::stl_construct_typeid_ref<T> (const T*) noexcept { return typeid(T); }
+
+#define BOOST_TYPE_INDEX_REGISTER_CLASS \
+    virtual const std::type_info& boost_type_index_type_id_runtime_() const noexcept \
+    { return boost::typeindex::detail::stl_construct_typeid_ref(this); }
+```
+
 * Use `boost::core::demangled_name()` to get pretty name.
 * Use a internal wrapper class to mark for `_with_cvr` case.
 * Call hidden virtual function in `type_id_runtime` when RTTI is unavailable.
 
 #### Implementation based on compile-time simulation
+
+```c++
+struct detail::ctti<T> {
+  static const char* n() noexcept; // BOOST_TYPE_INDEX_FUNCTION_SIGNATURE, __FUNCSIG__, or __PRETTY_FUNCTION__, known actual place within it
+};
+class detail::ctti_data {}; // non-constructible, non-copyable type, used for type info ptr;
+const ctti_data& ctti_construct<T>() noexcept() { return *reinterpret_cast<const ctti_data*>(ctti<T>::n()); }
+
+class ctti_type_index : public type_index_facade<ctti_type_index, std::type_info> {
+  const char* data_ = ctti<void>::n(); // use name pointer as type identifier information
+  size_t get_raw_name_length() const noexcept; // strlen of raw_name excluding markers
+  explicit ctor(const char* data) noexcept;
+public:
+  using type_info_t = ctti_data;
+  constexpr ctor() noexcept;
+  ctor(const type_info_t& data) noexcept;
+  const type_info_t& type_info() const noexcept;
+  constexpr const char* raw_name() const noexcept;
+  constexpr const char* name() const noexcept;
+  std::string pretty_name() const; // raw_name trimmed out ending spaces
+
+  size_t hash_code() const noexcept; // hash_range on raw_name
+  constexpr bool equal(const ctti_type_index&) const noexcept;
+  constexpr bool before(const ctti_type_index&) const noexcept;
+
+  constexpr static ctti_type_index type_id<T> () noexcept;
+  constexpr static ctti_type_index type_id_with_cvr<T> () noexcept; // wrap with cvr_saver if T has any of cvr
+  static ctti_type_index type_id_runtime<T> (const T& value) noexcept;
+};
+
+const ctti_data& detail::ctti_construct_typeid_ref<T> (const T*) noexcept { return ctti_construct<T>(); }
+
+#define BOOST_TYPE_INDEX_REGISTER_CLASS \
+    virtual const boost::typeindex::detail::ctti_data& boost_type_index_type_id_runtime_() const noexcept \
+    { return boost::typeindex::detail::ctti_construct_typeid_ref(this); }
+```
 
 * `type_info` is an unusable type, `reinterpret_cast`ed from a C-string, which
   is extracted from a function's `BOOST_CURRENT_FUNCTION` (by default).
@@ -74,6 +167,15 @@ User may provide its own `type_info` class, and at least these members of `type_
 Header `<boost/type_index/runtime_cast.hpp>`
 
 ```c++
+type_index detail::runtime_class_construct_type_id<T> (T const*) { return type_id<T>(); }
+constexpr const void* detail::find_instance<Self> (type_index const&, const Self*) noexcept { return nullptr; }
+const void* detail::find_instance<Base,...OtherBases,Self> (type_index const& idx, const Self*) noexcept {
+  if (const void* ptr = self->Base::boost_type_index_find_instance_(idx)) return ptr;
+  return find_instance<OtherBases...>(idx, self); // find in other branch
+}
+
+
+
 struct bad_runtime_cast : exception;
 
 T runtime_cast<T,U>(U [const]* u) noexcept;
@@ -99,35 +201,17 @@ boost::shared_ptr<T> runtime_pointer_cast<T,U>(boost::shared_ptr<U> const& u);
 
 * `<boost/config.hpp>`.
 
-#### Boost.StaticAssert
+#### Boost.ContainerHash
 
-* `<boost/static_assert.hpp>`.
+* `<boost/container_hash/hash_fwd.hpp>`, `<boost/container_hash/hash.hpp>`.
+
+#### Boost.Core
+
+* `<boost/core/demangle.hpp>`, when `std::type_info` based implementation is chosen.
 
 #### Boost.ThrowException
 
 * `<boost/throw_exception.hpp>`, when `std::type_info` based implementation is chosen.
-
-#### Boost.Core
-
-* `<boost/demangle.hpp>`, when `std::type_info` based implementation is chosen.
-* `<boost/core/addressof.hpp>` - `runtime_cast`
-
-#### Boost.TypeTraits
-
-* `<boost/type_traits/*.hpp>`, for CV and Ref modifying.
-
-#### Boost.MPL
-
-* `<boost/mpl/if.hpp>`, `<boost/mpl/or.hpp>`, when `std::type_info` based implementation is chosen.
-* `<boost/mpl/bool.hpp>`, when CTTI emulation implementation is chosen.
-
-#### Boost.SmartPtr
-
-* `<boost/smart_ptr/shared_ptr.hpp>` - `runtime_pointer_cast`.
-
-#### Boost.Preprocessor
-
-* `<boost/preprocessor/seq/for_each.hpp>` - `runtime_cast`
 
 ------
 ### Standard Facilities
