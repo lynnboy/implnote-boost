@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/type_index`
 * repo: `boostorg/type_index`
-* commit: `af61d6b8`, 2017-02-28
+* commit: `32dcf01`, 2025-05-12
 
 ------
 ### Type index solution
@@ -103,7 +103,13 @@ public:
 
   static stl_type_index type_id<T> () noexcept;
   static stl_type_index type_id_with_cvr<T> () noexcept; // wrap with cvr_saver if T has any of cvr
-  static stl_type_index type_id_runtime<T> (const T& value) noexcept;
+  static stl_type_index type_id_runtime<T> (const T& value) noexcept {
+#if BOOST_NO_RTTI
+    return value.boost_type_index_type_id_runtime_();
+#else
+    return typeid(value);
+#endif
+  }
 };
 
 const std::type_info& detail::stl_construct_typeid_ref<T> (const T*) noexcept { return typeid(T); }
@@ -145,7 +151,9 @@ public:
 
   constexpr static ctti_type_index type_id<T> () noexcept;
   constexpr static ctti_type_index type_id_with_cvr<T> () noexcept; // wrap with cvr_saver if T has any of cvr
-  static ctti_type_index type_id_runtime<T> (const T& value) noexcept;
+  static ctti_type_index type_id_runtime<T> (const T& value) noexcept {
+    return value.boost_type_index_type_id_runtime_();
+  }
 };
 
 const ctti_data& detail::ctti_construct_typeid_ref<T> (const T*) noexcept { return ctti_construct<T>(); }
@@ -176,20 +184,41 @@ const void* detail::find_instance<Base,...OtherBases,Self> (type_index const& id
 
 
 
-struct bad_runtime_cast : exception;
+struct bad_runtime_cast : std::exception {};
 
-T runtime_cast<T,U>(U [const]* u) noexcept;
-T [const]* runtime_cast<T,U>(U [const]* u) noexcept;
+T runtime_cast<T,U> (U [const]* u) noexcept {
+  using TT = remove_pointer_t<T>;
+  if constexpr (is_base_of_v<T,U>) return u; // const_cast
+  else {
+    return static_cast<TT const*>(u->boost_type_index_find_instance_(type_id<TT>));
+  }
+}
+T* runtime_pointer_cast<T,U> (U [const]* u) noexcept { return runtime_cast<T*>(u); }
 
-add_reference_t<[const] T> runtime_cast<T,U>(U [const]& u); // throws
+add_lvalue_reference_t<[const] T> runtime_cast<T,U>(U [const]& u) {
+  using TT = remove_reference_t<T>;
+  TT* p = runtime_pointer_cast<TT*>(std::addressof(u));
+  if (!p) throw bad_runtime_cast();
+  return *p;
+}
 
 std::shared_ptr<T> runtime_pointer_cast<T,U>(std::shared_ptr<U> const& u);
-boost::shared_ptr<T> runtime_pointer_cast<T,U>(boost::shared_ptr<U> const& u);
+SmartPtr<T> runtime_pointer_cast<T,U,SmartPtr<TT>>(SmartPtr<U> const& u);
+
+#define BOOST_TYPE_INDEX_IMPLEMENT_RUNTIME_CAST(...) \
+    virtual void const* boost_type_index_find_instance_(boost::typeindex::type_index const& idx) const noexcept { \
+        if (idx == boost::typeindex::detail::runtime_class_construct_type_id(this)) return this; \
+        return boost::typeindex::detail::find_instance<__VA_ARGS__>(idx, this);                                   \
+    }
+#define BOOST_TYPE_INDEX_REGISTER_RUNTIME_CLASS(...) \
+    BOOST_TYPE_INDEX_REGISTER_CLASS \
+    BOOST_TYPE_INDEX_IMPLEMENT_RUNTIME_CAST(__VA_ARGS__)
 ```
 
-* `BOOST_TYPE_INDEX_REGISTER_RUNTIME_CLASS` adds a recursive lookup virtual function.
-  Arguments can be `BOOST_TYPE_INDEX_NO_BASE_CLASS` for nobase, and `(base1)(base2)...` for bases.
+* `BOOST_TYPE_INDEX_IMPLEMENT_RUNTIME_CAST` adds a recursive lookup virtual function.
+  Arguments can be `()` for nobase, and `(base1,base2...)` for multiple bases.
   It uses `type_id<T>()` internally.
+* `BOOST_TYPE_INDEX_REGISTER_RUNTIME_CLASS` adds both `type_id<>` and `runtime_cast<>` support.
 * `runtime_cast` supports pointers, references
 * `runtime_pointer_cast`, supports std/boost `shared_ptr`.
   It perform lookup for downcasting or sideway casting.

@@ -13,25 +13,56 @@
 
 * `<boost/uuid.hpp>`
 
-##### Partial STL container interface (as fixed byte array)
+```c++
+struct uuid {
+  using repr_type = uint8_t[16];
+  struct data_type {
+    uint8_t alignas(uint64_t) repr_[16] = {};
+    constexpr operator repr_type [const] & () [const] noexcept; // impl convert to uint8_t[16]
+    constexpr uint8_t [const]* operator() () [const] noexcept; // () -> uint8_t*
+  };
+  data_type data={};
+public: // container API
+  using value_type = uint8_t; // [const_]reference and [const_]iterator
+  using size_type = size_t; using difference_type = ptrdiff_t;
+  ctor(); constexpr ctor(repr_type const&) noexcept; // copy-ctor
 
-* Member types `value_type`, `iterator`, `size_type`, etc.
-* Methods `begin`, `end`, `size`, `swap`, `static_size`.
-* Operators `==`, `<`, `!=`, `>`, `<=`, `>=`
-* Non members `swap` and `hash_value`
+  [const_]iterator begin() [const] noexcept;
+  [const_]iterator end() [const] noexcept;
+  constexpr size_type size() const noexcept; // static_size, 16
+  static constexpr size_type static_size() noexcept; // 16
 
-##### UUID specific
+  bool is_nil() const noexcept;
+  enum variant_type { variant_ncs, variant_rfc_4122, variant_microsoft, variant_future };
+  variant_type variant() const noexcept; // based on data[8]'s high 4 bits: 0xxx, 10xx, 110x, 111x
+  enum version_type { version_unknown = -1, // version_XXX
+    time_based = 1, dce_security, name_based_md5, random_number_based,
+    name_based_sha1, time_based_v6, time_based_v7, custom_v8 };
+  version_type version() const noexcept; // based on data[6]'s high 4 bits
 
-* `bool is_nil() const noexcept`
+  using timestamp_type = uint64_t;
+  timestamp_type timestamp_v1() const noexcept; // data[6:7]/12 ++ data[4:5]/8 ++ data[0:3]/8
+  timestamp_type timestamp_v6() const noexcept; // data[0:3]/32 ++ data[4:5]/16 ++ data[6:7]/12
+  timestamp_type timestamp_v7() const noexcept; // data[0:7] >> 16
+  uuid_clock::time_point time_point_v1() const noexcept; // and v6, uuid_clock::from_timestamp
+  std::chrono::time_point<system_clock,milliseconds> time_point_v7() const noexcept;
 
-* `variant_type variant() const noexcept`
-  `enum variant_type { variant_ncs, variant_rfc_4122, variant_microsoft, variant_future }`
+  using clock_seq_type = uint16_t;
+  clock_seq_type clock_seq() const noexcept; // data[8:9]/14
 
-* `version_type version() const noexcept`
-  `enum version_type { version_unknown, version_time_based, version_dce_security,
-    version_name_based_md5, version_random_number_based, version_name_based_sha1 }`
+  using node_type = std::array<uint8_t, 6>;
+  node_type node_identifier() const noexcept; // data[10:15]
 
-##### Optimization
+  void swap(uuid&) noexcept;
+};
+bool operator== (uuid const&, uuid const&) noexcept; // and !=, <, >, <=, >=
+void swap(uuid&, uuid&) noexcept;
+size_t hash_value(uuid const&) noexcept;
+// Boost.Serialization support
+struct ::boost::serialization::implementation_level_impl<const uuid> : integral_constant<int, 1>;
+// std hash support
+struct std::hash<uuid> { size_t operator()( uuid const&) const noexcept; }; // hash_value
+```
 
 Provides SSE2/SSE3/SSE4.1 optimized version for compare and swap operations.
 
@@ -109,59 +140,43 @@ Just creates NIL uuid values.
 * `seed<URNG>(URNG& rng)`, seed the `rng` with `seed_rng` generated values.
 
 ------
+#### Implementation Details
+
+```c++
+namespace uuids::detail;
+
+// byte order
+uint{16|32|64}_t byteswap(uint{16|32|64}_t) noexcept;
+uint{16|32|64}_t load_{native|little|big}_u{16|32|64}(void const* p) noexcept;
+void store_{native|little|big}_u{16|32|64}(void const* p, uint{16|32|64}_t) noexcept;
+// also support for __uint128_t if available
+
+uint64_t hash_mix_mx(uint64_t x) noexcept { x *= 0xD96AAA55; x ^= x>>16; }
+uint64_t hash_mix_fmx(uint64_t x) noexcept { x *= 0x7DF954AB; x ^= x>>16; }
+
+T numeric_cast<T,U>(U); // throw if out-of-range
+
+Ch* to_chars<Ch> (uuid const& u, Ch* out) noexcept; // "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+```
+
+
 ### Dependency
-
-#### Boost.Config
-
-* `<boost/config.hpp>`
-* `<boost/cstdint.hpp>`
-
-#### Boost.TypeTraits
-
-* `<boost/type_traits/is_pod.hpp>`, `<boost/type_traits/integral_constant.hpp>`, register `uuid` as POD.
 
 #### Boost.Assert
 
 * `<boost/assert.hpp>`
 
-#### Boost.StaticAssert
+#### Boost.Config
 
-* `<boost/static_assert.hpp>`
+* `<boost/config.hpp>`, `<boost/config/workaround.hpp>`
 
 #### Boost.ThrowException
 
 * `<boost/throw_exception.hpp>` for conversion parsing error and SHA1 bit count overflow.
 
-#### Boost.IO
+#### Boost.TypeTraits
 
-* `<boost/io/ios_state.hpp>` for I/O operators.
-
-#### Boost.Serialization
-
-* `<boost/serialization/level.hpp>`, to register `uuid` as primitive type.
-
-#### Boost.Core
-
-* `<boost/core/noncopyable.hpp>`, `seed_rng` generator class is non-copyable.
-* `<boost/core/null_deleter.hpp>`
-
-#### Boost.Iterator
-
-* `<boost/iterator/iterator_facade.hpp>`, internal used by `seed`.
-
-#### Boost.WinAPI
-
-* `<boost/detail/winapi/*.hpp>` on Windows, access system entropy resources by `seed_rng`.
-
-#### Boost.SmartPtr
-
-* `<boost/shared_ptr.hpp>`, used to hold URNG in `basic_random_generator`.
-
-#### Boost.Random
-
-* Used by `random_generator`.
-* `<boost/random/uniform_int.hpp>`, `<boost/random/variate_generator.hpp>`
-* `<boost/random/mersenne_twister.hpp>`, for `mt19937`
+* `<boost/type_traits/integral_constant.hpp>`.
 
 ------
 ### Standard Facilities
