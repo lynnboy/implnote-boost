@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/winapi`
 * repo: `boostorg/winapi`
-* commit: `c3e8180b`, 2017-02-17
+* commit: `094612e`, 2025-08-26
 
 ------
 ### Windows API Declaration
@@ -19,7 +19,12 @@ Used internally to build without windows headers from SDK.
 #### Boost.Config
 
 * `<boost/config.hpp>`
-* `<boost/cstdint.hpp>`
+* `<boost/config/header_deprecated.hpp>`
+
+#### Boost.Predef
+
+* `<boost/predef/version_number.h>`
+* `<boost/predef/platform.h>`
 
 ------
 ### Standard Facilities

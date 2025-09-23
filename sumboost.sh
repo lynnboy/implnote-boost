@@ -3,11 +3,12 @@
 cd ~/boost/libs
 
 #mv ~/boost.list ~/boost.list2
-#du -sb */include */src */extras/src */*/include */*/src | sort -n > ~/boost.list
+#du -sb */include */src smart_ptr/extras/src numeric/*/include | sort -n > ~/boost.list
 
 read -r -d '' list << EOM
     static_assert
     conversion
+    lambda2
     #disjoint_sets
     assert
     #compatibility
@@ -20,42 +21,44 @@ read -r -d '' list << EOM
     timer
     rational
     align
+    container_hash
     property_map
     foreach
-    any
     tuple
+    any
     scope_exit
     integer
     convert
     assign
-    type_index
     function
     property_map_parallel
     coroutine2
+    type_index
     exception
     concept_check
     functional
-    dynamic_bitset
-    detail
     optional
+    detail
     #chrono/stopwatches
     crc
     endian
     lexical_cast
-    uuid
     #signals
+    uuid
     multi_array
     flyweight
-    lockfree
     #tr1
     format
+    lockfree
     numeric/conversion
     pool
     system
     numeric/interval
+    dynamic_bitset
     statechart
     iterator
     tti
+    coroutine
     predef
     dll
     core
@@ -63,46 +66,44 @@ read -r -d '' list << EOM
     sort
     parameter
 #
-    lambda2
     typeof
     parameter_python
-    compat
-    container_hash
     describe
+    bloom
     bind
     variant2
+    compat
     stacktrace
     stl_interfaces
     nowide
     scope
     yap
-    redis
     mp11
     leaf
-    hash2
     variant
+    redis
     static_string
     callable_traits
-    program_options
     signals2
     local_function
+    program_options
     heap
-    coroutine
     safe_numerics
+    hash2
     poly_collection
     ptr_container
     utility
     circular_buffer
-    cobalt
     hof
-    smart_ptr
     fiber
+    smart_ptr
     property_tree
     mqtt5
     chrono
     #sync
     histogram
     lambda
+    cobalt
     contract
     bimap
     type_erasure
@@ -130,21 +131,21 @@ read -r -d '' list << EOM
     python
     charconv
     xpressive
-    process
     graph_parallel
+    process
     random
     type_traits
-    msm
     numeric/odeint
     test
+    json
     url
     pfr
-    atomic
+    msm
     thread
-    json
     wave
-    parser
+    atomic
     polygon
+    parser
     compute
     gil
     interprocess
@@ -155,8 +156,8 @@ read -r -d '' list << EOM
     log
     qvm
     container
-    multiprecision
     graph
+    multiprecision
     numeric/ublas
     hana
     mpl

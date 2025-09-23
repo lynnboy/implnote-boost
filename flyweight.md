@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/flyweight`
 * repo: `boostorg/flyweight`
-* commit: `76c84ce`, 2025-06-22
+* commit: `575a685`, 2025-09-20
 
 ------
 ### Flyweight Framework

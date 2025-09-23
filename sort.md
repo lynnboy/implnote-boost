@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/sort`
 * repo: `boostorg/sort`
-* commit: `1a58a13`, 2025-06-29
+* commit: `93c298e`, 2025-09-13
 
 ------
 ### Sort Algorithms Overview
