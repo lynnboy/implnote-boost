@@ -13,6 +13,7 @@ read -r -d '' list << EOM
     assert
     #compatibility
     array
+    typeof
     ratio
     throw_exception
     logic
@@ -66,7 +67,6 @@ read -r -d '' list << EOM
     sort
     parameter
 #
-    typeof
     parameter_python
     describe
     bloom
