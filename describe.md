@@ -222,3 +222,5 @@ std::basic_ostream<Ch,Tr>& operators::operator<< <T,Ch,Tr>  (std::basic_ostream<
 
 ------
 ### Standard Facilities
+
+Language: static reflection, `^^T`, `std::meta::info` (C++26), `template for` (C++26);
