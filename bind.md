@@ -1,4 +1,4 @@
-# Boost.Assignment
+# Boost.Bind
 
 * lib: `boost/libs/bind`
 * repo: `boostorg/bind`
