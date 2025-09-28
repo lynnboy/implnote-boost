@@ -146,63 +146,40 @@ using detail::is_in_place_index<T> = ...;
 
 class variant<...T> : private variant_base<T...> {
 public:
-    ctor(self const& r) requires(is_trivally_copy_constructible_v<T> && ...) = default;
-    ctor(self const& r) noexcept(is_nothrow_copy_constructible_v<T> && ...) requires(is_copy_constructible_v<T> && ...)
+    ctor(self {const&|&&} r) requires(is_trivally_{copy|move}_constructible_v<T> && ...) = default;
+    ctor(self {const&|&&} r) noexcept(is_nothrow_{copy|move}_constructible_v<T> && ...) requires(is_{copy|move}_constructible_v<T> && ...)
     {
         template for (size_t i : std::make_index_sequence<sizeof...(T)>)
-            if (i == r.index()) _replace(mp_size_t<i>{}, r._get_impl(mp_size_t<i>{}));
+            if (i == r.index()) _replace(mp_size_t<i>{}, <std::move>(r._get_impl(mp_size_t<i>{})));
     }
-    ctor(self const& r) = delete;
-    ctor(self && r) requires(is_trivally_move_constructible_v<T> && ...) = default;
-    ctor(self && r) noexcept(is_nothrow_move_constructible_v<T> && ...) requires(is_move_constructible_v<T> && ...)
+    ctor(self {const&|&&} r) = delete;
+    self& operator=(self {const&|&&} r) requires((is_trivally_{copy|move}_constructible_v<T> && is_trivally_{copy|move}_assignable_v<T> && is_trivally_destructible_v<T>) && ...) = default;
+    self& operator=(self {const&|&&} r) noexcept(is_nothrow_{copy|move}_constructible_v<T> && ...) requires ((is_{copy|move}_constructible_v<T> && is_{copy|move}_assignable_v<T>) && ...)
     {
         template for (size_t i : std::make_index_sequence<sizeof...(T)>)
-            if (i == r.index()) _replace(mp_size_t<i>{}, std::move(r._get_impl(mp_size_t<i>{})));
-    }
-    ctor(self && r) = delete;
-    self& operator=(self const& r) requires((is_trivally_copy_constructible_v<T> && is_trivally_copy_assignable_v<T> && is_trivally_destructible_v<T>) && ...) = default;
-    self& operator=(self const& r) noexcept(is_nothrow_copy_constructible_v<T> && ...) requires ((is_copy_constructible_v<T> && is_copy_assignable_v<T>) && ...)
-    {
-        template for (size_t i : std::make_index_sequence<sizeof...(T)>)
-            if (i == r.index()) emplace<i>(r._get_impl(mp_size_t<i>{}));
+            if (i == r.index()) emplace<i>(<std::move>(r._get_impl(mp_size_t<i>{})));
         return *this;
     }
-    self& operator=(self const& r) = delete;
-    self& operator=(self && r) requires((is_trivally_copy_constructible_v<T> && is_trivally_copy_assignable_v<T> && is_trivally_destructible_v<T>) && ...) = default;
-    self& operator=(self && r) noexcept(is_nothrow_copy_constructible_v<T> && ...) requires ((is_copy_constructible_v<T> && is_copy_assignable_v<T>) && ...)
-    {
-        template for (size_t i : std::make_index_sequence<sizeof...(T)>)
-            if (i == r.index()) emplace<i>(std::move(r._get_impl(mp_size_t<i>{})));
-        return *this;
-    }
-    self& operator=(self && r) = delete;
+    self& operator=(self {const&|&&} r) = delete;
 
     constexpr ctor() noexcept(is_nothrow_default_constructible_v<T...[0]>)
         requires is_default_constructible_v<T...[0]> : base(mp_size_t<0>{}) {}
     constexpr ctor <U, Ud=std::decay_t<U>, V=resolve_overload_type<U&&,T...>> (U&& u) noexcept(is_nothrow_constructible_v<V,U&&>)
         requires !is_base_of_v<variant, Ud> && !is_in_place_index<Ud> && !is_in_place_type<Ud> && is_constructible_v<V,U&&>
         : base(resolve_overload_index<U&&, T...>(), std::forward<U>(u)) {}
-    constexpr explicit ctor <U, ...A, i=mp_find<variant<...>,U>> (in_place_type_t<U>, A&&... a)
-        requires is_constructible_v<U,A&&> : base(i{}, std::forward<A>(a)...) {}
-    constexpr explicit ctor <U, V, ...A, i=mp_find<variant<...>,U>> (in_place_type_t<U>, std::initializer_list<V> il, A&&... a)
-        requires is_constructible_v<U,std::initializer_list<V>&,A&&> : base(i{}, il, std::forward<A>(a)...) {}
-    constexpr explicit ctor <i, ...A> (in_place_index_t<i>, A&&... a)
-        requires is_constructible_v<T...[i],A&&> : base(mp_size_t<i>{}, std::forward<A>(a)...) {}
-    constexpr explicit ctor <i, V, ...A> (in_place_index_t<i>, std::initializer_list<V> il, A&&... a)
-        requires is_constructible_v<T...[i],std::initializer_list<V>&,A&&> : base(mp_size_t<i>{}, il, std::forward<A>(a)...) {}
+    constexpr explicit ctor <U, [V], ...A, i=mp_find<variant<...>,U>> (in_place_type_t<U>, <std::initializer_list<V> il>, A&&... a)
+        requires is_constructible_v<U,[std::initializer_list<V>&],A&&> : base(i{}, [il], std::forward<A>(a)...) {}
+    constexpr explicit ctor <i, [V], ...A> (in_place_index_t<i>, <std::initializer_list<V> il>, A&&... a)
+        requires is_constructible_v<T...[i],[std::initializer_list<V>&],A&&> : base(mp_size_t<i>{}, [il], std::forward<A>(a)...) {}
 
     constexpr self& operator= <U, V=resolve_overload_type<U,T...>> (U&& u) noexcept(is_nothrow_constructible_v<V,U&&>)
         requires !is_same_v<std::decay_t<U>, variant> && is_assignable_v<V&,U&&> && is_constructible_v<V,U&&>
     { emplace<resolve_overload_index<U, T...>::value> (std::forward<U>(u)); return *this; }
 
-    constexpr U& emplace<U,...A> (A&&...a) requires mp_count<variant,U>::value == 1 && is_constructible_v<U,A&&...>
-    { using I=mp_find<variant,U>; base::emplace<I::value>(std::forward<A>(a)...); return _get_impl(I{}); }
-    constexpr U& emplace<U,V,...A> (std::initializer_list<V> il, A&&...a) requires mp_count<variant,U>::value == 1 && is_constructible_v<U,std::initializer_list<V>&,A&&...>
-    { using I=mp_find<variant,U>; base::emplace<I::value>(il, std::forward<A>(a)...); return _get_impl(I{}); }
-    constexpr U& emplace<i,...A> (A&&...a) requires is_constructible_v<T...[i],A&&...>
-    { base::emplace<i>(std::forward<A>(a)...); return _get_impl(mp_size_t<i>{}); }
-    constexpr U& emplace<i,V,...A> (std::initializer_list<V> il, A&&...a) requires is_constructible_v<T...[i],std::initializer_list<V>&,A&&...>
-    { base::emplace<i>(il, std::forward<A>(a)...); return _get_impl(mp_size_t<i>{}); }
+    constexpr U& emplace<U,[V],...A> (<std::initializer_list<V> il>, A&&...a) requires mp_count<variant,U>::value == 1 && is_constructible_v<U,<std::initializer_list<V>&>,A&&...>
+    { using I=mp_find<variant,U>; base::emplace<I::value>(<il>, std::forward<A>(a)...); return _get_impl(I{}); }
+    constexpr U& emplace<i,[V],...A> (<std::initializer_list<V> il>, A&&...a) requires is_constructible_v<T...[i],<std::initializer_list<V>&>,A&&...>
+    { base::emplace<i>(<il>, std::forward<A>(a)...); return _get_impl(mp_size_t<i>{}); }
 
     constexpr bool valueless_by_exception() const noexcept { return false; } // always ex-safe
 
@@ -214,20 +191,109 @@ public:
     }
 
     // converting ctors
-    ctor <...U> (variant<U...> const& r) noexcept(is_nothrow_copy_constructible_v<U> && ...)
-        requires ((is_copy_constructible_v<U> && mp_contains<variant,U>::value) && ...) {
-            
-        }
+    ctor <...U> (variant<U...> {const&|&&} r) noexcept(is_nothrow_copy_constructible_v<U> && ...)
+        requires ((is_copy_constructible_v<U> && mp_contains<variant,U>::value) && ...)
+    {
+        template for (size_t i : std::make_index_sequence<sizeof...(U)>)
+            if (i == r.index()) { _replace(mp_find<variant,U...[i]>{}, r._get_impl(i)); }
+    }
+    ctor <...U> (variant<U...> && r) noexcept(is_nothrow_move_constructible_v<U> && ...)
+        requires ((is_move_constructible_v<U> && mp_contains<variant,U>::value) && ...)
+    {
+        template for (size_t i : std::make_index_sequence<sizeof...(U)>)
+            if (i == r.index()) { _replace(mp_find<variant,U...[i]>{}, std::move(r._get_impl(i))); }
+    }
+
+    // subset
+    constexpr variant<U...> subset <...U> () [const]{&|&&}
+        requires ((is_copy_constructible_v<U> && mp_contains<variant,U>::value) && ...)
+    {
+        template for (size_t i : std::make_index_sequence<sizeof...(T)>)
+            if (i == index()) {
+                using V = T...[i]; using J = mp_find<variant<U...>,V>;
+                if (J::value == sizeof...(U)) throw bad_variant_access(); // not found
+                return variant<U...>{in_place_index_t<J::value>, [std::move](_get_impl(i))};
+            }
+    }
 };
+
+constexpr bool operator== <...T> (variant<T...> const& v, variant<T...> const& w)
+{ return v.index() == w.index() && mp_with_index<sizeof...(T)>(v.index(), [v,w](auto i){return v._get_impl(i) == w._get_impl(i);}); }
+constexpr bool operator!= <...T> (variant<T...> const& v, variant<T...> const& w)
+{ return v.index() != w.index() || mp_with_index<sizeof...(T)>(v.index(), [v,w](auto i){return v._get_impl(i) != w._get_impl(i);}); }
+constexpr bool operator< <...T> (variant<T...> const& v, variant<T...> const& w)
+{ return v.index() < w.index() || mp_with_index<sizeof...(T)>(v.index(), [v,w](auto i){return v._get_impl(i) < w._get_impl(i);}); }
+constexpr bool operator> <...T> (variant<T...> const& v, variant<T...> const& w) { return w < v; }
+constexpr bool operator<= <...T> (variant<T...> const& v, variant<T...> const& w)
+{ return v.index() <= w.index() && mp_with_index<sizeof...(T)>(v.index(), [v,w](auto i){return v._get_impl(i) <= w._get_impl(i);}); }
+constexpr bool operator>= <...T> (variant<T...> const& v, variant<T...> const& w) { return w <= v; }
+
+// visit
+variant<T...> const& detail::extract_variant_base_<...T>(variant<T...> const&);
+using detail::extract_variant_base<V> = remove_cv_ref_t<decltype(extract_variant_base_(declval<V>()))>;
+using detail::variant_base_size<V> = variant_size<extract_variant_base<V>>;
+using detail::copy_cv_ref_t<T,[const][volatile]U>= T [const][volatile];
+using detail::copy_cv_ref_t<T,U{&|&&}> = copy_cv_ref_t<T,U> {&|&&};
+using detail::apply_cv_ref<V> = mp_product<copy_cv_ref_t, extract_variant_base<V>, mp_list<V>>;
+
+struct detail::deduced{};
+
+constexpr auto visit <R=deduced, F> (F&& f) -> Vret<R,F> { return std::forward<F>(f)(); }
+constexpr auto visit <R=deduced, F,V1> (F&& f, V1&& v1) -> Vret<R,F,V1>
+{ return mp_with_index<variant_base_size<V1>>( v1.index(), [&](auto i) {
+    return std::forward<F>(f)(unsafe_get<i.value>(std::forward<V1>(v1))>);
+    });
+}
+constexpr auto visit <R=deduced, F,V1,V2,...V> (F&& f, V1&& v1, V2&& v2, V&&... v) -> Vret<R,F,V1,V2,V...>
+{ return mp_with_index<variant_base_size<V1>>( v1.index(), [&](auto i) {
+    auto f2 = [&](auto&&...a) { return std::forward<F>(f)(unsafe_get<i.value>(std::forward<(decltype(a)>(a)...)>)) };
+    return visit<R>(f2, std::forward<V2>(v2), std::forward<V>(v)... ); // recursion 
+}); }
+
+
+void swap<...T> (variant<T...>& v, variant<T...>& w) noexcept(noexcept(v.swap(w)))
+    requires ((is_move_constructible_v<T> && is_swappable_v<T>) && ...)
+{ v.swap(w); }
+
+constexpr auto visit_by_index <R=deduced,V,...F> (V&& v, F&&... f) -> Vret2<R,V,F...>
+    requires variant_size_v<V> == sizeof...(F)
+{
+    auto tp = make_tuple(f...);
+    return mp_with_index<variant_size_v<V>>(v.index(), // call f...[i](get<i>(v))
+    [&](auto i){return (std::move(get<i.value>(tp))(unsafe_get<i.value>(std::forward<V>(v))));});
+}
+
+// stream output
+using detail::is_output_streamable<Os,T> = {SFINAE declval<Os&>() << declval<T const&>()};
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr> (std::basic_ostream<Ch,Tr>&, monostate const&); // "monostate"
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,T1,...T> (std::basic_ostream<Ch,Tr>&, variant<T1,T...> const&); // os << get<i>(v)
+
+// hash
+size_t hash_value(monostate const&) { return 0xA7EE4757u; }
+size_t hash_value<...T> (variant<T...> const& v)
+{ mp_with_index<sizeof...(T)>(v.index(), [&](auto i){return hash_value_impl(i.value, boost::hash<T...[i.value]>(unsafe_get<i.value>(v)));}); }
+size_t detail::hash_value_std<...T> (variant<T...> const& v)
+{ mp_with_index<sizeof...(T)>(v.index(), [&](auto i){return hash_value_impl(i.value, std::hash<T...[i.value]>(unsafe_get<i.value>(v)));}); }
+struct std::hash<monostate> { size_t operator() (monostate const& v) const { return hash_value(v); } };
+struct std::hash<variant<T...>> requires (is_default_constructible_v<std::hash<remove_const_t<T>>> && ...)
+{ size_t operator() (variant<T...> const& v) const { return hash_value_std(v);} };
+
+// json
+struct boost::json::is_null_like<monostate> : true_type {};
+void tag_invoke<...T> (json::value_from_tag const&, json::value& v, variant<T...> const& w)
+{ visit([&](auto const& t){ json::value_from(t, v); }, w); } // value_from(get<w.index()>(w), v)
+auto tag_invoke<...T> (json::try_value_to_tag<variant<T...>> const&, json::value& v) -> json::result_for<variant<T...>, json::value>::type
+{
+    auto r = json::result_from_errno<variant<T...>>(EINVAL, BOOST_SOURCE_LOCATION); // system::result<variant>
+    mp_for_each<mp_iota_c<sizeof...(T)>>([&](auto i){ // for each index
+        if (!r) if (auto r2 = json::try_value_to<T...[i.value]>(v), r2) r.emplace(in_place_index<i.value>, std::move(*r2));
+    });
+    return r;
+}
 ```
 
-------
-
-```c++
-```
-
-------
-#### Configuration
+* Always strong-exception-safety guarantee. No `stateless_by_exception`.
+* Use double storage when any of `T` isn't nothrow move constructible.
 
 ------
 ### Dependency
@@ -248,5 +314,4 @@ public:
 ------
 ### Standard Facilities
 
-Language: lambda expression (C++11)
 Library: `<bind>` (C++11), `mem_fn` (C++11)
