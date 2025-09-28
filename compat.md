@@ -5,13 +5,69 @@
 * commit: `a5a56ee`, 2025-09-05
 
 ------
+#### `<type_traits>`
+
+* Header `<boost/compat/type_traits.hpp>`
+
+```c++
+using add_lvalue_reference_t<T> = std::add_lvalue_reference<T>::type;
+using add_rvalue_reference_t<T> = std::add_rvalue_reference<T>::type;
+using add_const_t<T> = std::add_const<T>::type;
+using remove_const_t<T> = std::remove_const<T>::type;
+using remove_cv_t<T> = std::remove_cv<T>::type;
+using remove_reference_t<T> = std::remove_reference<T>::type;
+using remove_cvref_t<T> = remove_cv_t<remove_reference_t<T>>;
+using remove_pointer_t<T> = std::remove_pointer<T>::type;
+using decay_t<T> = std::decay<T>::type;
+using enable_if_t<b,T=void> = std::enable_if<b,T>::type;
+using conditional_t<b,T,F> = std::conditional<b,T,F>::type;
+using void_t<...T> = void;
+struct type_identity<T> { using type = T; };
+```
+
+* `add_lvalue_reference_t`, and similar, alias templates (C++14)
+* `void_t` (C++17)
+* `type_identity` (C++20)
+
+------
 #### `<functional>`
 
-* Header `<boost/compat/bind_back.hpp>` and `<boost/compat/bind_front.hpp>`
+* Header `<boost/compat/mem_fn.hpp>`
 
 ```c++
 #define BOOST_COMPAT_RETURNS(...) noexcept(noexcept(__VA_ARGS__)) ->decltype(__VA_ARGS__) { return __VA_ARGS__; }
 
+using detail::is_same_or_base<T,U> = is_base_of<remove_cvref_t<T>, remove_cvref_t<U>>;
+struct detail::is_reference_wrapper<T> : std::false_type {};
+struct detail::is_reference_wrapper<std::reference_wrapper<remove_cvref_t<T>>> : std::true_type {};
+struct detail::_mfn<M,T> { // pointer to member function
+    M T::* pm_;
+    constexpr auto operator() <U,...A> (U&& u, A&&... a) const requires is_same_or_base<T,U>::value
+        BOOST_COMPAT_RETURNS( (std::forward<U>(u).*pm_)(std::forward<A>(a)...) )
+    constexpr auto operator() <U,...A> (U&& u, A&&... a) const requires !is_same_or_base<T,U>::value && is_reference_wrapper<U>::value
+        BOOST_COMPAT_RETURNS( (u.get().*pm_)(std::forward<A>(a)...) )
+    constexpr auto operator() <U,...A> (U&& u, A&&... a) const requires !is_same_or_base<T,U>::value && !is_reference_wrapper<U>::value
+        BOOST_COMPAT_RETURNS( ((*std::forward<U>(u)).*pm_)(std::forward<A>(a)...) )
+};
+struct detail::_md<M,T> { // pointer to data member
+    M T::* pm_;
+    constexpr auto operator() <U> (U&& u) const requires is_same_or_base<T,U>::value
+        BOOST_COMPAT_RETURNS( std::forward<U>(u).*pm_ )
+    constexpr auto operator() <U> (U&& u) const requires !is_same_or_base<T,U>::value && is_reference_wrapper<U>::value
+        BOOST_COMPAT_RETURNS( u.get().*pm_ )
+    constexpr auto operator() <U> (U&& u) const requires !is_same_or_base<T,U>::value && !is_reference_wrapper<U>::value
+        BOOST_COMPAT_RETURNS( (*std::forward<U>(u)).*pm_ )
+};
+constexpr auto mem_fn <M,T> (M T::* pm) noexcept -> _mfn<M,T> requires is_function_v<M> { return {pm}; }
+constexpr auto mem_fn <M,T> (M T::* pm) noexcept -> _dm<M,T> requires !is_function_v<M> { return {pm}; }
+```
+
+* `mem_fn` (C++11)
+
+------
+* Header `<boost/compat/bind_back.hpp>` and `<boost/compat/bind_front.hpp>`
+
+```c++
 static constexpr auto detail::invoke_bind_back_<F,A,...B,...i> (F&& f, A&& a, index_sequence<i...>, B&&...b)
     BOOST_COMPAT_RETURNS( invoke(std::forward<F>(f), std::forward<B>(b)..., std::get<i>(std::forward<A>(a))...) )
 static constexpr auto detail::invoke_bind_front_<F,A,...B,...i> (F&& f, A&& a, index_sequence<i...>, B&&...b)
@@ -294,8 +350,111 @@ template <class ...T> using index_sequence_for = make_index_sequence<sizeof...(T
 
 * `integer_sequence` (C++14).
 
+-----
+* Header `<boost/compat/to_underlying.hpp>`
+
+```c++
+constexpr std::unerlying_type<E>::type to_underlying <E> (E e) noexcept { return {e}; }
+```
+
+* `to_underlying` (C++23)
+
+-----
+#### `<latch>`
+
+* Header `<boost/compat/latch.hpp>`
+
+```c++
+class latch {
+    ptrdiff_t n_;
+    mutable std::mutex m_{}; mutable std::condition_variable cv_{};
+
+    bool is_ready() const { return n_ == 0; }
+    bool count_down_and_notify(std::unique_lock<std::mutex>& lk, ptrdiff_t n)
+    { if ((n_ -= n) == 0) { lk.unlock(); cv_.notify_all(); return false; } else return true; }
+    void wait_impl(std::unique_lock<std::mutex>& lk) const
+    { cv_.wait(lk, [this]{ return this->is_ready(); }); }
+
+public: explicit latch(ptrdiff_t expected) : n{expected} {};    ~dtor() = default;
+    ctor(self const&) = delete; self& operator=(self const&) = delete; // non-copy/move
+
+    void count_down(ptrdiff_t n=1) { std::unique_lock lk{m_}; count_down_and_notify(lk, n); }
+    bool try_wait() const noexcept { std::unique_lock lk{m_}; return is_ready(); }
+    void wait() const { std::unique_lock lk{m_}; wait_impl(lk); }
+    void arrive_and_wait(ptrdiff_t n=1)
+    { std::unique_lock lk{m_}; if (count_down_and_notify(lk, n)) wait_impl(lk); }
+
+    static constexpr ptrdiff_t max() noexcept { return PTRDIFF_MAX; }
+};
+```
+
+* `latch` (C++20).
+
+-----
+#### `<shared_mutex>`
+
+* Header `<boost/compat/shared_lock.hpp>`
+
+```c++
+void detail::throw_system_error(std::errc e, boost::source_location const& loc=BOOST_SOURCE_LOCATION)
+{ boost::throw_exception(std::system_error(std::make_error_code(e)), loc); }
+
+class shared_lock<Mutex> {
+    Mutex* pm_{nullptr}; bool owns_{false}; // owns locking-state
+public:
+    using mutex_type = Mutex;
+    ctor() noexcept = default;
+    ctor(const self&) = delete; self& operator=(const self&) = delete; // no copy
+    ctor(self&& u) noexcept { pm_ = u.pm_; owns_ = u.owns_; u.pm_ = nullptr; u.owns_ = false; } // move
+    self& operator=(self&& u) noexcept { shared_lock(std::move(u)).swap(*this); return *this; } // move
+    void swap(self& u) noexcept { std::swap(pm_, u.pm_); std::swap(owns_, u.owns_); }
+
+    explicit ctor(mutex_type& m) : pm_(std::addressof(m)) { lock(); }
+    ctor(mutex_type& m, std::defer_lock_t) noexcept : pm_(std::addressof(m)) {}
+    ctor(mutex_type& m, std::try_to_lock_t) noexcept : pm_(std::addressof(m)) { try_lock(); }
+    ctor(mutex_type& m, std::adopt_lock_t) noexcept : pm_(std::addressof(m)), owns{true} {}
+    ~dtor() { if (owns_) unlock(); }
+    mutex_type* release() noexcept { mutex_type* pm = pm_; pm_=nullptr; owns_ = false; return pm; }
+
+    mutex_type* mutex() const noexcept { returm pm_; }
+    bool owns_lock() const noexcept { return owns_; }
+    explicit operator bool() const noexcept { return owns_; }
+
+    void lock() {
+        if (!pm_) throw_system_error(std::errc::operation_not_permitted);
+        if (owns_) throw_system_error(std::errc::resource_deadlock_would_occur);
+        pm_->lock_shared(); owns_ = true;
+    }
+    void try_lock() {
+        if (!pm_) throw_system_error(std::errc::operation_not_permitted);
+        if (owns_) throw_system_error(std::errc::resource_deadlock_would_occur);
+        bool b = pm_->try_lock_shared(); owns_ = b; return b;
+    }
+    void unlock() {
+        if (!pm_ || !owns_) throw_system_error(std::errc::operation_not_permitted);
+        pm_->unlock_shared(); owns_ = false;
+    }
+};
+void swap<Mutex> (shared_lock<Mutex>& x, shared_lock<Mutex>& y) noexcept { x.swap(y); }
+```
+
+* `shared_lock` (C++14).
+
 ------
-#### Configuration
+#### `<array>`
+
+* Header `<boost/compat/to_array.hpp>`
+
+```c++
+constexpr std::array<remove_cv_t<T>,n> detail::to_array_lvalue <T,n,...i> (T (&a)[n], index_sequence<i...>) { return {{a[i]...}}; }
+constexpr std::array<remove_cv_t<T>,n> detail::to_array_rvalue <T,n,...i> (T (&&a)[n], index_sequence<i...>) { return {{std::move(a[i])...}}; }
+constexpr std::array<remove_cv_t<T>,n> to_array <T,n> (T (&a)[n]) requires is_constructible_v<remove_cv_t<T>,T&> && !is_array_v<T>
+    { return to_array_lvalue(a, make_index_sequence<n>{}); }
+constexpr std::array<remove_cv_t<T>,n> to_array <T,n> (T (&&a)[n]) requires is_constructible_v<remove_cv_t<T>,T&&> && !is_array_v<T>
+    { return to_array_rvalue(std::move(a), make_index_sequence<n>{}); }
+```
+
+* `to_array` (C++20)
 
 ------
 ### Dependency
