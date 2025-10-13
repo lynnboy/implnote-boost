@@ -1,4 +1,4 @@
-# Boost.TTI
+# Boost.TTI - Type Trait Introspection
 
 * lib: `boost/libs/tti`
 * repo: `boostorg/tti`
