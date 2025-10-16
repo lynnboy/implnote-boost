@@ -70,15 +70,34 @@ Visitor::result_type detail:;visitation_impl <Which,Step0,Visitor,VoidPtrCV,NoBa
     return visitation_impl(internal_which, logical_which, visitor, storage, is_same<next_type,apply_visitor_unrolled>{}, nb, (next_which*)0, (next_step*)0);
 }
 
-
 struct detail::is_static_visitor_tag {};
 using detail::is_static_visitor<T> = is_base_of<is_static_visitor_tag,T>;
 struct static_visitor<R=void> : public is_static_visitor_tag { using result_type = R; }; // base class usage only
+
+std::tuple<std::tuple_element<1+i,Tuple>::type...> detail::tuple_tail_impl <...i,Tuple> (const Tuple& tup, index_sequence<i...>) { return std::make_tuple(std::get<1+i>(tup)...); }
+std::tuple<Tail...> detail::tuple_tail <Head,...Tail> (const std::tuple<Head,Tail...>& tup) { return tuple_tail_impl(tup, make_index_sequence<sizeof...(Tail)>()); }
+struct detail::MoveableWrapper<T,doMove> { T& v; };
+MoveableWrapper<Tp,doMove> detail::wrap <Tp,doMove=!is_lvalue_reference_v<Tp>> (Tp& t) { return MoveableWrapper{t}; }
+T  detail::unwrap <Tp,true>  (MoveableWrapper<Tp, true>& w) { return std::move(w.v); }
+T& detail::unwrap <Tp,false> (MoveableWrapper<Tp,false>& w) { return w.v; }
 
 struct detail::has_result_type<T> { static constexpr bool value = requires{ typename T::result_type; }; };
 {Visitor::result_type|decltype(auto)} apply_visitor<Visitor,Visitable> (Visitor&& visitor, Visitable&& visitable) { return std::forward<Visitable>(visitable).apply_visitor(visitor); }
 Visitor::result_type apply_visitor<Visitor,V1,V2> (<const>Visitor& visitor, V1&& v1, V2&& v2)
 { return apply_visitor([&,auto&&v2=std::forward<V2>(v2)]{return apply_visitor(visitor,std::forward<V2>(v2));}, std::forward<V1>(v1)); }
+
+class detail::one_by_one_visitor_and_vaule_referrer<Visitor,Visitibles,...Values> {
+    Visitor& visitor_; std::tuple<Values...> values_; Visitables visitables_;
+public: ctor(Visitor& visitor, Visitables visitables, std::tuple<Values...> values) noexcept; // init
+    decltype(auto) do_call <Tuple,...i> (Tuple t, index_sequence<i...>) const { return visitor_(unwrap(std::get<i>(t))...); }
+    decltype(auto) operator() <Value> ()(Value&& value) const { // recursion
+        if constexpr (std::is_same_v<Visitables,std::tuple<>>)
+            return do_call(std::tuple_cat(values_, std::make_tuple(wrap(value))), make_index_sequence<sizeof...(Values) + 1>());
+        else return apply_visitor(self{visitor_,tuple_tail(visitables_),std::tuple_cat(values_, std::make_tuple(wrap(value)))}, unwrap(std::get<0>(visitables_)));
+    }
+};
+{Visitor::result_type|decltype(auto)} apply_visitor <Visitor,T1,T2,T3,...TN> (<const>Visitor& visitor, T1&& v1, T2&& v2, T3&& v3, TN&&...vn)
+{ return apply_visitor(one_by_one_visitor_and_vaule_referrer{visitor, std::make_tuple(wrap(v2),wrap(v3),wrap(vn)...), std::tuple<>{}}, std::forward<T1>(v1)); }
 
 auto apply_visitor <Visitor> (Visitor& visitor) { return [&](auto...v) { return apply_visitor(visitor, v...); }; }
 
@@ -337,6 +356,13 @@ struct make_variant_over<Types> {
 }
 
 void swap<T...> (variant<...T>& lhs, variant<...T>& rhs) { lhs.swap(rhs); }
+
+class detail::printer<OS> : public static_visitor<> { OS& out_;
+public: explicit ctor(OS& out) : out_(out) {}
+    void operator() <T> (const T& v) const { out_ << v; }
+};
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,...U> (std::basic_ostream<Ch,Tr>& out, const variant<U...>& rhs)
+{ rhs.apply_visitor(printer{out}); return out; }
 ```
 
 ------
@@ -398,9 +424,75 @@ struct make_recursive_variant_over<Types> { using type = make_recursive_variant<
 ```
 
 ------
-#### `get`, `apply_visitor`, `visitor_ptr`
+#### `get`, `visitor_ptr`
 
 ```c++
+struct detail::variant_element_functor<Elem,T> : mpl::or_<is_same<Elem,T>, is_same<Elem,recursive_wrapper<T>, is_same<Elem,T&>>> {};
+struct detail::element_iterator_impl<Types,T> : mpl::find_if<Types, or_<variant_element_functor<_1,T>, variant_element_functor<_1, remove_cv_t<T>>>> {};
+struct detail::element_iterator<Variant,T> : element_iterator_impl<Variant::types, remove_reference_t<T>> {};
+struct detail::holds_element<Variant,T> : mpl::not_<is_same< element_iterator<Variant,T>::type, end<Variant::Types>::type >> {};
+
+class bad_get : public std::exception { /* what() = "failed value get using boost::get" */ };
+
+struct detail::get_visitor<T> { using pointer = T*; using reference = T&; using result_type = pointer;
+    pointer operator()(reference v) const noexcept { return addressof(v); }
+    pointer operator() <U> (const U&) const noexcept { return nullptr; }
+};
+
+U<const>* relaxed_get<U,...T> (variant<T...> <const>* v) noexcept
+{ if (!v) return nullptr; return v->apply_visitor(get_visitor<<const>U>{}); }
+U<const>& relaxed_get<U,...T> (variant<T...> <const>& v)
+{ U<const>* res = relaxed_get<<const>U>(addressof(v)); if (!res) throw_exception(bad_get{}); return *res; }
+U&& relaxed_get<U,...T> (variant<T...> && v)
+{ U* res = relaxed_get<U>(addressof(v)); if (!res) throw_exception(bad_get{}); return std::move(*res); }
+
+U<const>* strict_get<U,...T> (variant<T...> <const>* v) noexcept { /*assert*/ return relaxed_get<U>(v); }
+U<const>& strict_get<U,...T> (variant<T...> <const>& v) { /*assert*/ return relaxed_get<U>(v); }
+U&& strict_get<U,...T> (variant<T...> && v) { /*assert*/ return relaxed_get<U>(detail::move(v)); }
+
+U<const>* get<U,...T> (variant<T...> <const>* v) noexcept { /*assert*/ return strict_get<U>(v); } // or relaxed_get if USE_RELAxED_GET_BY_DEFAULT
+U<const>& get<U,...T> (variant<T...> <const>& v) { /*assert*/ return strict_get<U>(v); } // or relaxed_get if USE_RELAxED_GET_BY_DEFAULT
+U&& get<U,...T> (variant<T...> && v) { /*assert*/ return strict_get<U>(detail::move(v)); } // or relaxed_get if USE_RELAxED_GET_BY_DEFAULT
+
+class bad_polymorphic_get : public bad_get { /* what() = "failed value get using boost::polymorphic_get" */ };
+
+struct detail::element_polymorphic_iterator_impl<Types,T> : mpl::find_if<Types, or_<variant_element_functor<_1,T>, variant_element_functor<_1, remove_cv_t<T>, is_base_of<T,_1>>>> {};
+struct detail::holds_element_polymorphic<Variant,T> : mpl::not_<is_same< element_polymorphic_iterator_impl<Variant::types,remove_reference_t<T>>::type, end<Variant::Types>::type >> {};
+
+struct detail::get_polymorphic_visitor<Base> { using pointer = Base*; using reference = Base&; using result_type = pointer;
+    pointer operator() <U> (U& v) const noexcept { using base_t = remove_reference_t<Base>;
+        if constexpr ((is_base_of_v<base_t,U> && (is_const_v<base_t> || !is_const_v<U>)) || is_same_v<base_t,U> || is_same_v<remove_cv_t<base_t>,U>)
+            return addressof(v);
+        else return nullptr;
+    }
+};
+
+U<const>* polymorphic_relaxed_get<U,...T> (variant<T...> <const>* v) noexcept
+{ if (!v) return nullptr; return v->apply_visitor(get_polymorphic_visitor<<const>U>{}); }
+U<const>& polymorphic_relaxed_get<U,...T> (variant<T...> <const>& v)
+{ U<const>* res = polymorphic_relaxed_get<<const>U>(addressof(v)); if (!res) throw_exception(bad_get{}); return *res; }
+U&& polymorphic_relaxed_get<U,...T> (variant<T...> && v)
+{ U* res = polymorphic_relaxed_get<U>(addressof(v)); if (!res) throw_exception(bad_get{}); return std::move(*res); }
+
+U<const>* polymorphic_strict_get<U,...T> (variant<T...> <const>* v) noexcept { /*assert*/ return polymorphic_relaxed_get<U>(v); }
+U<const>& polymorphic_strict_get<U,...T> (variant<T...> <const>& v) { /*assert*/ return polymorphic_relaxed_get<U>(v); }
+U&& polymorphic_strict_get<U,...T> (variant<T...> && v) { /*assert*/ return polymorphic_relaxed_get<U>(detail::move(v)); }
+
+U<const>* polymorphic_get<U,...T> (variant<T...> <const>* v) noexcept { /*assert*/ return polymorphic_strict_get<U>(v); } // or polymorphic_relaxed_get if USE_RELAxED_GET_BY_DEFAULT
+U<const>& polymorphic_get<U,...T> (variant<T...> <const>& v) { /*assert*/ return polymorphic_strict_get<U>(v); } // or polymorphic_relaxed_get if USE_RELAxED_GET_BY_DEFAULT
+U&& polymorphic_get<U,...T> (variant<T...> && v) { /*assert*/ return polymorphic_strict_get<U>(detail::move(v)); } // or polymorphic_relaxed_get if USE_RELAxED_GET_BY_DEFAULT
+
+struct bad_visit : public std::exception { /* what() = "failed visitation using boost::apply_visitor" */ };
+
+class visitor_ptr_t <T,R> : public static_visitor<R> {
+    using visitor_t = R(*)(T); visitor_t visitor_;
+    using argument_fwd_type = mpl::eval_if<is_reference<T>, identity<T>, const T&>::type;
+public: using result_type = R;
+    explicit ctor(visitor_t visitor) noexcept : visitor_(visitor) {}
+    result_type operator() <U> (const U&) const { throw_exception(bad_visit{}); }
+    result_type operator() (argument_fwd_type v) const { return visitor_(v); }
+};
+visitor_ptr_t<T,R> visitor_ptr<R,T> (R (*v)(T)) { return {v}; } // factory
 ```
 
 ------
