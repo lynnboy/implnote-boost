@@ -600,7 +600,7 @@ struct detail::handler_argument_traits_defaults<E,isPred=is_predicate<E>::value>
 struct detail::handler_argument_traits_defaults<E,false> {
     using error_type = std::decay_t<E>; using context_types = mp_list<error_type>;
     constexpr static bool always_available = false;
-    constexpr static error_type <const>* check(Tup <const>&, error_info const&) noexcept;
+    constexpr static error_type <const>* check(Tup <const>& tup, error_info const& ei) noexcept { return peek<std::decay_t<A>>(tup, ei); }
     constexpr static E get<Tup> (Tup& tup, error_info const& ei) noexcept { return *check(tup, ei); }
 };
 struct detail::handler_argument_traits_defaults<Pred,false> : handler_argument_traits_defaults<Pred::error_type> {
@@ -617,7 +617,7 @@ struct detail::handler_argument_traits<E> : handler_argument_traits_defaults<E> 
 struct detail::handler_argument_traits<void> {
     using context_types = mpl_list<>;
     constexpr static bool always_available = false;
-    constexpr static bool check <Tup> (Tup&, error_info const&) noexcept; // no def
+    constexpr static bool check <Tup> (Tup&, error_info const&) noexcept { return ei.exception(); }
 };
 struct detail::handler_argument_traits<E&&> { static_assert(false); };
 struct detail::handler_argument_traits<E*> : handler_argument_always_available<remove_const_t<E>> {
@@ -667,7 +667,7 @@ public: ctor(self&& x) noexcept :tup_(std::move(x.tup_)), is_activate_(false) {}
     void print(std::ostream& os) const { print_tuple_contents<Tup>(os, &tup_, error_id{}, "Contents:"); }
     friend std::ostream& operator<< (std::ostream& os, context const& ctx) { ctx.print(os); return os << '\n'; }
     T const* get <T> (error_id err) const noexcept { auto e = find_in_tuple<slot<T>>(tup_); return e ? e->has_value(err.value()) : nullptr; }
-    R handle_error<R,...H> (error_id, H&&...) <const>; // not defined
+    R handle_error<R,...H> (error_id, H&&...) <const> { return handle_error_<R>(tup(), error_info(id, nullptr, this->get<e_source_location>(id)), (H&&)h...); }
     friend raii_deactivator activate_context(context& ctx) noexcept { return {ctx}; }
 };
 
@@ -693,7 +693,7 @@ class diagnostic_info : public error_info {
 protected: ctor(self const&) nexcept = default;
     constexpr ctor <Tup> (error_info const& ei, Tup const& tup) noexcept : base(ei), tup_(&tup), print_tuple_contents_(print_tuple_contents<Tup>) {}
     void print_diagnostic_info(std::ostream& os) const {
-        print_error_inf(os);
+        print_error_info(os);
         print_tuple_contents_(os, tup_, error(), exception() ? nullptr : "\nCaught:"FIRST_DELIMITER);
     }
     friend std::stream& operator<< (std::ostream& os, self const& x) { x.print_diagnostic_info(os); return os << '\n'; }
@@ -723,18 +723,266 @@ struct detail::handler_argument_traits<diagnostic_details const&> : handler_argu
 * Headder `<boost/leaf/handle_errors.hpp>`
 
 ```c++
+error_id detail::unpack_error_id(std::exception const& ex) noexcept {
+    if (auto eb = dynamic_cast<exception_base const*>(&ex)) return eb->get_error_id();
+    if (auto err_id = dynamic_cast<error_id const*>(&ex)) return *err_id;
+    return current_error();
+}
+class error_info { // no copy-assign
+    error_id const err_id_; std::exception* const ex_; e_source_location const* const loc_;
+protected: ctor(self const&) noexcept = default;
+public: constexpr ctor(error_id id, std::exception* ex, e_source_location const* loc) noexcept : err_id_(id), ex_(ex), loc_(loc) { }
+    constexpr error_id error() const noexcept { return err_id_; }
+    constexpr std::exception* exception() const noexcept { return err_id_; }
+    constexpr e_source_location const* source_location() const noexcept { return loc_; }
+    void print_error_info(std::ostream& os) const {
+        os << "Error with serial #" << err_id_;
+        if (loc_) os << " reported at " << *loc_;
+        if (ex_) { os << "\nCaught:"FIRST_DELIMITER;
+            if (auto eb = dynamic_cast<exception_base const*>(ex_)) eb->print_type_name(os);
+            else demangle_and_print(os, typeid(*ex_).name());
+            os << ": \"" << ex_->what() << '"';
+        }
+    }
+    friend std::ostream& operator<<(std::ostream& os, error_info const& x) { x.print_error_info(os); return os << '\n'; }
+};
+struct detail::handler_argument_traits<error_info const&>: handler_argument_always_available<> {
+    constexpr static error_info const& get <Tup> (Tup const&, error_info const& ei) noexcept { return ei; }
+};
+
+struct detail::type_index<T,...List>;
+struct detail::type_index<T,T,Cdr...> { constexpr static int value = 0; };
+struct detail::type_index<T,Car,Cdr...> { constexpr static int value = 1 + type_index<T,Cdr...>::value; };
+struct detail::tuple_type_index<T,Tup>;
+struct detail::tuple_type_index<T,std::tuple<TupleTypes>> { constexpr static int value = type_index<T,TupleTypes...>::value; };
+struct detail::peek_exception<E,isClass=std::is_class_v<E>>;
+struct detail::peek_exception<E,false> { static E* peek(error_info const& ei) noexcept { return dynamic_cast<E*>(ei.exception()); } };
+struct detail::peek_exception<E,true> { constexpr static E* peek(error_info const& ei) noexcept { return nullptr; } };
+struct detail::peek_exception<std::exception [const],true>
+{ constexpr static std::exception <const>* peek(error_info const& ei) noexcept { return ei.exception(); } };
+struct detail::peek_exception<std::error_code [const],true>
+{ static std::error_code <const>* peek(error_info const& ei) noexcept {
+    auto const ex = ei.exception();
+    if (auto se = dynamic_cast<std::system_error*>(ex)) return &se->code();
+    if (auto ec = dynamic_cast<std::error_code*>(ex)) return ec;
+    else return nullptr;
+} };
+struct detail::peek_tuple<E,off=does_not_participate<E>::value> {
+    constexpr static E [const]* peek <SlotsTuple> (SlotsTuple [const]& tup, error_id const& err) noexcept {
+        if constexpr (off) return nullptr;
+        return std::get<tuple_type_index<slot<E>,SlotsTuple>::value>(tup).has_value(err.value());
+    }
+};
+E [const]* detail::peek <E,SlotsTuple> (SlotsTuple <const>& tup, error_info const& ei) noexcept {
+    if (error_id err = ei.error()) {
+        if (E <const>* e = peek_tuple<E>::peek(tup, err)) return e;
+        else return peek_exception<E[const]>::peek(ei);
+    }
+    return nullptr;
+}
+
+struct detail::check_arguments<Tup,...List>;
+struct detail::check_arguments<Tup> { constexpr static bool check(Tup const&, error_info const&) { return true; } };
+struct detail::check_arguments<Tup,Car,Cdr...> {
+    constexpr static bool check(Tup const& tup, error_info const& ei)
+    { return handler_argument_traits<Car>::check(tup, ei) && check_arguments<Tup, Cdr...>::check(tup, ei); }
+};
+
+struct detail::handler_matches_any_error<T> : false_type {};
+struct detail::handler_matches_any_error<L<>> : true_type {};
+struct detail::handler_matches_any_error<L<Car,Cdr...>>
+{ constexpr static bool value = handler_argument_traits<Car>::always_available && handler_matches_any_error<L<Cdr...>>::value; };
+
+constexpr bool detail::check_handler_<Tup,...A> (Tup& tup, error_info const& ei, mp_list<A...>) noexcept
+{ return check_arguments<Tup,A...>::check(tup, ei); }
+struct detail::handler_caller<R,F,isResult=is_result_type<R>::value, FReturnType=fn_return_type<F>> {
+    constexpr static R call<Tup,...A> (Tup& tup, error_info const& ei, F&& f, mp_list<A...>)
+    { return std::forward<F>(f)(handler_argument_traits<A>::get(tup, ei)...); }
+};
+struct detail::handler_caller<Result<void,E...>, F, true, void> { using R = Result<void,E...>;
+    constexpr static R call<Tup,...A> (Tup& tup, error_info const& ei, F&& f, mp_list<A...>)
+    { std::forward<F>(f)(handler_argument_traits<A>::get(tup, ei)...); return {}; }
+};
+
+struct detail::is_tuple<T> : std::false_type {};
+struct detail::is_tuple<std::tuple<T...> [&]> : std::true_type {};
+R detail::handle_error_ <R,Tup,Car,...Cdr> (Tup& tup, error_info const& ei, Car&& car, Cdr&&...cdr) requires !is_tuple<decay_t<Car>>::value {
+    if constexpr (sizeof...(Cdr) == 0)
+        return handler_caller<R,Car>::call(tup, ei, (Car&&)car, fn_mp_args<Car>{});
+    if (handler_matches_any_error<fn_mp_args<Car>>::value || check_handler(tup, ei, fn_mp_args<Car>{}))
+        return handler_caller<R,Car>::call(tup, ei, (Car&&)car, fn_mp_args<Car>{});
+    return handle_error_<R>(tup, ei, (Cdr&&)cdr...); // recursion
+}
+R detail::handle_error_tuple_<R,Tup,HTup,...Cdr,...i> (Tup& tup, error_info const& ei, index_sequence<i...>, HTup&& htup, Cdr&&...cdr)
+{ return handle_error_<R>(tup, ei, std::get<i>((HTup&&)htup)..., (Cdr&&)cdr...); }
+R detail::handle_error_ <R,Tup,Car,...Cdr> (Tup& tup, error_info const& ei, Car&& car, Cdr&&...cdr) requires is_tuple<decay_t<Car>>::value
+{ return handle_error_tuple_<R>(tup, ei, make_index_sequence<std::tuple_size_v<std::decay_t<Car>>>(), (Car&&)car, (Cdr&&)cdr...); }
+
+void detail::unload_result<T> (result<T>* r) { r->unload(); }
+void detail::unload_result<T> (void* r) { }
+
+auto detail::try_catch_ <Ctx,TryBlock,...H> (Ctx& ctx, TryBlock && try_block, H&&...h) -> decltype(try_block()) { using R = decltype(try_block());
+    try { auto r = ((TryBlock&&)try_block)(); unload_result(&r) return r; }
+    catch (std::exception& ex) {
+        ctx.deactivate(); error_id id = unpack_error_id(ex);
+        return handle_error_<R>(ctx.tup(), error_info(id, &ex, ctx.get<e_source_location>(id)), (H&&)h...,
+            [&]()->R{ctx.unload(id); throw;});
+    } catch(...) {
+        ctx.deactivate(); error_id id = current_error();
+        return handle_error_<R>(ctx.tup(), error_info(id, nullptr, ctx.get<e_source_location>(id)), (H&&)h...,
+            [&]()->R{ctx.unload(id); throw;});
+    }
+}
+
+auto try_handle_all<TryBlock,...H> (TryBlock&& try_block, H&&...h) -> std::decay_t<decltype(try_block().value())> {
+    context_type_from_handlers<H...> ctx;   auto active_context = activate_context(ctx);
+    if (auto r = try_catch_(ctx, (TryBlock&&)try_block, (H&&)h...)) return std::move(r).value();
+    else { unload_result(&r); error_id{r.error()}; ctx.deactivate();
+        using R = std::decay_t<decltype(try_block().value())>;
+        return ctx.handle_error<R>(std::move(id), std::forward<H>(h)...);
+    }
+}
+auto try_handle_some<TryBlock,...H> (TryBlock&& try_block, H&&...h) -> std::decay_t<decltype(try_block())> {
+    context_type_from_handlers<H...> ctx;   auto active_context = activate_context(ctx);
+    if (auto r = try_catch_(ctx, (TryBlock&&)try_block, (H&&)h...)) return r;
+    else if (ctx.is_active()) { unload_result(&r); error_id{r.error()}; ctx.deactivate();
+        using R = std::decay_t<decltype(try_block().value())>;
+        auto rr = ctx.handle_error<R>(std::move(id), std::forward<H>(h)...,
+            [&r]()->R{ return std::move(r); });
+        if (!rr) ctx.unload(error_id{rr.error()});
+        return rr;
+    } else { ctx.unload(error_id{r.error()}); return r; }
+}
+auto try_catch<TryBlock,...H> (TryBlock&& try_block, H&&...h) -> decltype(try_block()) { using R = decltype(try_block());
+    context_type_from_handlers<H...> ctx;   auto active_context = activate_context(ctx);
+    try { return std::forward<TryBlock>(try_block)(); }
+    catch (std::exception& ex) {
+        ctx.deactivate(); error_id id = unpack_error_id(ex);
+        return handle_error_<R>(ctx.tup(), error_info(id, &ex, ctx.get<e_source_location>(id)), (H&&)h...,
+            [&]()->R{ctx.unload(id); throw;});
+    } catch(...) {
+        ctx.deactivate(); error_id id = current_error();
+        return handle_error_<R>(ctx.tup(), error_info(id, nullptr, ctx.get<e_source_location>(id)), (H&&)h...,
+            [&]()->R{ctx.unload(id); throw;});
+    }
+}
+
+struct detail::try_capture_all_dispatch_non_void <LeafResult> { using leaf_result = LeafResult;
+    static leaf_result try_capture_all_ <TryBlock> (TryBlock && try_block) noexcept {
+        slot<dynamic_allocator> sl; sl.activate();
+        try {
+            if (leaf_result r = std::forward<TryBlock>(try_block)()) { sl.deactivate(); return r; }
+            else { sl.deactivate(); int err_id = error_id{r.error()}.value();
+                return leaf_result{sl.value_or_default(err_id).extract_capture_list<leaf_result>(err_id)};
+            }
+        } catch (std::exception& ex) { sl.deactivate(); int err_id = unpack_error_id(ex).value();
+            return leaf_result{sl.value_or_default(err_id).extract_capture_list<leaf_result>(err_id)};
+        } catch (...) { sl.deactivate(); int err_id = current_error().value();
+            return leaf_result{sl.value_or_default(err_id).extract_capture_list<leaf_result>(err_id)};
+        }
+    }
+};
+
+struct detail::try_capture_all_dispatch<R,isVoid=is_same_v<void,R>,isResultType=is_result_type<R>::value>;
+struct detail::try_capture_all_dispatch<R,false,true> : try_capture_all_dispatch_non_void<result<decay_t<decltype(declval<R>().value())>>> {};
+struct detail::try_capture_all_dispatch<R,false,false> : try_capture_all_dispatch_non_void<result<remove_reference_t<R>>> {};
+struct detail::try_capture_all_dispatch<R,true,false> { using leaf_result = result<R>;
+    static leaf_result try_capture_all_ <TryBlock> (TryBlock && try_block) noexcept {
+        slot<dynamic_allocator> sl; sl.activate();
+        try { std::forward<TryBlock>(try_block)(); return {};
+        } catch (std::exception& ex) { sl.deactivate(); int err_id = unpack_error_id(ex).value();
+            return sl.value_or_default(err_id).extract_capture_list<leaf_result>(err_id);
+        } catch (...) { sl.deactivate(); int err_id = current_error().value();
+            return sl.value_or_default(err_id).extract_capture_list<leaf_result>(err_id);
+        }
+    }
+};
+auto try_capture_all <TryBlock> (TryBlock && try_block) noexcept -> try_capture_all_dispatch<decltype(try_block())>::leaf_result
+{ return try_capture_all_dispatch<decltype(try_block())>::try_capture_all_(std::forward<TryBlock>(try_block)); }
+
+struct detail::match_enum_type<T>;
+struct detail::match_enum_type<boost:error_info<Tag,T>> { using type = T; };
+constexpr Ex* detail::get_exception <Ex> (error_info const& ei) { return dynamic_cast<Ex*>(ei.exception()); }
+struct detail::dependent_type<Dep,T> { using type = T; };
+using detail::dependent_type_t<Dep,T> = dependent_type<Dep,T>::type;
+struct detail::handler_argument_traits<boost::error_info<Tag,T>> {
+    using context_types = mp_list<>; constexpr static bool always_available = false;
+    static T* check <Tup> (Tup&, error_info const& ei) noexcept {
+        if (auto* be = get_exception<dependent_type_t<T,boost::exception>>(ei)) return get_info<error_info<Tag,T>>::get(*be);
+        else return nullptr;
+    }
+    static error_info<Tag,T> get <Tup> (Tup const& tup, error_info const& ei) noexcept { return error_info<Tag,T>{*check(tup,ei)}; }
+};
+struct detail::handler_argument_traits<error_info<Tag,T> {const&|&|const*|*}> : handler_argument_traits_require_by_value<error_info<Tag,T>> {};
 ```
 
 -----
 * Headder `<boost/leaf/pred.hpp>`
 
 ```c++
+constexpr bool detail::cmp_value_pack <MatchType,VCar,...VCdr> (MatchType const& e, VCar car, VCdr...cdr)
+{ if constexpr (sizeof...(VCdr) == 0) return e == v; return cmp_value_pack(e, car) || cmp_value_pack(e, cdr...); }
+
+struct condition<E,Enum=E> { static_assert(std::is_error_condition_enum_v<Enum> || std::is_error_code_enum_v<Enum>); };
+struct detail::match_enum_type<T> { using type = T; };
+struct detail::match_enum_type<condition<Enum,Enum>> { using type = Enum; };
+struct match<E,v1,...v> {
+    using error_type = E; error_type matched;
+    constexpr static bool evaluate <T> (T&& x) { return cmp_value_pack(std::forward<T>(x), v1, v...); }
+};
+struct match<condition<Enum,Enum>,v1,...v> {
+    using error_type = std::error_code; error_type const& matched;
+    constexpr static bool evaluate (error_type const& e) { return cmp_value_pack(e, v1, v...); }
+};
+struct is_predicate<match<E,v1,v...>> : std::true_type {};
+
+struct detail::match_value_enum_type<E> { using type = remove_reference_t<decltype(declval<E>().value)>; };
+struct detail::match_value_enum_type<condition<E,Enum>> { using type = Enum; };
+struct match_value<E,v1,...v> {
+    using error_type = E; error_type const& matched;
+    constexpr static bool evaluate(error_type const& e) noexcept { return cmp_value_pack(e.value, v1, v...); }
+};
+struct match_value<condition<E,Enum>,v1,...v> {
+    using error_type = E; error_type const& matched;
+    constexpr static bool evaluate (error_type const& e) { return cmp_value_pack(e.value, v1, v...); }
+};
+struct is_predicate<match_value<E,v1,v...>> : std::true_type {};
+
+struct if_not<P> {
+    using error_type = P::error_type; decltype(std::declval<P>().matched) matched;
+    constexpr static bool evaluate <E> (E&& e) noexcept { return !P::evaluate(std::forward<E>(e)); }
+};
+struct is_predicate<if_not<P>> : std::true_type {};
+
+constexpr bool detail::check_exception_pack<...Ex> (std::exception const& ex, Ex const*...) noexcept
+{ return dynamic_cast<Ex const*>(&ex) != null || ...; }
+constexpr bool detail::check_exception_pack(std::exception const&) noexcept { return true; }
+
+struct detail::catch_<...Ex> {
+    using error_type = void; std::exception const& matched;
+    constexpr static bool evaluate(std::exception const& ex) noexcept { return check_exception_pack(ex, (Ex const*)(nullptr)...); }
+};
+struct detail::catch_<Ex> {
+    using error_type = void; Ex const& matched;
+    constexpr static Ex const* evaluate(std::exception const& ex) noexcept { return dynamic_cast<Ex const*>(&ex); }
+    explicit ctor(std::exception const& ex) : matched (*dynamic_cast<Ex const*>(&ex)) {}
+};
+struct is_predicate<catch_<Ex...>> : std::true_type {};
 ```
 
 -----
 * Headder `<boost/leaf/to_variant.hpp>`
 
 ```c++
+auto to_variant<...E,TryBlock> (TryBlock&& try_block) -> std::variant<std::decay_t<decltype(try_block().value())>, std::tuple<std::optional<E>...>> {
+    using T = std::decay_t<decltype(try_block().value())>;    using error_tuple_type = std::tuple<std::optional<E>...>;
+    using variant_type = std::variant<T, error_tuple_type>;
+    return try_handle_all(
+        [&]()->result<variant_type> { if (auto r=std::forward<TryBlock>(try_block)()) return *std::move(r); else r.error(); },
+        [](E const*...e) -> variant_type { return error_tuple_type{ e? std::optional<E>{*e} : std::optional<E>{}... }; },
+        []() -> variant_type { return error_tuple_type{}; }
+    );
+}
 ```
 
 ------
