@@ -608,13 +608,115 @@ struct detail::handler_argument_traits_defaults<Pred,false> : handler_argument_t
     { auto e = base::check(tup, ei); return e && Pred::evaluate(*e); }
     constexpr static Pred get<Tup> (Tup const& tup, error_info const& ei) noexcept { return Pred{*base::check(tup, ei)}; }
 };
+struct detail::handler_argument_always_available<...E> {
+    using context_types = mpl_list<E...>;
+    constexpr static bool always_available = true;
+    constexpr static bool check <Tup> (Tup&, error_info const&) noexcept { return true; }
+};
+struct detail::handler_argument_traits<E> : handler_argument_traits_defaults<E> {};
+struct detail::handler_argument_traits<void> {
+    using context_types = mpl_list<>;
+    constexpr static bool always_available = false;
+    constexpr static bool check <Tup> (Tup&, error_info const&) noexcept; // no def
+};
+struct detail::handler_argument_traits<E&&> { static_assert(false); };
+struct detail::handler_argument_traits<E*> : handler_argument_always_available<remove_const_t<E>> {
+    constexpr static E* get<Tup> (Tup& tup, error_info const& ei) noexcept { return handler_argument_traits_defaults<E>::check(tup, ei); }
+};
+struct detail::handler_argument_traits_require_by_value<E> { static_assert(sizeof(E)==0); };
 
+constexpr T* detail::find_in_tuple <T,i=0,...Tp> (std::tuple<Tp...> const& t) noexcept {
+    if constexpr (sizeof...(Tp) == 0) return nullptr;
+    using Ti = Tp...[i]; if constexpr (is_same_v<Ti, T>) return &std::get<i>(t);
+    if (i < sizeof...(Tp)-1) return find_in_tuple<T,i+1>(t); else return nullptr;
+}
+struct detail::tuple_for_each<i,Tup> { // recursion
+    constexpr static void activate(Tup& tup) noexcept
+    { if constexpr (i==0) return; tuple_for_each<i-1,Tup>::activate(tup); std::get<i-1>(tup).activate(); }
+    constexpr static void deactivate(Tup& tup) noexcept
+    { if constexpr (i==0) return; std::get<i-1>(tup).deactivate(); tuple_for_each<i-1,Tup>::deactivate(tup); }
+    constexpr static void unload(Tup& tup, int err_id) noexcept
+    { if constexpr (i==0) return; std::get<i-1>(tup).unload(err_id); tuple_for_each<i-1,Tup>::activate(tup, err_id); }
+    constexpr static void print(std::ostream& os, void const* tup, error_id to_print, char const*& prefix)
+    { if constexpr (i==0) return; tuple_for_each<i-1,Tup>::print(os,tup,to_print,prefix); std::get<i-1>((Tup const*)tup).print(os, to_print, prefix); }
+};
+void detail::print_tuple_contents<Tup> (std::ostream& os, void const* tup, error_id to_print, char const*& prefix)
+{ tuple_for_each<std::tuple_size<Tup>::value, Tup>::print(os, tup, to_print, prefix); }
+
+using detail::does_not_participate<T> = conjunction<std::is_same_v<T,error_id>, std::is_abstract<T>>;
+struct detail::deduce_e_type_list<L>;
+struct detail::deduce_e_type_list<L<T...>> { using type = mp_remove_if<mp_unique<mp_append<handler_argument_traits<T>::context_types...>>, does_not_participate>; };
+struct detail::deduce_e_tuple_impl<L>;
+struct detail::deduce_e_tuple_impl<L<E...>> { using type = std::tuple<slot<E>...>; };
+using detail::deduce_e_tuple<...E> = deduce_e_tuple_impl<deduce_e_type_list<mp_list<E...>>::type>::type;
+
+class context<...E> { // delete copy-ctor, copy-assign, constexpr
+    using Tup = deduce_e_tuple<E...>; constexpr size_t Size = std::tuple_size_v<Tup>;
+    Tup tup_; bool is_activate_{false}; std::thread::id thread_id_{};
+    class raii_deactivator { context* ctx_; // delete copy
+        explicit ctor(context& ctx) noexcept :ctx_(ctx.is_abstract() ? nullptr : &ctx) { if (ctx_) ctx_->activate(); }
+        ctor(self&& x) noexcept :ctx_(x.ctx_) { x.ctx_ = nullptr; } // move-ctor
+        ~dtor() noexcept { if (ctx_ && ctx_->is_active()) ctx_->deactivate(); }
+    };
+public: ctor(self&& x) noexcept :tup_(std::move(x.tup_)), is_activate_(false) {} // and def-ctor, ~dtor
+    Tup <const>& tup() <const> noexcept { return tup_; }
+    bool is_active() const noexcept { return is_active_; }
+    void activate() noexcept { tuple_for_each<Size,Tup>::activate(tup_); thread_id_ = this_thread::get_id(); is_active_ = true; }
+    void deactivate() noexcept { is_active_=false; thread_id_ = this_thread::get_id(); tuple_for_each<Size,Tup>::deactivate(tup_); }
+    void unload(error_id id) noexcept { tuple_for_each<Size,Tup>::unload(tup_, id.value()); }
+    void print(std::ostream& os) const { print_tuple_contents<Tup>(os, &tup_, error_id{}, "Contents:"); }
+    friend std::ostream& operator<< (std::ostream& os, context const& ctx) { ctx.print(os); return os << '\n'; }
+    T const* get <T> (error_id err) const noexcept { auto e = find_in_tuple<slot<T>>(tup_); return e ? e->has_value(err.value()) : nullptr; }
+    R handle_error<R,...H> (error_id, H&&...) <const>; // not defined
+    friend raii_deactivator activate_context(context& ctx) noexcept { return {ctx}; }
+};
+
+struct detail::deduce_context_impl<L>;
+struct detail::deduce_context_impl<L<E...>> { using type = context<E...>; };
+using detail::deduce_context<L> = deduce_context_impl<L>::type;
+struct detail::fn_mp_args_fwd<H> { using type = fn_mp_args<H>; };
+struct detail::fn_mp_args_fwd<std::tuple<H...>> { using type = mp_append<fn_mp_args_fwd<H>::type...>; };
+struct detail::fn_mp_args_fwd<std::tuple<H...>[const]&> : fn_mp_args_fwd<std::tuple<H...>> {};
+struct detail::context_type_from_handlers_impl<...H> { using type = deduce_context<mp_append<fn_mp_args_fwd<H>::type...>>; };
+using context_type_from_handlers<...H> = context_type_from_handlers_impl<H...>::type;
+auto make_context <...H> () -> context_type_from_handlers<H...> noexcept { return {}; }
+auto make_context <...H> (H&&...) -> context_type_from_handlers<H...> noexcept { return {}; }
 ```
 
 -----
 * Headder `<boost/leaf/diagnostics.hpp>`
 
 ```c++
+class diagnostic_info : public error_info {
+    void const* tup_;
+    void (*print_tuple_contents_) (std::ostream&, void const*, error_id, char const*&);
+protected: ctor(self const&) nexcept = default;
+    constexpr ctor <Tup> (error_info const& ei, Tup const& tup) noexcept : base(ei), tup_(&tup), print_tuple_contents_(print_tuple_contents<Tup>) {}
+    void print_diagnostic_info(std::ostream& os) const {
+        print_error_inf(os);
+        print_tuple_contents_(os, tup_, error(), exception() ? nullptr : "\nCaught:"FIRST_DELIMITER);
+    }
+    friend std::stream& operator<< (std::ostream& os, self const& x) { x.print_diagnostic_info(os); return os << '\n'; }
+};
+struct detail::diagnostic_info_ : diagnostic_info { using base::ctor; };
+struct detail::handler_argument_traits<diagnostic_info const&> : handler_argument_always_available<e_source_location> {
+    static diagnostic_info_ get <Tup> (Tup const& tup, error_info const& ei) noexcept { return {ei, tup}; }
+};
+
+class diagnostic_details: public diagnostic_info { // no copy-ctor
+    dynamic_allocator const* const da_;
+protected: constexpr ctor <Tup> (error_info const& ei, Tup const& tup, dynamic_allocator const* da) noexcept : base(ei,tup), da_(da) {}
+    void print_diagnostic_details(std::ostream& os) const {
+        print_diagnostic_info(os)
+        if (da_) da_->print(os, error(), "\nDiagnostic details:"FIRST_DELIMITER);
+    }
+    friend std::stream& operator<< (std::ostream& os, self const& x) { x.print_diagnostic_detail(os); return os << '\n'; }
+};
+struct detail::diagnostic_details_ : diagnostic_details { using base::ctor; };
+struct detail::handler_argument_traits<diagnostic_details const&> : handler_argument_always_available<e_source_location, dynamic_allocator> {
+    static diagnostic_details_ get <Tup> (Tup const& tup, error_info const& ei) noexcept
+    { auto const* da = find_in_tuple<slot<dynamic_allocator>>(tup); return {ei, tup, da ? da->has_value_any_key() : nullptr}; }
+};
 ```
 
 -----
