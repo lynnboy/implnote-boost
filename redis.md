@@ -98,7 +98,7 @@ struct std::is_error_code_enum<error> : std::true_type {};
 ```
 
 ------
-### Redis Connection
+### Redis Request and Response
 
 ```c++
 struct address { std::string host="127.0.0.1", port="6379"; };
@@ -408,6 +408,287 @@ public: enum class parse_event { init, node, done };
   void on_init() { system::error_code ec; impl_(init, {}, ec); }
   void on_done() { system::error_code ec; impl_(done, {}, ec); }
   void on_node(resp3::node_view const&nd, system::error_code& ec) { impl_(node, nd, ec); }
+};
+```
+
+------
+### Redis Connection
+
+```c++
+enum class operation { resolve, connect, ssl_handshake, exec, run, receive, reconnection, health_check, all };
+
+struct usage {
+  size_t commands_sent=0, bytes_sent=0, responses_received=0, pushes_received=0, response_bytes_received=0, push_bytes_received=0;
+};
+
+struct logger {
+  enum class level { disabled, emerg, alert, crit, err, warning, notice, info, debug };
+  level lvl; std::function<void(level, std::string_view)> fn;
+
+  ctor(level l=info);
+  ctor(level l, std::function<void(level, std::string_view)> fun) : lvl{l}, fn{std::move(fn)} {}
+};
+
+class detail::connection_logger { logger logger_; std::string msg_;
+public: ctor(logger&& logger) noexcept : logger_(std::move(logger)) {}
+  void reset(logger&& logger) { logger_ = std::move(logger); }
+
+  void on_resolve(std::error_code const& ec, asio::ip::tcp::resolver::results_type const& res);
+  void on_connect(std::error_code const& ec, asio::ip::tcp::endpoint const& ep);
+  void on_connect(std::error_code const& ec, std::string_view unix_socket_ep);
+  void on_ssl_handshake(std::error_code const& ec);
+  void on_write(std::error_code const& ec, size_t n);
+  void on_fsm_resume(reader_fsm::action const& action);
+  void on_setup(std::error_code const& ec, generic_response const& resp);
+
+  void log(logger::level lvl, std::string_view msg);
+  void log(logger::level lvl, std::string_view op, system::error_code const& ec);
+  void trace(std::string_view msg) { log(logger::debug, msg); }
+  void trace(std::string_view op, system::error_code const& ec) { log(logger::debug, op, ec); }
+};
+
+class detail::read_buffer {
+  config cfg_{}; std::vector<char> buffer_; size_t append_buf_begin_=0;
+public: using span_type = span<char>;
+  struct config { size_t read_buffer_append_size=4096u, max_read_size=-1uz; };
+  [[nodiscard]] auto prepare_append() -> system::error_code;
+  [[nodiscard]] auto get_append_buffer() noexcept -> span_type;
+  void commit_append(size_t read_size);
+  [[nodiscard]] auto get_committed_buffer() const noexcept -> std::string_view;
+  [[nodiscard]] auto get_committed_size() const noexcept -> size_t;
+  void clear();
+  auto consume_comitted(size_t size) -> size_t;
+  void reserve(size_t n);
+  friend bool operator{==|!=}(self const& lhs, self const& rhs);
+  void set_config(config const& cfg) noexcept { cfg_ = cfg; }
+};
+
+enum class detail::consume_result { needs_more, got_response, got_push };
+class detail::multiplexer {
+  std::string writer_buffer_; std::deque<std::shared_ptr<elem>> reqs_; resp3::parser parser_{};
+  bool on_push_=false, cancel_run_called_=false; usage usage_; any_adapter set_receive_adapter_;
+
+  void commit_usage(bool is_push, size_t size);
+  [[nodiscard]] auto is_next_push(std::string_view data) const noexcept -> bool;
+  [[nodiscard]] auto release_push_requests() -> size_t;
+  [[nodiscard]] consume_result consume_next_impl(std::string_view data, system::error_code& ec);
+
+public: class elem {
+    enum class status { waiting, staged, written, done };
+    request const* req_; any_adapter adapter_; std::function<void()> done_;
+    size_t remaining_responses_; status status_; system::error_code ec_; size_t read_size_;
+  public: explicit ctor(request const& req, any_adapter adapter);
+    void set_done_callback(std::function<void()> f) noexcept { done_ = std::move(f); }
+    void notify_done() noexcept { status_ = done; done_(); }
+    void notify_error(system::error_code ec) noexcept;
+    [[nodiscard]] auto is_{waiting|written|staged|done}() const noexcept { return status_=={waiting|written|staged|done}; }
+    void mark_{written|staged|waiting}() noexcept { status_ = {written|staged|waiting}; }
+    auto get_error() const -> system::error_code const& { return ec_; }
+    auto get_request() const -> request const& { return *req_; }
+    auto get_read_size() const -> size_t { return read_size_; }
+    auto get_remaining_responses() const -> size_t { return remaining_responses_; }
+    void commit_response(size_t read_size);
+    auto get_adapter() -> any_adapter& { return adaper_; }
+  };
+
+  [[nodiscard]] auto prepare_write() -> size_t;
+  auto commit_write() -> size_t;
+  [[nodiscard]] auto consume_next(std::string_view data, system::error_code& ec) -> std::pair<consume_result, size_t>;
+  void add(std::shared_ptr<elem> const& ptr);
+  bool remove(std::shared_ptr<elem> const& ptr);
+  void reset();
+  [[nodiscard]] auto const& get_parser() const noexcept { return parser_; }
+  auto cancel_waiting() -> size_t;
+  void cancel_on_conn_lost();
+  [[nodiscard]] auto get_write_buffer() noexcept -> std::string_view { return {write_buffer_}; }
+  void set_receive_adapter(any_adapter adapter);
+  [[nodiscard]] auto get_usage() const noexcept -> usage { return usage_; }
+  [[nodiscard]] auto is_writing() const noexcept -> bool;
+};
+auto make_elem(request const& req, any_adapter adapter) -> std::shared_ptr<multiplexer::elem>;
+
+auto detail::is_cancelled<T>(T const& self) { return self.get_cancellation_state().cancelled() != none; }
+
+enum class detail::exec_action_type { setup_cancellation, immediate, done, notify_writer, wait_for_response, cancel_run };
+class detail::exec_action {
+  exec_action_type type_; system::error_code ec_; size_t bytes_read_;
+public: ctor(system::error_code ec, size_t bytes_read=0u) noexcept : type_{done}, ec_{ec}, bytes_read_{bytes_read} {}
+  exec_action_type type() const { return type_; }
+  system::error_code error() const { return ec_; }
+  size_t bytes_read() const { return bytes_read_; }
+};
+class detail::exec_fsm {
+  int resume_point_{0}; multiplexer* mpx_{nullptr}; std::shared_ptr<multiplexer::elem> elem_;
+public: ctor(multiplexer& mpx, std::shared_ptr<multiplexer::elem> elem) noexcept : mpx_{&mpx}, elem_{std::move(elem)} {}
+  exec_action resume(bool connection_is_open, asio::cancellation_type_t cancel_state);
+};
+
+class detail::reader_fsm {
+  int resume_point_{0}; read_buffer* read_buffer_=nullptr;
+  action action_after_resume_; action::type next_read_type_ = append_some;
+  multiplexer* mpx_=nullptr; std::pair<consume_result,size_t> res{needs_more, 0u};
+public: struct action {
+    enum class type { setup_cancellation, append_some, needs_more, notify_push_receiver, cancel_run, done };
+    type type_ = setup_cancellation; size_t push_size_t=0u; system::error_code ec_{};
+  };
+  explicit ctor(read_buffer& rbuf, multiplexer& mpx) noexcept;
+  action resume(size_t bytes_read, system::error_code ec, asio::cancellation_type_t);
+};
+
+auto detail::write<SyncWriteStream>(SyncWriteStream& stream, request const& req) { return asio::write(stream, asio::buffer(req.payload()), ec); }
+auto detail::async_write<AsyncWriteStream,CompletionToken=asio::default_completion_token_t<AsyncWriteStream::executor_type>>
+  (AsyncWriteStream& stream, request const& req, CompletionToken&& token={}) { return asio::async_write(stream, asio::buffer(req.payload()), token); }
+
+void detail::compose_setup_request(config& cfg);
+void detail::clear_response(generic_response& res);
+system::error_code detail::check_setup_response(system::error_code io_ec, const generic_response&);
+
+struct detail::ping_op<HealthChecker,ConnectionImpl> {
+  HealthChecker* checker_=nullptr; ConnectionImpl* conn_=nullptr; asio::coroutine coro_{};
+  void operator() <Self>(Self& self, system::error_code ec={}, size_t=0);
+};
+struct detail::check_timeout_op<HealthChecker,Connection> {
+  HealthChecker* checker_=nullptr; Connection* conn_=nullptr; asio::coroutine coro_{};
+  void operator() <Self>(Self& self, system::error_code ec={});
+};
+class health_checker<Executor> {
+  using timer_type = asio::basic_waitable_timer<std::chrono::steady_clock, asio::wait_traits<steady_clock>, Executor>;
+  timer_type ping_timer_, wait_timer_; request req_; generic_response resp_;
+  std::chrono::steady_clock::duration ping_interval_ = 5s; bool checker_has_exited_=false;
+public: ctor(Executor ex) : ping_timer_{ex}, wait_timer_{ex} { req_.push("PING", "Boost.Redis"); }
+  void set_config(config const& cfg) { req_.clear(); req_.push("PING", cfg.health_check_id); ping_interval_=cfg.health_check_interval; }
+  void cancel() { ping_timer_.cancel(); wait_timer_.cancel(); }
+  auto async_ping<ConnectionImpl,CompletionToken>(ConnectionImpl& conn, CompletionToken token)
+  { return asio::async_compose<CompletionToken, void(system::error_code)>
+    (ping_op<health_checker, ConnectionImpl>{this, &conn}, token, conn, ping_timer_); }
+  auto async_check_timeout<Connection,CompletionToken>(Connection& conn, CompletionToken token)
+  { checker_has_exited_=false;
+    return asio::async_compose<CompletionToken, void(system::error_code)>
+    (check_timeout_op<health_checker, Connection>{this, &conn}, token, conn, wait_timer_); }
+};
+
+struct detail::connection_impl<Executor> {
+  using clock_type = std::chrono::steady_clock; using clock_traits_type = asio::wait_traits<clock_type>;
+  using timer_type = asio::basic_waitable_timer<clock_type, clock_traits_type, Executor>;
+  using receive_channel_type = asio::experimental::channel<Executor, void(system::error_code,size_t)>;
+  using health_checker_type = health_checker<Executor>;
+  using exec_notifier_type = asio::experimental::channel<Executor, void(system::error_code,size_t)>;
+  using executor_type = Executor;
+
+  redis_stream<Executor> stream_;
+  timer_type writer_timer_, reconnect_timer_; receive_channel_type receive_channel_; health_checker_type health_checker_;
+  config cfg_; multiplexer mpx_; connection_logger logger_; read_buffer read_buffer_; generic_response setup_resp_;
+
+  executor_type get_executor() noexcept { return writer_timer_.get_executor(); }
+
+  struct exec_op {
+    connection_impl* obj_=nullptr; std::shared_ptr<exec_notifier_type> notifier_=nullptr; exec_fsm fsm_;
+    void operator() <Self>(Self& self, system::error_code={}, size_t=0);
+  };
+
+  ctor(Executor&& ex, asio::ssl::context&& ctx, logger&& lgr);
+  void cancel(operation op);
+  void cancel_run();
+  bool is_open() const noexcept { return stream_.is_open(); }
+  bool will_reconnect() const noexcept { return cfg_.reconnect_wait_interval != 0s; }
+  auto async_exec<CompletionToken> (request const& req, any_adapter adapter, CompletionToken&& token);
+};
+
+struct detail::writer_op<Executor> {
+  connection_impl<Executor>* conn_; asio::coroutine coro{};
+  void operator() <Self>(Self& self, system::error_code ec={}, size_t n=0);
+};
+struct detail::reader_op<Executor> {
+  connection_impl<Executor>* conn_; reader_fsm fsm_;
+  ctor(connection_impl<Executor>& conn) noexcept : conn_{&conn}, fsm_{conn.read_buffer_, conn.mpx_} {}
+  void operator() <Self>(Self& self, system::error_code ec={}, size_t n=0);
+};
+system::error_code detail::check_config(const config& cfg);
+class detail::run_op<Executor> {
+  connection_impl<Executor>* conn_; asio::coroutine coro_{}; system::error_code stored_ec_;
+  using order_t = std::array<size_t, 5>;
+  static system::error_code on_setup_finished(connection_impl<Executor>& conn, system::error_code ec);
+  auto send_setup<CompletionToken>(CompletionToken&& token);
+  auto reader<CompletionToken>(CompletionToken&& token);
+  auto writer<CompletionToken>(CompletionToken&& token);
+public: ctor(connection_impl<Executor>* conn) noexcept : conn_{conn} {}
+  void operator()<Self>(Self& self, order_t order, error_code ec0, ... ec5);
+  void operator()<Self>(Self& self, system::error_code ec={});
+};
+
+logger detail::make_stderr_logger(logger::level lvl, std::string prefix);
+
+class basic_connection<Executor> {
+  using clock_type = std::chrono::steady_clock; using clock_traits_type = asio::wait_traits<clock_type>;
+  using timer_type = asio::basic_waitable_timer<clock_type, clock_traits_type, executor_type>;
+  using receive_channel_type = asio::experimental::channel<executor_type, void(system::error_code,size_t)>;
+  using health_checker_type = health_checker<executor_type>;
+  std::unique_ptr<connection_impl<Executor>> impl_; // PImpl
+  bool use_ssl() const noexcept { return impl_->cfg_.use_ssl; }
+  void set_stderr_logger(lgoger::level lvl, const config& cfg) { impl_->logger_.reset(make_stderr_logger(lvl, cfg.log_prefix)); }
+public: using this_type = basic_connection<Executor>; using executor_type = Executor;
+  struct rebind_executor<Executor1> { using other=basic_connection<Executor1>; };
+
+  explicit ctor(executor_type ex, asio::ssl::context ctx={tlsv12_client}, logger lgr={})
+    : impl_(std::make_unique<connection_impl<Executor>>(std::move(ex), std::move(ctx), std::move(lgr))) {}
+  ctor(executor_type ex, logger lgr) : self(std::move(ex), asio::ssl::context{tlsv12_client}, std::move(lgr)) {}
+  explicit ctor(asio::io_context& ioc, asio::ssl::context ctx={tlsv12_client}, logger lgr={}) : self(io.get_executor(), std::move(ctx), std::move(lgr)) {}
+  ctor(asio::io_context& ioc, logger lgr) : self(ioc.get_executor(), asio::ssl::context{tlsv12_client}, std::move(lgr)) {}
+
+  executor_type get_executor() noexcept { return impl_->writer_timer_.get_executor(); }
+
+  auto async_run<CompletionToken=asio::default_completion_token_t<executor_type>>(config const& cfg, CompletionToken&& token={}) {
+    impl_->cfg_ = cfg; impl_->health_checker_.set_config(cfg); impl_->read_buffer_.set_config({cfg.read_buffer_append_size, cfg.max_read_size});
+    return asio::async_compose<CompletionToken, void(system::error_code)>(run_op<Executor>{impl_.get()}, token, impl_->writer_timer_);
+  }
+  auto async_receive<CompletionToken=asio::default_completion_token_t<executor_type>>(CompletionToken&& token={})
+  { return impl_->receive_channel_.async_receive(std::forward<CompletionToken>(token)); }
+  size_t receive(system::error_code& ec) { size_t size=0;
+    auto f=[&](system::error_code const& ec2, size_t n) { ec=ec2; size=n; };
+    auto const res = impl_->receive_channel_.try_receive(f);
+    if (ec) return 0; if (!res) ec = sync_receive_push_failed; return size;
+  }
+  auto async_exec<Response=ignore_t,CompletionToken=asio::default_completion_token_t<executor_type>>(request const& req, Response& resp=ignore, CompletionToken&& token={})
+  { return this->async_exec(req, any_adapter{resp}, std::forward<CompletionToken>(token)); }
+  auto async_exec<CompletionToken=asio::default_completion_token_t<executor_type>>(request const& req, any_adapter adapter, CompletionToken&& token={})
+  { return this->async_exec(req, std::move(adaper), std::forward<CompletionToken>(token)); }
+  void cancel(operation op=all) { impl_->cancel(op); }
+  bool will_reconnect() const noexcept { return impl_->will_reconnect(); }
+  void set_receive_response<Response>(Response&resp) { impl_->set_receive_adapter(any_adapter{resp}); }
+  usage get_usage() const noexcept { return impl_->mpx_.get_usage(); }
+};
+
+class connection {
+  basic_connection<executor_type> impl_;
+  void async_run_impl(config const& cfg, logger&& l, asio::any_completion_handler<void(system::error_code)> token);
+  void async_run_impl(config const& cfg, asio::any_completion_handler<void(system::error_code)> token);
+  void async_run_impl(request const& req, any_adapter&& adapter, asio::any_completion_handler<void(system::error_code)> token);
+public: using executor_type = asio::any_io_executor;
+  explicit ctor(executor_type ex, asio::ssl::context ctx={tlsv12_client}, logger lgr={});
+  ctor(executor_type ex, logger lgr) : self(std::move(ex), asio::ssl::context{tlsv12_client}, std::move(lgr)) {}
+  explicit ctor(asio::io_context& ioc, asio::ssl::context ctx={tlsv12_client}, logger lgr={}) :self{ioc.get_executor(), std::move(ctx), std::move(lgr)} {}
+  ctor(asio::io_context& loc, logger lgr) : self(ioc.get_executor(), asio::ssl::context{tlsv12_client}, std::move(lgr)) {}
+
+  executor_type get_executor() noexcept { return impl_.get_executor(); }
+
+  auto async_run<CompletionToken=asio::deferred_t>(config const& cfg, CompletionToken&& token={}) {
+    return asio::async_initiate<CompletionToken, void(system::error_code)>(
+      [](auto handler, connection* self, config const* cfg){ self->async_run_impl(*cfg, std::move(handler)); }, token, this, &cfg);
+  }
+  auto async_receive<CompletionToken=asio::deferred_t>(CompletionToken&& token={})
+  { return impl_.async_receive(std::forward<CompletionToken>(token)); }
+  size_t receive(system::error_code& ec) { return impl_.receive(ec); }
+  auto async_exec<Response=ignore_t,CompletionToken=asio::deferred_t>(request const& req, Response& resp=ignore, CompletionToken&& token={})
+  { return this->async_exec(req, any_adapter{resp}, std::forward<CompletionToken>(token)); }
+  auto async_exec<CompletionToken=asio::deferred_t>(request const& req, any_adapter adapter, CompletionToken&& token={})
+  { return asio::async_initiate<CompletionToken, void(system::error_code, size_t)>(
+      [](auto handler, connection* self, request const* req, any_adapter&& adapter) { self->async_exec_impl(*req, std::move(adapter), std::move(handler));},
+      token, this, &req, std::move(adapter)
+  ); }
+  void cancel(operation op=all);
+  bool will_reconnect() const noexcept { return impl_.will_reconnect(); }
+  void set_receive_response<Response>(Response& response) { impl_.set_receive_response(response); }
+  usage get_usage() const noexcept { return impl_.get_usage(); }
 };
 ```
 
