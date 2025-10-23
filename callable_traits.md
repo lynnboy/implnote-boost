@@ -7,7 +7,56 @@
 ------
 ### Traits for Function Types
 
-* Header `<boost/static_string.hpp>`
+* Header `<boost/callable_traits.hpp>`
+
+```c++
+struct detail::add_member_{const|volatile|cv}_impl<T,_=false_type>{};
+struct detail::add_member_{const|volatile|cv}_impl<T,std::is_same_t<add_member_{const|volatile|cv}_t<T>, dummy>> { using type = add_member_{const|volatile|cv}_t<T>; };
+struct add_member_{const|volatile|cv}<T> : add_member_{const|volatile|cv}_impl<T> {};
+using add_member_{const|volatile|cv}_t<T> = try_but_fail_if_invalid<traits<T>::add_member_{const|volatile|cv}, member_qualifiers_are_illegal_for_this_type>;
+
+struct detail::add_member_{l|r}value_reference_impl<T,_=false_type>{};
+struct detail::add_member_{l|r}value_reference_impl<T,std::is_same_t<add_member_{const|volatile|cv}_t<T>, dummy>> { using type = add_member_{l|r}value_reference_t<T>; };
+struct add_member_{l|r}value_reference<T> : add_member_{l|r}value_reference_impl<T> {};
+using add_member_{l|r}value_reference_t<T> = try_but_fail_if_invalid<traits<T>::add_member_{l|r}value_reference, member_qualifiers_are_illegal_for_this_type>;
+
+struct detail::add_noexcept_impl<T,_=false_type>{};
+struct detail::add_noexcept_impl<T,std::is_same_t<add_noexcept_t<T>, dummy>> { using type = add_noexcept_t<T>; };
+struct add_noexcept<T> : add_noexcept_impl<T> {};
+using add_noexcept_t<T> = try_but_fail_if_invalid<traits<T>::add_noexcept, cannot_add_noexcept_to_this_type>;
+
+struct detail::add_transaction_safe_impl<T,_=false_type>{};
+struct detail::add_transaction_safe_impl<T,std::is_same_t<add_transaction_safe_t<T>, dummy>> { using type = add_transaction_safe_t<T>; };
+struct add_transaction_safe<T> : add_transaction_safe_impl<T> {};
+using add_transaction_safe_t<T> = try_but_fail_if_invalid<traits<T>::add_transaction_safe, cannot_add_transaction_safe_to_this_type>;
+
+struct detail::add_varargs_impl<T,_=false_type>{};
+struct detail::add_varargs_impl<T,std::is_same_t<add_varargs_t<T>, dummy>> { using type = add_varargs_t<T>; };
+struct add_varargs<T> : add_varargs_impl<T> {};
+using add_varargs_t<T> = try_but_fail_if_invalid<traits<T>::add_varargs, varargs_are_illegal_for_this_type>;
+
+struct detail::make_member_pointer<T,C,_=std::is_class_v<C>>;
+struct detail::make_member_pointer<T,C,true> { using type = std::remove_reference_t<T> C::*; };
+struct detail::make_member_pointer<void,C,true> { using type = invalid_type; };
+struct detail::make_member_pointer<T,C,false> { using type = error_type<T>; };
+using detail::make_member_pointer_t<T,C> = make_member_pointer<T,C>::type;
+
+struct detail::apply_member_pointer_impl<T,C,_=std::false_type> {};
+struct detail::apply_member_pointer_impl<T,C,std::is_same_t<apply_member_pointer_t<T,C>, dummy>> { using type = apply_member_pointer_t<T,C>; };
+struct apply_member_pointer<T,C> : apply_member_pointer_impl<T,C> {};
+using apply_member_pointer_t<T,C> = sfinae_try<fallback_if_invalid<traits<T>::apply_member_pointer<C>, make_member_pointer<T,C>::type>,
+    fail_when_same<void,T,members_cannot_have_a_type_of_void>, fail_if<!std::is_class_v<C>, second_template_argument_must_be_a_class_or_struct>>;
+
+struct detail::apply_return_helper<T,R> { using type = traits<T>::apply_return<R>; };
+struct detail::apply_return_helper<std::tuple<Args...>,R> { using type = R(Args...); };
+struct detail::apply_return_impl<T,R,_=std::false_type> {};
+struct detail::apply_return_impl<T,R,std::is_same_v<apply_return_t<T,R>,dummy>> { using type = apply_return_t<T,R>; };
+struct apply_return<T,R> : apply_return_impl<T,R> {};
+using apply_return_t<T> = try_but_fail_if_invalid<apply_return_helper<T,R>::type, invalid_types_for_apply_return>;
+```
+
+------
+### Implementation Bits
 
 ```c++
 struct detail::sfinae_error{};
@@ -32,6 +81,15 @@ struct error::member_pointer_required : sfinae_error { struct _{}; };
 struct type_is_not_a_member_pointer : error::member_pointer_required<struct type_is_not_a_member_pointer_>{};
 struct error::reference_error : sfinae_error { struct _{}; };
 struct reference_type_not_supported_by_this_metafunction : error::reference_error<struct reference_type_not_supported_by_this_metafunction_>{};
+struct error::add_noexcept : sfinae_error { struct _ {}; };
+struct cannot_add_noexcept_to_this_type : error::add_noexcept<struct cannot_add_noexcept_to_this_type_>{};
+struct error::add_transaction_safe : sfinae_error { struct _ {}; };
+struct cannot_add_transaction_safe_to_this_type : error::add_transaction_safe<struct cannot_add_transaction_safe_to_this_type_>{};
+struct error::apply_member_pointer : sfinae_error { struct _ {}; };
+struct members_cannot_have_a_type_of_void : error::apply_member_pointer<struct members_cannot_have_a_type_of_void_>{};
+struct second_template_argument_must_be_a_class_or_struct : error::apply_member_pointer<struct second_template_argument_must_be_a_class_or_struct_>{};
+struct error::apply_return : sfinae_error { struct _ {}; };
+struct invalid_types_for_apply_return : error::apply_return<struct invalid_types_for_apply_return_>{};
 
 enum detail::qualifier_flags : uint32_t { default_=0, const_=1, volatile_=2, cv_=3, lref_=4, rref_=8 }
 
