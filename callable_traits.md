@@ -20,20 +20,60 @@ struct detail::add_member_{l|r}value_reference_impl<T,std::is_same_t<add_member_
 struct add_member_{l|r}value_reference<T> : add_member_{l|r}value_reference_impl<T> {};
 using add_member_{l|r}value_reference_t<T> = try_but_fail_if_invalid<traits<T>::add_member_{l|r}value_reference, member_qualifiers_are_illegal_for_this_type>;
 
+struct detail::remove_member_{const|volatile|cv}_impl<T,_=false_type>{};
+struct detail::remove_member_{const|volatile|cv}_impl<T,std::is_same_t<remove_member_{const|volatile|cv}_t<T>, dummy>> { using type = remove_member_{const|volatile|cv}_t<T>; };
+struct remove_member_{const|volatile|cv}<T> : remove_member_{const|volatile|cv}_impl<T> {};
+using remove_member_{const|volatile|cv}_t<T> = try_but_fail_if_invalid<traits<T>::remove_member_{const|volatile|cv}, member_qualifiers_are_illegal_for_this_type>;
+
+struct detail::remove_member_reference_impl<T,_=false_type>{};
+struct detail::remove_member_reference_impl<T,std::is_same_t<remove_member_reference_t<T>, dummy>> { using type = remove_member_reference_t<T>; };
+struct remove_member_reference<T> : remove_member_reference_impl<T> {};
+using remove_member_reference_t<T> = try_but_fail_if_invalid<traits<T>::remove_member_reference, member_qualifiers_are_illegal_for_this_type>;
+
+struct is_{const|volatile|cv}_member<T> : traits<shallow_decay<T>>::is_{const|volatile|cv}_member { using type = traits<shallow_decay<T>>::is_{const|volatile|cv}_member; };
+constexpr bool is_{const|volatile|cv}_member_v<T> = traits<shallow_decay<T>>::is_{const|volatile|cv}_member::value;
+
+struct is_<{l|r}value>_reference_member<T> : traits<shallow_decay<T>>::is_<{l|r}value>_reference_member { using type = traits<shallow_decay<T>>::is_<{l|r}value>_reference_member; };
+constexpr bool is_<{l|r}value>_reference_member_v<T> = traits<shallow_decay<T>>::is_<{l|r}value>_reference_member::value;
+
 struct detail::add_noexcept_impl<T,_=false_type>{};
 struct detail::add_noexcept_impl<T,std::is_same_t<add_noexcept_t<T>, dummy>> { using type = add_noexcept_t<T>; };
 struct add_noexcept<T> : add_noexcept_impl<T> {};
 using add_noexcept_t<T> = try_but_fail_if_invalid<traits<T>::add_noexcept, cannot_add_noexcept_to_this_type>;
+
+struct detail::remove_noexcept_impl<T,_=false_type>{};
+struct detail::remove_noexcept_impl<T,std::is_same_t<remove_noexcept_t<T>, dummy>> { using type = remove_noexcept_t<T>; };
+struct remove_noexcept<T> : remove_noexcept_impl<T> {};
+using remove_noexcept_t<T> = try_but_fail_if_invalid<traits<T>::remove_noexcept, cannot_remove_noexcept_from_this_type>;
+
+struct is_noexcept<T> : traits<shallow_decay<T>>::is_noexcept { using type = traits<shallow_decay<T>>::is_noexcept; };
+constexpr bool is_noexcept_v<T> = traits<shallow_decay<T>>::is_noexcept::value;
 
 struct detail::add_transaction_safe_impl<T,_=false_type>{};
 struct detail::add_transaction_safe_impl<T,std::is_same_t<add_transaction_safe_t<T>, dummy>> { using type = add_transaction_safe_t<T>; };
 struct add_transaction_safe<T> : add_transaction_safe_impl<T> {};
 using add_transaction_safe_t<T> = try_but_fail_if_invalid<traits<T>::add_transaction_safe, cannot_add_transaction_safe_to_this_type>;
 
+struct detail::remove_transaction_safe_impl<T,_=false_type>{};
+struct detail::remove_transaction_safe_impl<T,std::is_same_t<remove_transaction_safe_t<T>, dummy>> { using type = remove_transaction_safe_t<T>; };
+struct remove_transaction_safe<T> : remove_transaction_safe_impl<T> {};
+using remove_transaction_safe_t<T> = try_but_fail_if_invalid<traits<T>::remove_transaction_safe, cannot_remove_transaction_safe_from_this_type>;
+
+struct is_transaction_safe<T> : traits<shallow_decay<T>>::is_transaction_safe { using type = traits<shallow_decay<T>>::is_transaction_safe; };
+constexpr bool is_transaction_safe_v<T> = traits<shallow_decay<T>>::is_transaction_safe::value;
+
 struct detail::add_varargs_impl<T,_=false_type>{};
 struct detail::add_varargs_impl<T,std::is_same_t<add_varargs_t<T>, dummy>> { using type = add_varargs_t<T>; };
 struct add_varargs<T> : add_varargs_impl<T> {};
 using add_varargs_t<T> = try_but_fail_if_invalid<traits<T>::add_varargs, varargs_are_illegal_for_this_type>;
+
+struct detail::remove_varargs_impl<T,_=false_type>{};
+struct detail::remove_varargs_impl<T,std::is_same_t<remove_varargs_t<T>, dummy>> { using type = remove_varargs_t<T>; };
+struct remove_varargs<T> : remove_varargs_impl<T> {};
+using remove_varargs_t<T> = try_but_fail_if_invalid<traits<T>::remove_varargs, varargs_are_illegal_for_this_type>;
+
+struct has_varargs<T> : traits<shallow_decay<T>>::has_varargs { using type = traits<shallow_decay<T>>::has_varargs; };
+constexpr bool has_varargs_v<T> = traits<shallow_decay<T>>::has_varargs::value;
 
 struct detail::make_member_pointer<T,C,_=std::is_class_v<C>>;
 struct detail::make_member_pointer<T,C,true> { using type = std::remove_reference_t<T> C::*; };
@@ -53,6 +93,37 @@ struct detail::apply_return_impl<T,R,_=std::false_type> {};
 struct detail::apply_return_impl<T,R,std::is_same_v<apply_return_t<T,R>,dummy>> { using type = apply_return_t<T,R>; };
 struct apply_return<T,R> : apply_return_impl<T,R> {};
 using apply_return_t<T> = try_but_fail_if_invalid<apply_return_helper<T,R>::type, invalid_types_for_apply_return>;
+
+struct detail::args_impl<T,Container<...>,_=std::false_type> {};
+struct detail::args_impl<T,Container,std::is_same_v<args_t<T,Container>,dummy>> { using type = rags_t<T,Container>; };
+struct args<T,Container<...>=std::tuple> : args_impl<T,Container> {};
+using args_t<T,Container<...>=std::tuple> = try_but_fail_if_invalid<traits<T>::expand_args<Container>, cannot_expand_the_parameter_list_of_first_template_argument>;
+
+struct detail::<qualified>_class_of_impl<T,_=std::false_type> {};
+struct detail::<qualified>_class_of_impl<T,std::is_same_v<<qualified>_class_of_t<T>,dummy>> { using type = <qualified>_class_of_t<T>; };
+struct <qualified>_class_of<T> : <qualified>_class_of_impl<T> {};
+using <qualified>_class_of_t<T> = try_but_fail_if_invalid<traits<shallow_decay<T>>::{class_type|invoke_type}, type_is_not_a_member_pointer>;
+
+struct detail::function_type_impl<T,_=std::false_type> {};
+struct detail::function_type_impl<T,std::is_same_v<function_type_t<T>,dummy>> { using type = function_type_t<T>; };
+struct function_type<T> : function_type_impl<T> {};
+using function_type_t<T> = try_but_fail_if_invalid<traits<shallow_decay<T>>::function_type, cannot_determine_parameters_for_this_type>;
+
+struct detail::return_type_impl<T,_=std::false_type> {};
+struct detail::return_type_impl<T,std::is_same_v<return_type_t<T>,dummy>> { using type = return_type_t<T>; };
+struct return_type<T> : return_type_impl<T> {};
+using return_type_t<T> = try_but_fail_if_invalid<traits<shallow_decay<T>>::return_type, unable_to_determine_return_type>;
+
+struct has_member_qualifiers<T> : traits<shallow_decay<T>>::has_member_qualifiers { using type = traits<shallow_decay<T>>::has_member_qualifiers; };
+constexpr bool has_member_qualifiers_v<T> = traits<shallow_decay<T>>::has_member_qualifiers::value;
+
+struct has_void_return<T> : std::is_same<traits<shallow_decay<T>>::return_type, void> {};
+constexpr bool has_void_return_v<T> = std::is_same_v<traits<shallow_decay<T>>::return_type, void>;
+
+struct is_invocable<T,...Args> : is_invocable_impl<T,Args...>::type { using type = is_invocable_impl<T,Args...>::type; };
+struct is_invocable_r<Ret,T,...Args> : is_invocable_r_impl<is_invocable_impl<T,Args...>::type,Ret,T,Args...>::type { using type = ...; };
+constexpr bool is_invocable_v<T,...Args> = is_invocable_impl<T,Args...>::type::value;
+constexpr bool is_invocable_r_v<Ret,T,...Args> = is_invocable_r_impl<is_invocable_impl<T,Args...>::type,Ret,T,Args...>::type::value;
 ```
 
 ------
@@ -90,6 +161,12 @@ struct members_cannot_have_a_type_of_void : error::apply_member_pointer<struct m
 struct second_template_argument_must_be_a_class_or_struct : error::apply_member_pointer<struct second_template_argument_must_be_a_class_or_struct_>{};
 struct error::apply_return : sfinae_error { struct _ {}; };
 struct invalid_types_for_apply_return : error::apply_return<struct invalid_types_for_apply_return_>{};
+struct error::return_type : sfinae_error { struct _ {}; };
+struct unable_to_determine_return_type : error::return_type<struct unable_to_determine_return_type_>{};
+struct error::remove_noexcept : sfinae_error { struct _ {}; };
+struct cannot_remove_noexcept_from_this_type : error::remove_noexcept<struct cannot_remove_noexcept_from_this_type_>{};
+struct error::remove_transaction_safe : sfinae_error { struct _ {}; };
+struct cannot_remove_transaction_safe_from_this_type : error::remove_transaction_safe<struct cannot_remove_transaction_safe_from_this_type_>{};
 
 enum detail::qualifier_flags : uint32_t { default_=0, const_=1, volatile_=2, cv_=3, lref_=4, rref_=8 }
 
