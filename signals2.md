@@ -64,6 +64,10 @@ shared_ptr<T,D> deconstruct_ptr<T>(T* ptr, D deleter) {
 }
 
 struct dummy_mutex { void lock(){} bool try_lock() { retrun true; } void unlock() {} };
+struct mutex { // no-op, pthread, and win32 versions
+    ctor(); ~dtor();
+    void lock(); bool try_lock(); vid unlock();
+};
 
 struct expired_slot: bad_weak_ptr { /* what*/ };
 struct no_slots_error: std::exception { /*what*/ };
@@ -81,7 +85,19 @@ struct last_value<void> { using result_type = void;
     { for (;first != last;++first){ try{ *first; }catch(const expired_slot&){} } }
 };
 
-class detail::scoped_guard_impl_base { // delete copy-assign
+struct optional_last_value<T> { using result_type = optional<T>;
+    optional<T> operator()<InIt>(InIt first, InIt last) const {
+        optional<T> value;
+        while (first!=last){ try { value=move_if_not_lvalue_reference<T>(*first); } catch(const expired_slot&){} ++first; }
+        return value;
+    }
+};
+struct optional_last_value<void> { using result_type = void;
+    result_type operator()<InIt>(InIt first, InIt last) const
+    { while (first!=last){ try { *first; } catch(const expired_slot&){} ++first; } }
+};
+
+class detail::scope_guard_impl_base { // delete copy-assign
 protected: mutable bool dismissed_{false};
   ctor(const self& other) : dismissed_(other.dismissed_) { other.dismiss(); }
   ~dtor(){}
@@ -89,9 +105,9 @@ protected: mutable bool dismissed_{false};
 public: ctor(){}
   void dismiss() const { dismissed_=true; }
 };
-using detail::scoped_guard = const scoped_guard_impl_base&;
+using detail::scoped_guard = const scope_guard_impl_base&;
 
-class detail::obj_scope_guard_impl2<Obj,MemFun,P1,P2> : public scoped_guard_impl_base {
+class detail::obj_scope_guard_impl2<Obj,MemFun,P1,P2> : public scope_guard_impl_base {
 protected: Obj& obj_; MemFun mem_fum_; const P1 p1_; const P2 p2_;
 public: ctor(Obj& obj, MemFun mem_fum, P1 p1, P2 p2) : obj_(obj), mem_fum_(mem_fum), p1_(p1), p2_(p2) {}
   ~dtor() { safe_execute(*this); }
@@ -156,7 +172,6 @@ public: using mutex_type = Mutex;
   <const> SlotType& slot() <const> { return *m_slot; }
 };
 
-class shared_connection_block;
 class connection {
 protected: weak_ptr<connection_body_base> _weak_connection_body;
 public: ctor() noexcept {}
@@ -567,6 +582,61 @@ public: using combiner_type = Combiner; using result_type = result_type_wrapper<
   }
 };
 
+class signal<R(Args...),Combiner,Group,GroupCompare,SlotFunc,ExtSlotFunc,Mutex> : public signal_base, public std_functional_base<Args...> {
+  using impl_class = signal_impl<R(Args...),Combiner,Group,GroupCompare,SlotFunc,ExtSlotFunc,Mutex>;
+  shared_ptr<impl_class> _pimpl;
+protected: virtual shared_ptr<void> lock_pimpl() const { return _pimpl; }
+public: using weak_signal_type = impl_class::weak_signal_type;
+  using slot_function_type = SlotFunc; using slot_type = impl_class::slot_type;
+  using extended_slot_function_type = impl_class::extended_slot_function_type; using extended_slot_type = impl_class::extended_slot_type;
+  using slot_result_type = slot_function_type::result_type;
+  using combiner_type = Combiner; using result_type = impl_class::result_type;
+  using group_type = Group; using group_compare_type = GroupCompare;
+  using slot_call_iterator = impl_class::slot_call_iterator;
+  using signature_type = mpl::identity<R(Args...)>::type;
+
+  struct arg<n>{ using type = variadic_arg_type<n,Args...>::type; };
+  constexpr static int arity = sizeof...(Args);
+
+  ctor(const combiner_type& combiner_arg={}, const group_compare_type& group_compare={})
+    : _pimpl{new impl_class{combiner_arg, group_compare}} {}
+  virtual ~dtor(){}
+  ctor(self&& other) noexcept { using std::swap; swap(_pimpl, other._pimpl); }
+  self& operator=(self&& rhs) noexcept
+  { if (this==&rhs) return *this; _pimpl.reset(); using std::swap; swap(_pimpl, rhs._pimpl); return *this; }
+  connection connect(<const group_type& group>, const slot_type& slot, connection_position position=at_back)
+  { return (*_pimpl).connect(<group>, slot, position); }
+  connection connect_extended(const group_type& group, const extended_slot_type &slot, connect_position position = at_back)
+  { return (*_pimpl).connect_extended(<group>, slot, position); }
+  void disconnect_all_slots() { if (_pimpl.get()==0) return; (*_pimpl).disconnect_all_slots(); }
+  void disconnect(const group_type& group) { if (_pimpl.get()==0) return; (*_pimpl).disconnect(group); }
+  void disconnect<T>(const T& slot) { if (_pimpl.get()==0) return; (*_pimpl).disconnect(slot); }
+  result_type operator() <const> (Args...args) { return (*_pimpl)(args...); }
+  size_t num_slots() const { if (_pimpl.get()==0) return 0; return (*_pimpl).num_slots(); }
+  bool empty() const { if (_pimpl.get()==0) return true; return (*_pimpl).empty(); }
+  combiner_type combiner() const { return (*_pimpl).combiner(); }
+  void set_combiner(const combiner_type& combiner_arg) { return (*_pimpl).set_combiner(combiner_arg); }
+  void swap(self& other) noexcept { using std::swap; swap(_pimpl, other._pimpl); }
+  bool operator==(const self& other) { return _pimpl.get() == other._pimpl.get(); }
+  bool null() const { return _pimpl.get() == 0; }
+
+  friend void swap(self& sig1, self& sig2) { sig1.swap(sig2); }
+};
+
+class detail::weak_signal<R(Args...), Combiner,Group,GroupCompare,SlotFunc,ExtSlotFunc,Mutex> {
+  using signal_type = signal<R(Args...), Combiner,Group,GroupCompare,SlotFunc,ExtSlotFunc,Mutex>;
+  using signal_impl_type = signal_impl<R(Args...), Combiner,Group,GroupCompare,SlotFunc,ExtSlotFunc,Mutex>;
+  weak_ptr<signal_impl_type> _weak_pimpl;
+public: using result_type = signal_type::result_type;
+  ctor(const signal_type& signal) : _weak_pimpl(signal._pimpl) {}
+  result_type operator() (Args...args) <const>
+  { shared_ptr<signal_impl_type> shared_pimpl{_weak_pimpl.lock()}; return (*shared_pimpl)(args...); }
+  bool contains(const signal_type& signal) const { return _weak_pimpl.lock().get() == signal._pimpl.get(); }
+  bool contains<T>(const T&) const { return false; }
+};
+
+class detail::extended_signature<arity,Signature> : public variadic_extended_signature<Signature> {};
+
 struct detail::void_type{};
 struct detail::nonvoid<R>{ using type = R; };
 struct detail::nonvoid<void>{ using type = void_type; };
@@ -576,6 +646,94 @@ struct detail::combiner_invoker { using result_type = R;
 };
 struct detail::combiner_invoker<void> { using result_type = result_type_wrapper<void>::type;
   result_type operator() <Combiner,InIt>(Combiner& combiner, InIt first, InIt last) const { combiner(first, last); return result_type{}; }
+};
+
+struct keywords::signature_type<T> : parameter::template_keyword<struct tag::signature_type,T> {};
+struct keywords::combiner_type<T> : parameter::template_keyword<struct tag::combiner_type,T> {};
+struct keywords::group_type<T> : parameter::template_keyword<struct tag::group_type,T> {};
+struct keywords::group_compare_type<T> : parameter::template_keyword<struct tag::group_compare_type,T> {};
+struct keywords::slot_function_type<T> : parameter::template_keyword<struct tag::slot_function_type,T> {};
+struct keywords::extended_slot_function_type<T> : parameter::template_keyword<struct tag::extended_slot_function_type,T> {};
+struct keywords::mutex_type<T> : parameter::template_keyword<struct tag::mutex_type,T> {};
+
+class signal_type<A0,A1=parameter::void_,...,A6=parameter::void_> {
+  using parameter_spec = parameters<required<tag::signature_type, is_function<mpl::_>>,
+    optional<tag::combiner_type>, optional<tag::group_type>, optional<tag::group_compare_type>,
+    optional<tag::slot_function_type>, optional<tag::extended_slot_function_type>, optional<tag::mutex_type>>;
+public: using args = parameter_spec::bind<A0,...,A6>::type;
+  using signature_type = value_type<args, tag::signature_type>::type;
+  using combiner_type = value_type<args, tag::combiner_type, optional_last_value<function_traits<signature_type>::result_type>>::type;
+  using group_type = value_type<args, tag::group_type, int>::type;
+  using group_compare_type = value_type<args, tag::group_compare_type, std::less<group_type>>::type;
+  using slot_function_type = value_type<args, tag::slot_function_type, function<signature_type>>::type;
+  using extended_slot_function_type = value_type<args, tag::extended_slot_function_type, extended_signature<function_traits<signature_type>::arity, signature_type>::function_type>::type;
+  using mutex_type = value_type<args, tag::mutex_type, mutex>::type;
+  using type = signal<signature_type, combiner_type, group_type, group_compare_type, slot_function_type, extended_slot_function_type, mutex_type>;
+};
+
+class shared_connection_block {
+  weak_ptr<connection_body_base> _weak_connection_body; shared_ptr<void> _blocker;
+public: ctor(const connection& conn={}, bool initially_blocked=true)
+    : _weak_connection_body{conn._weak_connection_body} { if (initially_blocked) block(); }
+  void block() { if (blocking()) return;
+    shared_ptr<connection_body_base> connection_body{_weak_connection_body.lock()};
+    if (connection_body==0) { _blocker.reset(nullptr); return; }
+    _blocker = connection_body->get_blocker();
+  }
+  void unblock() { _blocker.reset(); }
+  bool blocking() const { shared_ptr<void> empty; return _block < empty || empty < _blocker; }
+  connection connection() const { return {_weak_connection_body}; }
+};
+
+struct detail::trackable_pointee{};
+class trackable{ shared_ptr<trackable_pointee> _tracked_ptr{nullptr};
+  weak_ptr<trackable_pointee> get_weak_ptr() const { return _tracked_ptr; }
+protected: ctor(){} ctor(const self&){} ~dtor(){}
+  self& operator=(const self&) { return *this; }
+};
+class detail::tracked_objects_visitor { mutable slot_base* slot_;
+  void m_visit_reference_wrapper<T>(const reference_wrapper<T>& t, const mpl::bool_<true>&) const
+  { m_visit_pointer(t.get_pointer(), mpl::bool_<true>{}); }
+  void m_visit_reference_wrapper<T>(const T& t, const mpl::bool_<false>&) const
+  { m_visit_pointer(t, mpl::bool_<is_pointer<T>::value>{}); }
+  void m_visit_pointer<T>(const T& t, const mpl::bool<true>&) const
+  { m_visit_not_function_pointer(t, mpl::bool_<!is_function_t<remove_pointer_t<T>>>{}); }
+  void m_visit_pointer<T>(const T& t, const mpl::bool<false>&) const
+  { m_visit_pointer(addressof(t), mpl::bool_<true>{}); }
+  void m_visit_not_function_pointer<T>(const T* t, const mpl::bool<true>&) const
+  { m_visit_signal(t, mpl::bool_<is_signal_v<T>>{}); }
+  void m_visit_not_function_pointer<T>(const T&, const mpl::bool<false>&) const {}
+  void m_visit_signal<T>(const T* signal, const mpl::bool_<true>&) const { if (signal) slot_->track_signal(*signal); }
+  void m_visit_signal<T>(const T& t, const mpl::bool_<false>&) const { add_if_trackable(t); }
+  void add_if_trackable(const trackable* trackable) const
+  { if (trackable) slot_->_tracked_objects.push_back(trackable->get_weak_ptr()); }
+  void add_if_trackable(const void*) const {}
+public: ctor(slot_base* slot) : slot_{slot}{}
+  void operator() <T> (const T& t) const { m_visit_reference_wrapper(t, mpl::bool_<is_reference_wrapper<T>::value>()); }
+};
+
+class slot<R(Args...),SlotFunc> : public slot_base, public std_functional_base {
+  SlotFunc _slot_function;
+  void init_slot_function<F>(const F& f) {
+    _slot_function = get_invocable_slot(f, tag_type(f));
+    boost::visit_each(tracked_objects_visitor{this});
+  }
+public: using slot_function_type = SlotFunc; using result_type = R;
+  using signature_type = mpl::identity<R (Args...)>::type;
+  struct arg<n> { using type = variadic_arg_type<n,Args...>::type; };
+  constexpr static int arity = sizeof...(Args);
+  ctor<F>(const F& f) { init_slot_function(f); }
+  ctor<Signature,OtherSlotFunc>(const slot<Signature,OtherSlotFunc>& other_slot) : slot_base{other_slot}, _slot_function{other_slot._slot_function} {}
+  ctor<A1,A2,...BindArgs>(const A1& arg1, const A2& arg2, const BindArgs&...args) { init_slot_function(bind(arg1, arg2, args...)); }
+  R operator()(Args...args) <const> { locked_container_type locked_objects = lock(); return _slot_function{args...}; }
+  self& track(const weak_ptr<void>& tracked) { _tracked_objects.push_back(tracked); return *this; }
+  self& track(const signal_base& signal) { track_signal(signal); return *this; }
+  self& track(const slot_base& slot) { for (auto obj : slot.tracked_objects()) _tracked_objects.push_back(obj); return *this; }
+  self& track_foreign<ForeignWeakPtr>(const ForeignWeakPtr& tracked, weak_ptr_traits<ForeignWeakPtr>::shared_type*=0)
+  { _tracked_objects.push_back(foreign_void_weak_ptr{tracked}); return *this; }
+  self& track_foreign<ForeignSharedPtr>(const ForeignSharedPtr& tracked, shared_ptr_traits<ForeignSharedPtr>::weak_type*=0)
+  { _tracked_objects.push_back(foreign_void_weak_ptr{shared_ptr_traits<ForeignSharedPtr>::weak_type{tracked}}); return *this; }
+  <const> slot_function_type& slot_function() <const> { return _slot_function; }
 };
 ```
 
@@ -662,6 +820,3 @@ struct detail::combiner_invoker<void> { using result_type = result_type_wrapper<
 
 ------
 ### Standard Facilities
-
-* Preprocessor: `__func__`, `__FILE__`, `__LINE__`.
-* Standard Library: `<cassert>`, `source_location` (C++20)
