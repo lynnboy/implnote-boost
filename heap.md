@@ -859,18 +859,473 @@ public:
 #### Fibonacci Heap
 
 ```c++
+using detail::fibonacci_heap_signature = parameter::parameters<optional<tag::allocator>, optional<tag::compare>, optional<tag::stable>, optional<tag::constant_time_size>, optional<tag::stability_counter_type>>;
+struct detail::make_fibonacci_heap_base<T,Parspec> {
+  static const bool constant_time_size = parameter::binding<Parspec, tag::constant_time_size, std::true_type>::type::value;
+  using hb = make_heap_base<T,Parspec, constant_time_size>;
+  using base_type = hb::type; using allocator_argument = hb::allocator_argument; using compare_argument = hb::compare_argument;
+  using node_type = marked_heap_node<base_type::internal_type>;
+  using allocator_type = allocator_rebind<allocator_argument, node_type>::type;
+  struct type : base_type, allocator_type {
+    ctor(compare_argument const& arg) : base_type{arg}{}
+    ctor(allocator_type const& alloc) : allocator_{alloc}{}
+    ctor(self const& rhs) : base_type{rhs}, allocator_type{rhs}{}
+    ctor(self&& rhs) : base_type{std::move((base_type&)rhs)}, allocator_type{std::move((allocator_type&)rhs)} {}
+    self& operator=(self&& rhs) { base_type::operator=(std::move((base_type&)rhs)); allocator_type::operator=(std::move((allocator_type&)(rhs))); return *this; }
+    self& operator=(self const& rhs) { base_type::operator=(rhs); allocator_type::operator=(rhs); return *this; }
+  };
+};
+class fibonacci_heap<T,A0=parameter::void_,...,A4=parameter::void_> : make_fibonacci_heap_base<T,fibonacci_heap_signature::bind<A0,...,A4>::type>::type {
+    using bound_args = fibonacci_heap_signature::bind<A0,...,A4>::type;
+    using base_maker = make_fibonacci_heap_base<T, bound_args>;
+    using size_holder = base::size_holder_type;
+    using allocator_argument = base_maker::allocator_argument;
+    struct types: extract_allocator_types<base_maker::allocator_argument> {
+        using value_type = T;
+        using value_compare = base_maker::compare_argument;
+        using allocator_type = base_maker::allocator_type;
+        using <const>_node_pointer = allocator_<const>_pointer<allocator_type>::type;
+        using node_list_type = heap_node_list;
+        using node_list_<const>_iterator = node_list_type::<const>_iterator;
+        using node = base_maker::node_type;
+        using value_extractor = value_extractor<value_type, internal_type, outer::base>;
+        using internal_compare = base::internal_compare;
+        using handle_type = node_handle<node_pointer, outer::base, reference>;
+        using iterator = recursive_tree_iterator<node, node_list_const_iterator, const value_type, value_extractor, list_iterator_converter<node, node_list_type>>;
+        using const_iterator = iterator;
+        using ordered_iterator = tree_iterator<node, const value_type, allocator_type, value_extractor, list_iterator_converter<node, node_list_type>, true, true, value_compare>;
+    };
+    using node = types::node; // node_list_type, node_pointer, node_list_<const>_iterator, internal_compare
+
+    mutable node_pointer top_element{nullptr}; node_list_type roots;
+
+    void clone_forest(self const& rhs) {
+      using node_cloner = node_type::node_cloner<allocator_type>;
+      trees.clone_from(rhs.trees, node_cloner{*this, nullptr}, nop_disposer{});
+      top_element = find_max_child<node_list_type, node, internal_compare>(roots, base::get_internal_cmp());
+    }
+    void cut(node_pointer n) { roots.splice(roots.begin(), n->get_parent()->children, node_list_type::s_iterator_to(*n)); n->parent = nullptr; n->mark = false; }
+    void cascading_cut(node_pointer n) { auto parent = n->get_parent();
+        if (parent) if (!parent->mark) parent->mark = true; else { cut(n); cascading_cut(parent); }
+    }
+    void add_children_to_root(node_pointer n) { for (auto&& child : n->children) child.parent = nullptr; roots.splice(roots.end(), n->children); }
+    void consolidate();
+    void finish_erase_or_pop(node_pointer erased_node) {
+        add_children_to_root(erased_node);
+        erased_node->~dtor(); this->deallocate(erased_node, 1);
+        size_holder::decrement();
+        if (!empty()) consolidate(); else top_element = nullptr;
+    }
+public:
+    using value_type = T;
+    using size_type = types::size_type; // difference_type, value_compare, allocator_type, <const>_reference, <const>_pointer, <const>_iterator, ordered_iterator, handle_type
+    static const bool constant_time_size = base_maker::constant_time_size, has_ordered_iterators{true}, is_mergable{true}, is_stable = extract_stable<bound_args>::value, has_reserve{false};
+
+    explicit ctor(value_compare const& cmp={}) : base{cmp} {}
+    explicit ctor(allocator_type const& alloc): base{alloc} {}
+    ctor(self const& rhs) : base{rhs} { if (rhs.empty()) return; clone_forest(rhs); size_holder::set_size(rhs.get_size()); }
+    ctor(self&& rhs) : base{std::move(rhs)}, top_element{rhs.top_element}{ roots.splice(roots.begin(), rhs.roots); rhs.top_element = nullptr; }
+    self& operator=(self const& rhs) {
+      clear(); size_holder::set_size(rhs.size()); ((base&)(*this)) = rhs;
+      if (rhs.empty()) top_element = nullptr; else clone_forest(rhs);
+      return *this;
+    }
+    self& operator=(self&& rhs) {
+      clear(); base::operator=(std::move(rhs)); roots.splice(roots.begin(), rhs.roots);
+      top_element = rhs.top_element; rhs.top_element = nullptr;
+      return *this;
+    }
+    ~dtor() { clear(); }
+    bool empty() const { if (constant_time_size) return size() == 0; else return roots.empty(); }
+    size_type size() const {
+      if (constant_time_size) return size_holder::get_size();
+      if (empty()) return 0; else return count_list_nodes<node_type, node_list_type>(roots);
+    }
+    size_type max_size() const { return allocator_max_size((const allocator_type&)*this); }
+    void clear() {
+      using disposer = node_disposer<node_type, node_list_type::value_type, allocator_type>;
+      roots.clear_and_dispose(disposer{*this});
+      size_holder::set_size(0); top_element = nullptr;
+    }
+    allocator_type get_allocator() const { return *this; }
+    void swap(self& rhs) { base::swap(rhs); std::swap(top_element, rhs.top_element); roots.swap(rhs.roots); }
+    const_reference top() const { return base::get_value(top_element->value); }
+    handle_type push(value_type const& v) {
+      size_holder::increment(); node_pointer n = this->allocate(1); new(n) node{base::make_node(v)};
+      roots.push_front(*n);
+      if (!top_element||base::operator()(top_element->value, n->value)) top_element = n;
+      return {n};
+    }
+    handle_type emplace<...Args>(Args&&...args) {
+      size_holder::increment(); node_pointer n = this->allocate(1); new(n) node{base::make_node(std::forward<Args>(args)...)};
+      roots.push_front(*n);
+      if (!top_element||base::operator()(top_element->value, n->value)) top_element = n;
+      return {n};
+    }
+    void pop() { roots.erase(node_list_type::s_iterator_to(*top_element)); finish_erase_or_pop(element); }
+    void update(handle_type handle, const_reference v)
+    { if (base::operator()(base::get_value(handle.node_->value), v)) increase(handle, v); else decrease(handle, v); }
+    void update_lazy(handle_type handle, const_reference v) { handle.node_->value = base::make_node(v); update_lazy(handle); }
+    void update(handle_type handle) { update_lazy(handle); consolidate(); }
+    void update_lazy(handle_type handle) { node_pointer n = handle.node_, parent = n->get_parent();
+        if (parent) { n->parent = nullptr; roots.splice(roots.begin(), parent->children, node_list_type::s_iterator_to(*n)); }
+        add_children_to_root(n);
+        if (base::operator()(top_element->value, n->value)) top_element = n;
+    }
+    void increase(handle_type handle, const_reference v) { handle.node_->value = base::make_node(v); increase(handle); }
+    void increase(handle_type handle) { node_pointer n = handle.node_, parent = n->get_parent();
+        if (parent) if (base::operator(parent->value, n->value)) { cut(n); cascading_cut(parent); }
+        if (base::operator()(top_element->value, n->value)) top_element = n;
+    }
+    void decrease(handle_type handle, const_reference v) { handle.node_->value = base::make_node(v); decrease(handle); }
+    void decrease(handle_type handle) { update(handle); }
+    void erase(handle_type const& handle) { node_pointer element = handle.node_, parent = element->get_parent();
+        if (parent) parent->children.erase(node_list_type::s_iterator_to(*element));
+        else roots.erase(node_list_type::s_iterator_to(*element));
+        finish_erase_or_pop(element);
+    }
+    iterator begin() const { return {roots.begin()} } iterator end() const { return {roots.end();} }
+    ordered_iterator ordered_begin() const { return {roots.begin(), roots.end(), top_element, base::value_comp()}; }
+    ordered_iterator ordered_end() const { return {nullptr, base::value_comp()}; }
+    void merge(self& rhs) {
+        size_holder::add(rhs.get_size());
+        if (!top_element || (rhs.top_element && base::operator()(top_element->value, rhs.top_element->value))) top_element = rhs.top_element;
+        roots.splice(roots.end(), rhs.roots); rhs.top_element = nullptr; rhs.set_size(0);
+        base::set_stability_count(std::max(base::get_stability_count(), rhs.get_stability_count())); rhs.set_stability_count(0);
+    }
+    static handle_type s_handle_from_iterator(iterator const& it) { return {it.get_node()}; }
+    value_compare const& value_comp() const { return base::value_comp(); }
+    bool operator< <H> (H const& rhs) const { return heap_compare(*this, rhs); } // and >, <=, >=
+    bool operator== <H> (H const& rhs) const { return heap_equality(*this, rhs); } // and !=
+};
 ```
 
 ------
 #### Pairing Heap
 
 ```c++
+using detail::pairing_heap_signature = parameter::parameters<optional<tag::allocator>, optional<tag::compare>, optional<tag::stable>, optional<tag::constant_time_size>, optional<tag::stability_counter_type>>;
+struct detail::make_pairing_heap_base<T,Parspec> {
+  static const bool constant_time_size = parameter::binding<Parspec, tag::constant_time_size, std::true_type>::type::value;
+  using hb = make_heap_base<T,Parspec, constant_time_size>;
+  using base_type = hb::type; using allocator_argument = hb::allocator_argument; using compare_argument = hb::compare_argument;
+  using node_type = heap_node<base_type::internal_type, false>;
+  using allocator_type = allocator_rebind<allocator_argument, node_type>::type;
+  struct type : base_type, allocator_type {
+    ctor(compare_argument const& arg) : base_type{arg}{}
+    ctor(allocator_type const& alloc) : allocator_{alloc}{}
+    ctor(self const& rhs) : base_type{rhs}, allocator_type{rhs}{}
+    ctor(self&& rhs) : base_type{std::move((base_type&)rhs)}, allocator_type{std::move((allocator_type&)rhs)} {}
+    self& operator=(self&& rhs) { base_type::operator=(std::move((base_type&)rhs)); allocator_type::operator=(std::move((allocator_type&)(rhs))); return *this; }
+    self& operator=(self const& rhs) { base_type::operator=(rhs); allocator_type::operator=(rhs); return *this; }
+  };
+};
+class pairing_heap<T,A0=parameter::void_,...,A4=parameter::void_> : make_pairing_heap_base<T,pairing_heap_signature::bind<A0,...,A4>::type>::type {
+    using bound_args = pairing_heap_signature::bind<A0,...,A4>::type;
+    using base_maker = make_pairing_heap_base<T, bound_args>;
+    using size_holder = base::size_holder_type;
+    using allocator_argument = base_maker::allocator_argument;
+    struct types: extract_allocator_types<base_maker::allocator_argument> {
+        using value_type = T;
+        using value_compare = base_maker::compare_argument;
+        using allocator_type = base_maker::allocator_type;
+        using <const>_node_pointer = allocator_<const>_pointer<allocator_type>::type;
+        using node_list_type = heap_node_list;
+        using node_list_<const>_iterator = node_list_type::<const>_iterator;
+        using node = base_maker::node_type;
+        using value_extractor = value_extractor<value_type, internal_type, outer::base>;
+        using internal_compare = base::internal_compare;
+        using handle_type = node_handle<node_pointer, outer::base, reference>;
+        using iterator = tree_iterator<node, const value_type, allocator_type, value_extractor, pointer_to_reference<node>, false, false, value_compare>;
+        using const_iterator = iterator;
+        using ordered_iterator = tree_iterator<node, const value_type, allocator_type, value_extractor, pointer_to_reference<node>, false, true, value_compare>;
+    };
+    using node = types::node; // node_list_type, node_pointer, node_list_<const>_iterator, internal_compare
+    using node_child_list = intrusive::list<heap_node_base<true>, intrusive::constant_time_size<false>>;
+
+    node_pointer root;
+
+    void clone_tree(self const& rhs) { if (rhs.empty()) return;
+        root = allocator_type::allocate(1); new (root) node{(node const&)*rhs.root, (allocator_type&)*this};
+    }
+    void merge_node(node_pointer other) { if (root!=nullptr) root = merge_nodes(root, other); else root = other; }
+    node_pointer merge_node_list(node_child_list& children) {
+        node_pointer merged = merge_first_pair(children); if (children.empty()) return merged;
+        node_child_list node_list{}; node_list.push_back(*merged);
+        do { node_list.push_back(*merge_first_pair(children)); } while (!children.empty());
+        return merge_node_list(node_list);
+    }
+    node_pointer merge_first_pair(node_child_list& children) {
+        node_pointer first_child = &children.front(); children.pop_front();
+        if (children.empty()) return first_child;
+        node_pointer second_child = &children.front(); children.pop_front();
+        return merge_nodes(first_child, second_child);
+    }
+    node_pointer merge_nodes(node_pointer node1, node_pointer node2) {
+        if (base::operator()(node1->value, node2->value)) std::swap(node1, node2);
+        node2->unlink(); node1->children.push_front(*node2); return node1;
+    }
+public:
+    using value_type = T;
+    using size_type = types::size_type; // difference_type, value_compare, allocator_type, <const>_reference, <const>_pointer, <const>_iterator, ordered_iterator, handle_type
+    static const bool constant_time_size = base_maker::constant_time_size, has_ordered_iterators{true}, is_mergable{true}, is_stable = extract_stable<bound_args>::value, has_reserve{false};
+
+    explicit ctor(value_compare const& cmp={}) : base{cmp} {}
+    explicit ctor(allocator_type const& alloc): base{alloc} {}
+    ctor(self const& rhs) : base{rhs} { if (rhs.empty()) return; clone_tree(rhs); size_holder::set_size(rhs.get_size()); }
+    ctor(self&& rhs) : base{std::move(rhs)}, root{rhs.root} { rhs.root = nullptr; }
+    self& operator=(self const& rhs) { clear(); size_holder::set_size(rhs.get_size()); ((base&)(*this)) = rhs; clone_tree(rhs); return *this; }
+    self& operator=(self&& rhs) { base::operator=(std::move(rhs)); root = rhs.root; rhs.root = nullptr; return *this; }
+    ~dtor() { while(!empty()) pop(); }
+    bool empty() const { return root == nullptr; }
+    size_type size() const {
+      if (constant_time_size) return size_holder::get_size();
+      if (root==nullptr) return 0; else return count_nodes(root);
+    }
+    size_type max_size() const { return allocator_max_size((const allocator_type&)*this); }
+    void clear() { if (empty()) return;
+      root->clear_subtree<allocator_type>(*this); root->~dtor();
+      this->deallocate(root, 1); root = nullptr; size_holder::set_size(0);
+    }
+    allocator_type get_allocator() const { return *this; }
+    void swap(self& rhs) { base::swap(rhs); std::swap(root, rhs.root); }
+    const_reference top() const { return base::get_value(root->value); }
+    handle_type push(value_type const& v) {
+      size_holder::increment(); node_pointer n = this->allocate(1); new(n) node{base::make_node(v)};
+      merge_node(n); return {n};
+    }
+    handle_type emplace<...Args>(Args&&...args) {
+      size_holder::increment(); node_pointer n = this->allocate(1); new(n) node{base::make_node(std::forward<Args>(args)...)};
+      merge_node(n); return {n};
+    }
+    void pop() { erase(handle_type{root}); }
+    void update(handle_type handle, const_reference v) { handle.node_->value = base::make_node(v); update(handle); }
+    void update(handle_type handle) { node_pointer n = handle.node_;
+        n->unlink();
+        if (!n->children.empty()) n = merge_nodes(n, merge_node_list(n->children));
+        if (n != root) merge_node(n);
+    }
+    void increase(handle_type handle, const_reference v) { update(handle, v); }
+    void increase(handle_type handle) { update(handle); }
+    void decrease(handle_type handle, const_reference v) { update(handle, v); }
+    void decrease(handle_type handle) { update(handle); }
+    void erase(handle_type const& handle) { node_pointer n = handle.node_;
+        if (n!=root){ n->unlink(); if (!n->children.empty()) merge_node(merge_node_list(n->children)); }
+        else { if (!n->children.empty()) root = merge_node_list(n->children); else root = nullptr; }
+        size_holder::decrement(); n->~dtor(); this->deallocate(n, 1);
+    }
+    iterator begin() const { return {root, base::value_comp()}; } iterator end() const { return {base::value_comp()}; }
+    ordered_iterator ordered_begin() const { return {root, base::value_comp()}; }
+    ordered_iterator ordered_end() const { return {nullptr, base::value_comp()}; }
+    static handle_type s_handle_from_iterator(iterator const& it) { return {it.get_node()}; }
+    void merge(self& rhs) { if (rhs.empty()) return;
+        merge_node(rhs.root); size_holder::add(rhs.get_size()); rhs.set_size(0); rhs.root = nullptr;
+        base::set_stability_count(std::max(base::get_stability_count(), rhs.get_stability_count())); rhs.set_stability_count(0);
+    }
+    value_compare const& value_comp() const { return base::value_comp(); }
+    bool operator< <H> (H const& rhs) const { return heap_compare(*this, rhs); } // and >, <=, >=
+    bool operator== <H> (H const& rhs) const { return heap_equality(*this, rhs); } // and !=
+};
 ```
 
 ------
 #### Skew Heap
 
 ```c++
+struct detail::parent_holder<NodePtr,store_parent_pointer> { node_pointer parent_{nullptr};
+    void set_parent(node_pointer parent) { parent_ = parent; }
+    node_pointer get_parent() const { return parent_; }
+};
+struct detail::parent_holder<NodePtr, false> {
+    void set_parent(node_pointer parent) {}
+    node_pointer get_parent() const { return nullptr; }
+};
+struct detail::skew_heap_node<Value,store_parent_pointer> : parent_holder<self*, store_parent_pointer> {
+    Value value; std::array<self*,2> children;
+    using child_list_type = std::array<skew_heap_node*, 2>; using <const>_child_iterator = child_list_type::<const>_child_iterator;
+    ctor(Value const& v) : value{v} { children.fill(0); }
+    ctor(Value&& v) : value{v} { children.fill(0); }
+    ctor<Alloc>(self const& rhs, Alloc& allocator, self* parent) : value{rhs.value} {
+        base::set_parent(parent); node_cloner<self, self, Alloc> cloner{allocator};
+        clone_child(0, rhs, cloner); clone_child(1, rhs, cloner);
+    }
+    void clone_child<Cloner>(int index, self const& rhs, Cloner& cloner)
+    { if (rhs.children[index]) children[index] = cloner(*rhs.children[index], this); else children[index] = nullptr; }
+    void clear_subtree<Alloc>(Alloc& alloc) { node_disposer<self, self, Alloc> disposer{alloc};
+        dispose_child(children[0], disposer); dispose_child(children[1], disposer);
+    }
+    void dispose_child<Disposer>(self* node, Disposer& disposer) { if (node) disposer(node); }
+    size_t count_children(void) const { size_t ret{1};
+        if (children[0]) ret += children[0]->count_children();
+        if (children[1]) ret += children[1]->count_children();
+        return ret;
+    }
+    bool is_heap<HeapBase>(HeapBase::value_compare const& cmp) const {
+        for (auto&& child : children) {
+            if (child == nullptr) continue;
+            if (store_parent_pointer) assert(child->get_parent() == this);
+            if (cmp(HeapBase::get_value(value), HeapBase::get_value(child->value)) || !child->is_heap<HeapBase>(cmp)) return false;
+        }
+        return true;
+    }
+};
+using detail::skew_heap_signature = parameter::parameters<optional<tag::allocator>, optional<tag::compare>, optional<tag::stable>, optional<tag::store_parent_pointer>,
+    optional<tag::stability_counter_type>, optional<tag::constant_time_size>, optional<tag::mutable_>>;
+struct detail::make_skew_heap_base<T,BoundArgs> {
+  static const bool constant_time_size = parameter::binding<BoundArgs, tag::constant_time_size, std::true_type>::type::value;
+  using hb = make_heap_base<T,BoundArgs,constant_time_size>;
+  using base_type = hb::type; using allocator_argument = hb::allocator_argument; using compare_argument = hb::compare_argument;
+  static const bool is_mutable = extract_mutable<BoundArgs>::value, store_parent_pointer = parameter::binding<BoundArgs, tag::store_parent_pointer, std::false_type>::type::value || is_mutable;
+  using node_type = skew_heap_node<base_type::internal_type, store_parent_pointer>;
+  using allocator_type = allocator_rebind<allocator_argument, node_type>::type;
+  struct type : base_type, allocator_type {
+    ctor(compare_argument const& arg) : base_type{arg}{}
+    ctor(allocator_type const& alloc) : allocator_{alloc}{}
+    ctor(self const& rhs) : base_type{rhs}, allocator_type{rhs}{}
+    ctor(self&& rhs) : base_type{std::move((base_type&)rhs)}, allocator_type{std::move((allocator_type&)rhs)} {}
+    self& operator=(self&& rhs) { base_type::operator=(std::move((base_type&)rhs)); allocator_type::operator=(std::move((allocator_type&)(rhs))); return *this; }
+    self& operator=(self const& rhs) { base_type::operator=(rhs); allocator_type::operator=(rhs); return *this; }
+  };
+};
+class skew_heap<T,A0=parameter::void_,...,A6=parameter::void_> : skew_heap_signature<T,skew_heap_signature::bind<A0,...,A6>::type>::type {
+    using bound_args = skew_heap_signature::bind<A0,...,A6>::type;
+    using base_maker = make_skew_heap_base<T, bound_args>;
+    using size_holder = base::size_holder_type;
+    using allocator_argument = base_maker::allocator_argument;
+    static const bool store_parent_pointer = base_maker::store_parent_pointer;
+    struct types: extract_allocator_types<base_maker::allocator_argument> {
+        using value_type = T;
+        using value_compare = base_maker::compare_argument;
+        using allocator_type = base_maker::allocator_type;
+        using node = base_maker::node_type;
+        using <const>_node_pointer = allocator_<const>_pointer<allocator_type>::type;
+        using value_extractor = value_extractor<value_type, internal_type, outer::base>;
+        using child_list_type = std::array<node_pointer,2>;
+        using child_list_iterator = child_list_type::iterator;
+        using iterator = tree_iterator<node, const value_type, allocator_type, value_extractor, dereferencer<node>, true, false, value_compare>;
+        using const_iterator = iterator;
+        using ordered_iterator = tree_iterator<node, const value_type, allocator_type, value_extractor, dereferencer<node>, true, true, value_compare>;
+        using handle_type = node_handle<node_pointer, base, reference>;
+    };
+    using node = types::node; // node_pointer, value_extractor
+
+    node_pointer root;
+
+    struct push_void {
+        static void push(outer* self, const_reference v) { self->push_internal(v); }
+        static void emplace<...Args>(outer* self, Args&&...args) { self->emplace_internal(std::forward<Args>(args)...); }
+    };
+    struct push_handle {
+        static handle_type push(outer* self, const_reference v) { return {self->push_internal(v)}; }
+        static handle_type emplace<...Args>(outer* self, Args&&...args) { return {self->emplace_internal(std::forward<Args>(args)...)}; }
+    };
+    node_pointer push_internal(const_reference v) {
+        size_holder::increment();
+        node_pointer n = this->allocate(1); new(n) node{base::make_node(v)};
+        merge_node(n); return n;
+    }
+    node_pointer push_internal<...Args>(Args&&...args) {
+        size_holder::increment();
+        node_pointer n = this->allocate(1); new(n) node{base::make_node(std::forward<Args>(args)...)};
+        merge_node(n); return n;
+    }
+    void unlink_node(node_pointer node) {
+        node pointer parent = node->get_parent(), merged = merge_children(node);
+        if (parent) {
+            if (node == parent->children[0]) parent->children[0] = merged; else parent->children[1] = merged;
+        } else root = merged;
+    }
+    void clone_tree(self const& rhs) { if (rhs.empty()) return; root = this->allocate(1); new (root) node{*rhs.root, *this, nullptr}; }
+    void merge_node(node_pointer other) { if (root!=nullptr) root = merge_nodes(root, other, nullptr); else root = other; }
+    node_pointer merge_nodes(node_pointer node1, node_pointer node2, node_pointer new_parent) {
+        if (node1 == nullptr) { if (node2) node2->set_parent(new_parent); return node2; }
+        if (node2 == nullptr) { node1->set_parent(new_parent); return node1; }
+        return merge_nodes_recursive(node1, node2, new_parent);
+    }
+    node_pointer merge_children(node_pointer node) { return merge_node(node->children[0], node->children[1], node->get_parent()); }
+    node_pointer merge_nodes_recursive(node_pointer node1, node_pointer node2, node_pointer new_parent) {
+        if (base::operator()(node1->value, node2->value)) std::swap(node1, node2);
+        if (node1->children[1]) {
+            auto merged = merge_nodes(node1->children[1], node2, node1);
+            node1->children[1] = merged; merged->set_parent(node1);
+        } else { node1->children[1] = node2; node2->set_parent(node1); }
+    }
+    void sanity_check();
+public:
+    using value_type = T;
+    using size_type = types::size_type; // difference_type, value_compare, allocator_type, <const>_reference, <const>_pointer, <const>_iterator, ordered_iterator
+    static const bool constant_time_size = base_maker::constant_time_size, has_ordered_iterators{true}, is_mergable{true},
+        is_stable = extract_stable<bound_args>::value, has_reserve{false}, is_mutable = extract_mutable<bound_args>::value;
+    using handle_type = std::conditional_t<is_mutable, types::handle_type, void*>;
+
+    explicit ctor(value_compare const& cmp={}) : base{cmp} {}
+    explicit ctor(allocator_type const& alloc): base{alloc} {}
+    ctor(self const& rhs) : base{rhs} { if (rhs.empty()) return; clone_tree(rhs); size_holder::set_size(rhs.get_size()); }
+    ctor(self&& rhs) : base{std::move(rhs)}, root{rhs.root} { rhs.root = nullptr; }
+    self& operator=(self const& rhs) { clear(); size_holder::set_size(rhs.get_size()); ((base&)(*this)) = rhs; clone_tree(rhs); return *this; }
+    self& operator=(self&& rhs) { base::operator=(std::move(rhs)); root = rhs.root; rhs.root = nullptr; return *this; }
+    ~dtor() { clear(); }
+    std::conditional_t<is_mutable,handle_type,void> push(value_type const& v) {
+      using push_helper = std::conditional_t<is_mutable,push_handle,push_void>;
+      return push_helper::push(this, v);
+    }
+    std::conditional_t<is_mutable,handle_type,void> emplace<...Args>(Args&&...args) {
+      using push_helper = std::conditional_t<is_mutable,push_handle,push_void>;
+      return push_helper::emplace(this, std::forward<Args>(args)...);
+    }
+    bool empty() const { return root == nullptr; }
+    size_type size() const {
+      if (constant_time_size) return size_holder::get_size();
+      if (root==nullptr) return 0; else return count_children(root);
+    }
+    size_type max_size() const { return allocator_max_size((const allocator_type&)*this); }
+    void clear() { if (empty()) return;
+      root->clear_subtree<allocator_type>(*this); root->~dtor();
+      this->deallocate(root, 1); root = nullptr; size_holder::set_size(0);
+    }
+    allocator_type get_allocator() const { return *this; }
+    void swap(self& rhs) { base::swap(rhs); std::swap(root, rhs.root); }
+    const_reference top() const { return base::get_value(root->value); }
+    void pop() {
+        auto top = root; root = merge_children(root); size_holder::decrement();
+        if (root) assert(root->get_parent()==nullptr) else assert(size_holder::get_size()==0);
+        top->~dtor(); this->deallocate(top, 1); sanity_check();
+    }
+    iterator begin() const { return {root, base::value_comp()}; } iterator end() const { return {base::value_comp()}; }
+    ordered_iterator ordered_begin() const { return {root, base::value_comp()}; }
+    ordered_iterator ordered_end() const { return {nullptr, base::value_comp()}; }
+    static handle_type s_handle_from_iterator(iterator const& it) { return {it.get_node()}; }
+    void merge(self& rhs) { if (rhs.empty()) return;
+        merge_node(rhs.root); size_holder::add(rhs.get_size()); rhs.set_size(0); rhs.root = nullptr; sanity_check();
+        base::set_stability_count(std::max(base::get_stability_count(), rhs.get_stability_count())); rhs.set_stability_count(0);
+    }
+    value_compare const& value_comp() const { return base::value_comp(); }
+    bool operator< <H> (H const& rhs) const { return heap_compare(*this, rhs); } // and >, <=, >=
+    bool operator== <H> (H const& rhs) const { return heap_equality(*this, rhs); } // and !=
+    static handle_type s_handle_from_iterator(iterator const& it) { return {it.get_node()}; }
+    void erase(handle_type object) {
+        node_pointer n = handle.node_; unlink_node(n); size_holder::decrement(); sanity_check();
+        n->~dtor(); this->deallocate(n, 1);
+    }
+    void update(handle_type handle, const_reference v)
+    { if (base::operator()(base::get_value(handle.node_->value), v)) increase(handle, v) else decrease(handle, v); }
+    void update(handle_type handle) { node_pointer n = handle.node_;
+        if (n->get_parent())
+            if (base::operator()(base::get_value(n->get_parent()->value), base::get_value(n->value))) increase(handle);
+            else decrease(handle);
+        else decrease(handle);
+    }
+    void increase(handle_type handle, const_reference v) { handle.node_->value = base::make_node(v); increase(handle); }
+    void increase(handle_type handle) { node_pointer n = handle.node_, parent = n->get_parent();
+        if (n == root) return;
+        if (n == parent->children[0]) parent->children[0] = nullptr; else parent->children[1] = nullptr;
+        n->set_parent(nullptr); merge_node(n);
+    }
+    void decrease(handle_type handle, const_reference v) { handle.node_->value = base::make_node(v); decrease(handle); }
+    void decrease(handle_type handle) { node_pointer n = handle.node_;
+        unlink_node(n); n->children.fill(0); n->set_parent(nullptr); merge_node(n);
+    }
+};
 ```
 
 ------
