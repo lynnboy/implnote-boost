@@ -570,7 +570,7 @@ public: using value_type = T;
     size_type size() const noexcept { return q_.size(); } size_type max_size() const noexcept { return q_.max_size(); }
     void clear() noexcept { q_.clear(); }
     allocator_type get_allocator() const { return q_.get_allocator(); }
-    const_reference top() const { return base::get_value(q_front()); }
+    const_reference top() const { return base::get_value(q_.front()); }
     void push(value_type const& v) { q_.push_back(base::make_node(v)); std::push_heap(q_.begin(), q_.end(), (base const&)*this); }
     void emplace<...Args>(Args&&...args) { q_.emplace_back(base::make_node(std::forward<Args>(args)...)); std::push_heap(q_.begin(), q_.end(), (base const&)*this); }
     void pop() { std::pop_heap(q_.begin(), q_.end(), (base const&)*this); q_.pop_back(); }
@@ -587,12 +587,272 @@ public: using value_type = T;
 #### D-Ary Heap
 
 ```c++
+struct detail::nop_index_updater { static void run<T>(T&, size_t) {} };
+using detail::d_ary_heap_signature = parameter::parameters<required<tag::arity>,
+  optional<tag::allocator>, optional<tag::compare>, optional<tag::stable>, optional<tag::stability_counter_type>, optional<tag::constant_time_size>>;
+class detail::d_ary_heap<T,BoundArgs,IndexUpdater> : make_heap_base<T,BoundArgs,false>::type {
+    using heap_base_maker = make_heap_base<T, BoundArgs, false>;
+    using container_type = std::vector<internal_type, allocator_rebind<heap_base_maker::allocator_argument, internal_type>::type>;
+    using container_iterator = container_type::const_iterator;
+    using index_updater = IndexUpdater;
+    static const unsigned D = parameter::binding<BoundArgs, tag::arity>::type::value;
+    struct types: extract_allocator_types<heap_base_maker::allocator_argument> {
+        using value_type = T;
+        using value_compare = heap_base_maker::compare_argument;
+        using allocator_type = container_type::allocator_type;
+        struct ordered_iterator_dispatcher {
+          static size_type max_index(const d_ary_heap* heap) { return heap->q_.size() - 1; }
+          static bool is_leaf(const d_ary_heap* heap, size_type index) { return !heap->not_leaf(index); }
+          static std::pair<size_type, size_type> get_child_nodes(const d_ary_heap* heap, size_type index)
+          { return std::make_pair(d_ary_heap::first_child_index(index), heap->last_child_index(index)); }
+          static internal_type const& get_internal_value(const d_ary_heap* heap, size_type index) { return heap->q_[index]; }
+          static value_type const& get_value(internal_type const& arg) { return d_ary_heap::baes::get_value(arg); }
+        };
+        using ordered_iterator = ordered_adaptor_iterator<const value_type, internal_type, outer::base, allocator_type, d_ary_heap::internal_compare, ordered_iterator_dispatcher>;
+        using iterator = stable_heap_iterator<const value_type, container_iterator, outer::base>;
+        using const_iterator = iterator;
+        using hanlde_type = void*;
+    };
+    using ordered_iterator_dispatcher = types::ordered_iterator_dispatcher;
+    container_type q_;
+
+    void reset_index(size_type index, size_type new_index) { index_updater::run(q_[index], new_index); }
+    void siftdown(size_type index) {
+      while (not_leaf(index)) {
+        size_type max_child_index = top_child_index(index);
+        if (!base::operator()(q_[max_child_index], q_[index])) {
+          reset_index(index, max_child_index); reset_index(max_child_index);
+          std::swap(q_[max_child_index], q_[index]); index=max_child_index;
+        } else return;
+    } }
+    void siftup(size_type index) {
+      while (index != 0) {
+        size_type parent = parent_index(index);
+        if (base::operator()(q_[parent], q_[index])) {
+          reset_index(index, parent); reset_index(parent, index);
+          std::swap(q_[parent], q_[index]); index=parent;
+        } else return;
+    } }
+    bool not_leaf(size_type index) const { return first_child_index(index) < q_.size(); }
+    size_type top_child_index(size_type index) const {
+      auto first_index = first_child_index(index);
+      auto first_child = q_.begin() + first_index, end = q_.end();
+      auto last_child = (std::distance(first_child, end) > D) ? first_child + D : end;
+      auto min_element = std::max_element(first_child, last_child, (base const&)*this);
+      return min_element - q_.begin();
+    }
+    static size_type parent_index(size_type index) { return (index-1)/D; }
+    static size_type first_child_index(size_type index) { return index * D + 1; }
+    size_type last_child_index(size_type index) const { return std::min(first_child_index(index) + D - 1, size() - 1); }
+    struct rebind<U,V,W,X> { using other = d_ary_heap<U,d_ary_heap_signature::bind<stable<heap_base_maker::is_stable>,
+        stability_counter_type<heap_base_maker::stability_counter_type>, arity<D>, compare<V>, allocator<W>>::type, X>;
+    };
+    void update(size_type index) {
+      if (index==0) { siftdown(index); return; }
+      size_type parent = parent_index(index);
+      if (base::operator()(q_[parent], q_[index])) siftup(index); else siftdown(index);
+    }
+    void erase(size_type index) {
+      while (index!=0) {
+        size_type parent = parent_index(index);
+        reset_index(index, parent); reset_index(parent, index);
+        std::swap(q_[parent], q_[index]); index=parent;
+      }
+      pop();
+    }
+    void increase(size_type index) { siftup(index); }
+    void decrease(size_type index) { siftdown(index); }
+public: using value_type = T;
+    using size_type = types::size_type; // difference_type, value_compare, allocator_type, <const>_reference, <const>_pointer, <const>_iterator, ordered_iterator, handle_type
+    static const bool is_stable = extract_stable<BoundArgs>::value;
+
+    explicit ctor(value_compare const& cmp={}) : base{cmp} {}
+    ctor(self const& rhs) : base{rhs}, q_{rhs.q_}{}
+    ctor(self&& rhs) : base{std::move(rhs)}, q_{std::move(rhs.q_)}{}
+    self& operator=(self&& rhs) { base::operator=(std::move(rhs)); q_ = std::move(rhs.q_); return *this; }
+    self& operator=(self const& rhs) { ((base&)*this) = (base const&)rhs; q_ = rhs.q_; return *this; }
+    bool empty() const { return q_.empty(); }
+    size_type size() const { return q_.size(); } size_type max_size() const { return q_.max_size(); }
+    void clear() { q_.clear(); }
+    allocator_type get_allocator() const { return q_.get_allocator(); }
+    value_type const& top() const { return base::get_value(q_.front()); }
+    void push(value_type const& v) { q_.push_back(base::make_node(v)); reset_index(size()-1, size()-1); siftup(q_.size()-1); }
+    void emplace<...Args>(Args&&...args) { q_.emplace_back(base::make_node(std::forward<Args>(args)...)); reset_index(size()-1, size()-1); siftup(q_.size()-1); }
+    void pop() { std::swap(q_.front(), q_.back()); q_.pop_back(); if (q_.empty()) return; reset_index(0,0); siftdown(0); }
+    void swap(self& rhs) { base::swap(rhs); q_.swap(rhs.q_); }
+    iterator begin() const { return {q_.begin()}; } iterator end() const { return {q_.end();} }
+    ordered_iterator ordered_begin() const { return {0, this, base::get_internal_cmp()}; }
+    ordered_iterator ordered_end() const { return {size(), this, base::get_internal_cmp()}; }
+    void reserve(size_type element_count) { q_.reserve(element_count); }
+    value_compare const& value_comp() const { return base::value_comp(); }
+};
+
+struct detail::select_dary_heap<T,BoundArgs> {
+  using type = std::conditional_t<extract_mutable<BoundArgs>::value,
+    priority_queue_mutable_wrapper<d_ary_heap<T,BoundArgs, nop_index_updater>>, d_ary_heap<T,BoundArgs,nop_index_updater>>;
+};
+
+class d_ary_heap<T, A0=parameter::void_, ..., A5=parameter::void_> : public select_dary_heap<T,d_ary_heap_signature::bind<A0,...,A5>::type> {
+  using bound_args = d_ary_heap_signature::bind<A0,...,A5>::type;
+  static const bool is_mutable = extract_mutable<bound_args>::value;
+  struct types { using size_type = base::size_type; }; // difference_type, value_compare, allocator_type, <const>_reference, <const>_pointer, <const>_iterator, ordered_iterator, handle_type
+public: static const bool constant_time_size{true}, has_ordered_iterators{true}, is_mergable{false}, has_reserve{true}, is_stable{base::is_stable};
+  using value_type = T;
+  using size_type = types::size_type; // all types member types
+  using base::ctor; using base::operator=;
+  using base::empty; using base::size; using base::max_size; using base::clear;
+  using base::get_allocator; using base::top; using base::push; using base::emplace;
+  bool operator< <H>(H const& rhs) const { return heap_compare(*this, rhs); } // and >, <=, >=
+  bool operator== <H>(H const& rhs) const { return heap_equality(*this, rhs); } // and !=
+  using base::update; using base::increase; using base::decrease; using base::erase;
+  using base::s_handle_from_iterator; using base::pop; using base::swap;
+  using base::begin; using base::end; using base::ordered_begin; using base::ordered_end;
+  using base::reserve; using base::value_comp;
+};
 ```
 
 ------
 #### Binomial Heap
 
 ```c++
+using detail::binomial_heap_signature = parameter::parameters<optional<tag::allocator>, optional<tag::compare>, optional<tag::stable>, optional<tag::constant_time_size>, optional<tag::stability_counter_type>>;
+struct detail::make_binomial_heap_base<T,Parspec> {
+  static const bool constant_time_size = parameter::binding<Parspec, tag::constant_time_size, std::true_type>::type::value;
+  using hb = make_heap_base<T,Parspec, constant_time_size>;
+  using base_type = hb::type; using allocator_argument = hb::allocator_argument; using compare_argument = hb::compare_argument;
+  using node_type = parent_pointing_heap_node<base_type::internal_type>;
+  using allocator_type = allocator_rebind<allocator_argument, node_type>::type;
+  struct type : base_type, allocator_type {
+    ctor(compare_argument const& arg) : base_type{arg}{}
+    ctor(allocator_type const& alloc) : allocator_{alloc}{}
+    ctor(self const& rhs) : base_type{rhs}, allocator_type{rhs}{}
+    ctor(self&& rhs) : base_type{std::move((base_type&)rhs)}, allocator_type{std::move((allocator_type&)rhs)} {}
+    self& operator=(self&& rhs) { base_type::operator=(std::move((base_type&)rhs)); allocator_type::operator=(std::move((allocator_type&)(rhs))); return *this; }
+    self& operator=(self const& rhs) { base_type::operator=(rhs); allocator_type::operator=(rhs); return *this; }
+  };
+};
+class binomial_heap<T,A0=parameter::void_,...,A3=parameter::void_> : make_binomial_heap_base<T,binomial_heap_signature::bind<A0,...,A3>::type>::type {
+    using bound_args = binomial_heap_signature::bind<A0,...,A3>::type;
+    using base_maker = make_binomial_heap_base<T, bound_args>;
+    using size_holder = base::size_holder_type;
+    using allocator_argument = base_maker::allocator_argument;
+    struct types: extract_allocator_types<base_maker::allocator_argument> {
+        using value_type = T;
+        using value_compare = base_maker::compare_argument;
+        using allocator_type = base_maker::allocator_type;
+        using node = base_maker::node_type;
+        using <const>_node_pointer = allocator_<const>_pointer<allocator_type>::type;
+        using handle_type = node_handle<node_pointer, outer::base, reference>;
+        using node_type = base_maker::node_type;
+        using node_list_type = intrusive::list<heap_node_base<false>, intrusive::constant_time_size<true>>;
+        using node_list_<const>_iterator = node_list_type::<const>_iterator;
+        using value_extractor = value_extractor<value_type, internal_type, outer::base>;
+        using iterator = recursive_tree_iterator<node_type, node_list_const_iterator, const value_type, value_extractor, list_iterator_converter<node_type, node_list_type>>;
+        using const_iterator = iterator;
+        using ordered_iterator = tree_iterator<node_type, const value_type, allocator_type, value_extractor, list_iterator_converter<node_type, node_list_type>, true, true, value_compare>;
+    };
+    using node_type = types::node_type; // node_list_type, <const>_node_pointer, node_list_<const>_iterator
+    node_pointer top_element{nullptr}; node_list_type trees;
+
+    void merge_and_clear_nodes(self& rhs);
+    void clone_forest(self const& rhs) {
+      using node_cloner = node_type::node_cloner<allocator_type>;
+      trees.clone_from(rhs.trees, node_cloner{*this, nullptr}, nop_disposer{});
+      update_top_element();
+    }
+    struct force_inf { bool operator()<X>(X const&, X const&) const { return false; } };
+    void siftup<Copmare>(node_pointer n, Compare const& cmp);
+    void siftdown(node_pointer n);
+    void insert_node(node_list_iterator it, node_pointer n);
+    explicit ctor(value_compare const& cmp, node_list_type& child_list, size_type size) : base{cmp} {/*...*/}
+    node_pointer merge_trees(node_pointer node1, node_pointer node2);
+    void update_top_element() { top_element = find_max_child<node_list_type, node_type, internal_compare>(trees, base::get_internal_cmp()); }
+    void sorted_by_degree() const{/*...*/}
+    void sanity_check(){/*...*/}
+public:
+    static const bool constant_time_size = base::constant_time_size, has_ordered_iterators{true}, is_mergable{true}, is_stable = extract_stable<bound_args>::value, has_reserve{false};
+    using value_type = T;
+    using size_type = types::size_type; // difference_type, value_compare, allocator_type, <const>_reference, <const>_pointer, <const>_iterator, ordered_iterator, handle_type
+
+    explicit ctor(value_compare const& cmp={}) : base{cmp} {}
+    explicit ctor(allocator_type const& alloc): base{alloc} {}
+    ctor(self const& rhs) : base{rhs} { if (rhs.empty()) return; clone_forest(rhs); size_holder::set_size(rhs.get_size()); }
+    ctor(self&& rhs) : base{std::move(rhs)}, top_element{rhs.top_element}{ trees.splice(trees.begin(), rhs.trees); rhs.top_element = nullptr; }
+    self& operator=(self const& rhs) {
+      clear(); size_holder::set_size(rhs.get_size()); ((base&)(*this)) = rhs;
+      if (rhs.empty()) top_element = nullptr; else clone_forest(rhs);
+      return *this;
+    }
+    self& operator=(self&& rhs) {
+      clear(); base::operator=(std::move(rhs)); trees.splice(trees.begin(), rhs.trees);
+      top_element = rhs.top_element; rhs.top_element = nullptr;
+      return *this;
+    }
+    ~dtor() { clear(); }
+    bool empty() const { return top_element == nullptr; }
+    size_type size() const {
+      if (constant_time_size) return size_holder::get_size();
+      if (empty()) return 0; else return count_list_nodes<node_type, node_list_type>(trees);
+    }
+    size_type max_size() const { return allocator_max_size((const allocator_type&)*this); }
+    void clear() {
+      using disposer = node_disposer<node_type, node_list_type::value_type, allocator_type>;
+      trees.clear_and_dispose(disposer{*this});
+      size_holder::set_size(0); top_element = nullptr;
+    }
+    allocator_type get_allocator() const { return *this; }
+    void swap(self& rhs) { base::swap(rhs); std::swap(top_element, rhs.top_element); trees.swap(rhs.trees); }
+    const_reference top() const { return base::get_value(top_element->value); }
+    handle_type push(value_type const& v) {
+      node_pointer n = this->allocate(1); new(n) node_type{base::make_node(v)}; insert_node(trees.begin(), n);
+      if (!top_element||base::operator()(top_element->value, n->value)) top_element = n;
+      size_holder::increment(); sanity_check(); return {n};
+    }
+    handle_type emplace<...Args>(Args&&...args) {
+      node_pointer n = this->allocate(1); new(n) node_type{base::make_node(std::forward<Args>(args)...)}; insert_node(trees.begin(), n);
+      if (!top_element||base::operator()(top_element->value, n->value)) top_element = n;
+      size_holder::increment(); sanity_check(); return {n};
+    }
+    void pop() {
+      trees.erase(node_list_type::s_iterator_to(*top_element)); size_holder::decrement();
+      if (element->child_count()) {
+        binomial_heap children{value_comp(), element->children, (1<<element->child_count())-1};
+        if (trees.empty()) { size_t size = constant_time_size ? size_holder::get_size() : 0;
+          swap(children); base::set_stability_count(base::get_stability_count());
+          if (constant_time_size) size_holder::set_size(size);
+        } else merge_and_clear_nodes(children);
+      }
+      if (trees.empty()) top_element = nullptr; else update_top_element();
+      element->~node_type(); this->deallocate(element, 1); sanity_check();
+    }
+    void update(handle_type handle, const_reference v)
+    { if (base::operator()(base::get_value(handle.node_->value), v)) increase(handle, v); else decrease(handle, v); }
+    void update(handle_type handle) {
+      if (handle.node_->parent) {
+        if (base::operator()(base::get_value(handle.node_->parent->value), base::get_value(handle.node_->value)))
+          increase(handle); else decrease(handle);
+      } else decrease(handle);
+    }
+    void increase(handle_type handle, const_reference v) { handle.node_->value = base::make_node(v); increase(handle); }
+    void increase(handle_type handle) { siftup(handle.node_, *this); update_top_element(); sanity_check(); }
+    void decrease(handle_type handle, const_reference v) { handle.node_->value = base::make_node(v); decrease(handle); }
+    void decrease(handle_type handle) { siftdown(handle.node_); update_top_element(); }
+    void merge(binomial_heap& rhs) {
+      if (rhs.empty()) return; if (empty()) { swap(rhs); return; }
+      size_type new_size = size_holder::get_size() + rhs.get_size();
+      merge_and_clear_nodes(rhs);
+      size_holder::set_size(new_size); rhs.set_size(0); rhs.top_element = nullptr;
+      base::set_stability_count(std::max(base::get_stability_count(), rhs.get_stability_count())); rhs.set_stability_count(0);
+    }
+    iterator begin() const { return {trees.begin()} } iterator end() const { return {trees.end();} }
+    ordered_iterator ordered_begin() const { return {trees.begin(), trees.end(), top_element, base::value_comp()}; }
+    ordered_iterator ordered_end() const { return {nullptr, base::value_comp()}; }
+    void erase(handle_type handlej) { siftup(handle.node_, force_inf{}); top_element = n; pop(); }
+    static handle_type s_handle_from_iterator(iterator const& it) { return {it.get_node()}; }
+    value_compare const& value_comp() const { return base::value_comp(); }
+    bool operator< <H> (H const& rhs) const { return heap_compare(*this, rhs); } // and >, <=, >=
+    bool operator== <H> (H const& rhs) const { return heap_equality(*this, rhs); } // and !=
+};
 ```
 
 ------
