@@ -52,33 +52,34 @@ struct : std::error_category{
     bool equivalent(const std::error_code& code, int condition) const noexcept override; // UB always false
 } const safe_numerics_actions_category {}; // global single instance
 
-checked_result<R> { // constexpr
-    const safe_numerics_error m_e;
-    union contents { R m_r; char const* const m_msg
-        ctor(const R&) noexcept; ctor(char const* msg) noexcept;
-        operator R() noexcept; operator char const* () noexcept;
-    } m_contents;
-    ctor()=delete; ctor(self const&)=default; ctor(self&&)=default;
-    ctor(const R& r) noexcept: m_e{success}, m_contents{r} {} // value
-    ctor(safe_numerics_error const& e, const char* msg="") noexcept: m_e{e}, m_contents{msg} {} // error
-    ctor<T>(self<T> const& t) noexcept : m_e{t.m_e} { if (t.m_e == success) m_contents.m_r = t.m_r; else m_contents.m_msg = t.m_msg; }
-    bool exception() const { return m_e != success; }
-    operator R() const noexcept { return m_cnotents.m_r; }
-    operator safe_numerics_error() const noexcept { return m_e; }
-    operator const char*() const noexcept { return m_conetnts.m_msg; }
-};
-struct make_checked_result<R> { static checked_result<R> invoke<e>(char const*& m) noexcept { return {e,m}; } };
+struct is_safe<T> : std::false_type {};
+struct base_type<T> { using type = T; };
+const base_type<T>::type& base_value<T>(const T& t) { return (base_type<T>::type&)t; }
+struct get_promotion_policy<T> { using type = void; };
+struct get_exception_policy<T> { using type = void; };
 
-struct heterogeneous_checked_operation<R,min,max,T> { checked_result<R> cast(const T& t) { return (R)t; } };
-struct checked_operation<R> {
-    static checked_result<R> minus(const R& t) noexcept { return -t; } // bitwise_not
-    static checked_result<R> add(const R& t, const R& u) noexcept { return t + u; }
-    // subtract, multiply, divide, modulus, left_shift, right_shift, bitwise_{or|xor|and}
-    static logic::tribool equal(const R& t, const R& u) noexcept { return t == u; } // less_than, greater_than
+struct exception_policy<AE,IDB,UB,UV> {
+    static void on_arithmetic_error(const safe_numerics_error& e, const char* msg) { AE{}(e, msg); }
+    static void on_implementation_defined_behavior(const safe_numerics_error& e, const char* msg) { IDB{}(e, msg); }
+    static void on_undefined_behavior(const safe_numerics_error& e, const char* msg) { UB{}(e, msg); }
+    static void on_uninitialized_value(const safe_numerics_error& e, const char* msg) { UV{}(e, msg); }
 };
-checked_result<R> checked::cast<R,T>(const T& t) { return heterogeneous_checked_operation<R,std::numeric_limits<R>::min(),max(),T>::cast(t); }
-checked_result<R> checked::minus<R>(const R& t) noexcept { checked_operation<R>::minus(t); } // bitwise_not
-checked_result<R> checked::add<R>(const R& t, const R& u) noexcept { checked_operation<R>::add(t, u); } // subtract, multiply, divide, modulus, {less|greater}_than_<equal>, equal, {left|right}_shift, bitwise_{or|xor|and}
+
+struct ignore_exception { void operator()(const safe_numerics_error&, const char*) {} };
+struct trap_exception { };
+struct throw_exception { void operator()(const safe_numerics_error& e, const char* msg) { throw std::system_error(std::error_code{e}, msg); } };
+safe_numerics_actions make_safe_numerics_action(const safe_numerics_error& e) {
+    if (e <= underflow_error) return arithmetic_error;
+    if (e <= shift_too_large) return implementation_defined_behavior;
+    if (e == uninitialized_value) return uninitialized_value;
+    if (e == success) return no_action;
+    assert(false);
+}
+using loose_exception_policy = exception_policy<throw_exception, ignore_exception, ignore_exception, ignore_exception>;
+using loose_trap_policy = exception_policy<trap_exception, ignore_exception, ignore_exception, ignore_exception>;
+using strict_exception_policy = exception_policy<throw_exception, throw_exception, throw_exception, ignore_exception>;
+using strict_trap_policy = exception_policy<trap_exception, trap_exception, trap_exception, trap_exception>;
+using default_exception_policy = strict_exception_policy;
 
 struct utility::print_value<n>{ enum test:char { value = n<0 ? n-256 : n+256 }; }; // CT printing value in warning message
 struct utility::static_test<T>{}; struct utility::static_test<std::false_type>{[[deprecated]]ctor(){}}; // show in deprecating message
@@ -93,14 +94,7 @@ using utility::unsigned_stored_type<min,max> = boost::int_t<significant_bits(max
 
 std::pair<T,T> utility::minmax<T>(const std::initializer_list<T>& l);
 T utility::round_out<T>(const T& t);
-```
 
-------
-### Safe Numeric
-
-* Header `<boost/safe_numerics/safe_integer.hpp>`
-
-```c++
 using detail::make_unsigned<T> = std::make_unsigned<T>;
 struct detail::less_than<tsigned,usigned> { static bool invoke<T,U>(const T& t, const U& u) {
     if constexpr (tsigned != usigned) return u < 0 ? true : u < 0 ? false : (std::make_unsigned_t<T>&)t < (std::make_unsigned_t<U>&)u;
@@ -121,6 +115,371 @@ bool equal(const T& lhs, const U& rhs) requires std::is_integral_v<T> && std::is
 { return equal<std::is_signed_v<T>,std::is_signed_v<U>>::invoke(lhs, rhs); }
 bool equal<T,U>(const T& lhs, const U& rhs) requires std::is_floating_point_v<T> && std::is_floating_point_v<U> { return lhs == rhs; }
 bool not_equal<T,U>(const T& lhs, const U& rhs) { return !equal(rhs, lhs); }
+
+struct interval<R> {
+    const R l = std::numeric_limits<R>::min(); // lowest() for float/double
+    const R u = std::numeric_limits<R>::max();
+    ctor<T>(const T& lower, const T& uppwer) : l{lower}, u{upper}{}
+    ctor<T>(const std::pair<T,T>& p) : l{p.first}, u{p.second} {}
+    ctor<T>(const self<T>& rhs) : l{rhs.l}, u{rhs.u} {}
+    tribool includes(const R& t) const { return l <= t && t <= u; }
+    tribool includes<const self<R>& t> const { return u >= t.u && l <= t.l; }
+    tribool excludes(const R& t) const { return t < l || t > u; }
+    tribool excludes<const self<R>& t> const { return t.u < l || u < t.l; }
+};
+interval<R> make_interval<R>(<const R&>) { return {}; }
+
+interval<T> operator+ <T>(const interval<T>& t, const interval<T>& u) { return {t.l + u.l, t.u + u.u}; }
+interval<T> operator- <T>(const interval<T>& t, const interval<T>& u) { return {t.l - u.u, t.u - u.l}; }
+interval<T> operator* <T>(const interval<T>& t, const interval<T>& u) { return minmax<T>({t.l*u.l, t.l*u.u, t.u*u.l, t.u*u.u}); }
+interval<T> operator/ <T>(const interval<T>& t, const interval<T>& u) { return minmax<T>({t.l/u.l, t.l/u.u, t.u/u.l, t.u/u.u}); }
+interval<T> operator% <T>(const interval<T>& t, const interval<T>& u) { return minmax<T>({t.l%u.l, t.l%u.u, t.u%u.l, t.u%u.u}); }
+interval<T> operator<< <T>(const interval<T>& t, const interval<T>& u) { return minmax<T>({t.l<<u.l, t.l<<u.u, t.u<<u.l, t.u<<u.u}); }
+interval<T> operator>> <T>(const interval<T>& t, const interval<T>& u) { return minmax<T>({t.l>>u.l, t.l>>u.u, t.u>>u.l, t.u>>u.u}); }
+interval<T> operator| <T>(const interval<T>& t, const interval<T>& u) { return {std::min(t.l,u.l), std::max(t.u,u.u)}; }
+interval<T> operator& <T>(const interval<T>& t, const interval<T>& u) { return {std::max(t.l,u.l), std::min(t.u,u.u)}; }
+logic::tribool intersect<T>(const interval<T>& t, const interval<T>& u) { return t.u >= u.l || t.l <= u.u; }
+logic::tribool operator< <T>(const interval<T>& t, const interval<T>& u) { return t.u<u.l?true : t.l>u.u?false : logic::indeterminate; }
+logic::tribool operator> <T>(const interval<T>& t, const interval<T>& u) { return t.l>u.u?true : t.u<u.l?false : logic::indeterminate; }
+bool operator== <T>(const interval<T>& t, const interval<T>& u) { return t.l==u.l && t.u==u.u; }
+bool operator!= <T>(const interval<T>& t, const interval<T>& u) { return !(t==u); }
+bool operator<= <T>(const interval<T>& t, const interval<T>& u) { return !(t>u); }
+bool operator>= <T>(const interval<T>& t, const interval<T>& u) { return !(t<u); }
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,T> (std::basic_ostream<Ch,Tr>& os, const interval<T>& i) { return os << '[' << i.l << ',' << i.u << ']'; }
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr> (std::basic_ostream<Ch,Tr>& os, const interval<unsigned char>& i) { return os << '[' << (unsigned)i.l << ',' << (unsigned)i.u << ']'; }
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr> (std::basic_ostream<Ch,Tr>& os, const interval<signed char>& i) { return os << '[' << (int)i.l << ',' << (int)i.u << ']'; }
+```
+
+------
+### Checked Result
+
+* Header `<boost/safe_numerics/checked_result_operations.hpp>`
+
+```c++
+checked_result<R> { // constexpr
+    const safe_numerics_error m_e;
+    union contents { R m_r; char const* const m_msg
+        ctor(const R&) noexcept; ctor(char const* msg) noexcept;
+        operator R() noexcept; operator char const* () noexcept;
+    } m_contents;
+    ctor()=delete; ctor(self const&)=default; ctor(self&&)=default;
+    ctor(const R& r) noexcept: m_e{success}, m_contents{r} {} // value
+    ctor(safe_numerics_error const& e, const char* msg="") noexcept: m_e{e}, m_contents{msg} {} // error
+    ctor<T>(self<T> const& t) noexcept : m_e{t.m_e} { if (t.m_e == success) m_contents.m_r = t.m_r; else m_contents.m_msg = t.m_msg; }
+    bool exception() const { return m_e != success; }
+    operator R() const noexcept { return m_cnotents.m_r; }
+    operator safe_numerics_error() const noexcept { return m_e; }
+    operator const char*() const noexcept { return m_conetnts.m_msg; }
+};
+struct make_checked_result<R> { static checked_result<R> invoke<e>(char const*& m) noexcept { return {e,m}; } };
+
+struct heterogeneous_checked_operation<R,min,max,T,F=make_checked_result<R>,Default=void> { checked_result<R> cast(const T& t) { return (R)t; } };
+struct checked_operation<R> {
+    static checked_result<R> minus(const R& t) noexcept { return -t; } // bitwise_not
+    static checked_result<R> add(const R& t, const R& u) noexcept { return t + u; }
+    // subtract, multiply, divide, modulus, left_shift, right_shift, bitwise_{or|xor|and}
+    static logic::tribool equal(const R& t, const R& u) noexcept { return t == u; } // less_than, greater_than
+};
+checked_result<R> checked::cast<R,T>(const T& t) { return heterogeneous_checked_operation<R,std::numeric_limits<R>::min(),max(),T>::cast(t); }
+checked_result<R> checked::minus<R>(const R& t) noexcept { checked_operation<R>::minus(t); } // bitwise_not
+checked_result<R> checked::add<R>(const R& t, const R& u) noexcept { checked_operation<R>::add(t, u); } // subtract, multiply, divide, modulus, {less|greater}_than_<equal>, equal, {left|right}_shift, bitwise_{or|xor|and}
+
+using bool_type<tf> = std::bool_constant<tf>;
+struct heterogeneous_checked_operation<R,min,max,T,F> requires std::is_integral_v<R> && std::is_integral_v<T> {
+    static checked_result<R> cast(const T& t) {
+        if constexpr (std::is_signed_v<R> && std::is_signed_v<T>)
+            return safe_compare::greater_than(t, max) ? F::invoke<positive_overflow_error>("...")
+                : safe_compare::less_than(t, min) ? F::invoke<negative_overflow_error>("...") : {(R)t};
+        else if constexpr (!std::is_signed_v<R> && std::is_signed_v<T>)
+            return safe_compare::less_than(t, min) ? F::invoke<domain_error>("...")
+                : safe_compare::greater_than(t, max) ? F::invoke<positive_overflow_error>("...") : {(R)t};
+        else
+            return safe_compare::greater_than(t, max) ? F::invoke<positive_overflow_error>("...")
+                : safe_compare::less_than(t, min) ? F::invoke<positive_overflow_error>("...") : {(R)t};
+    }
+};
+struct heterogeneous_checked_operation<R,min,max,T,F> requires std::is_integral_v<R> && std::is_floating_point_v<T>
+{ static checked_result<R> cast(const T& t) { return (R)t; } };
+struct heterogeneous_checked_operation<R,min,max,T,F> requires std::is_floating_point_v<R> && std::is_integral_v<T> {
+    static checked_result<R> cast(const T& t) {
+        if (std::numeric_limits<R>::digits < std::numeric_limits<T>::digits &&
+            utility::significant_bits(t) > std::numeric_limits<R>::digits) return F::invoke(precision_overflow_error, "");
+        return t;
+    }
+};
+
+struct checked_operation<R,F> requires std::is_integral_v<R> { using l = std::numeric_limits<R>;
+    static checked_result<R> add(const R& t, const R& u) {
+        if constexpr (std::is_signed_v<R>)
+            return (u>0 && t>l::max()-u) ? F::invoke<positive_overflow_error>("...")
+                : (u<0 && t<l::min()-u) ? F::invoke<negative_overflow_error>("...") : {t+u};
+        else return (l::max()-u < t) ? F::invoke<positive_overflow_error>("...") : {t+u};
+    }
+    static checked_result<R> subtract(const R& t, const R& u) {
+        if constexpr (std::is_signed_v<R>)
+            return (u>0 && t<l::min()+u) ? F::invoke<negative_overflow_error>("...")
+                : (u<0 && t>l::max()+u) ? F::invoke<positive_overflow_error>("...") : {t-u};
+        else return (t<u) ? F::invoke<negative_overflow_error>("...") : {t-u};
+    }
+    static checked_result<R> minus(const R& t) {
+        if constexpr (std::is_signed_v<R>)
+            return (t==l::min()) ? F::invoke<positive_overflow_error>("...") : {-t};
+        else return (t>0) ? F::invoke<negative_overflow_error>("...") : {0};
+    }
+    static checked_result<R> multiply(const R& t, const R& u) {
+        constexpr bool rsigned = std::is_signed_v<R>, rbig = sizeof(R) > sizeof(uintmax_t)/2;
+        if constexpr (rsigned && rbig)
+            if (t > 0) if (u > 0) return t > l::max()/u ? F::invoke<positive_overflow_error>("...") : {t*u};
+                        else return u < l::min()/t ? F::invoke<negative_overflow_error>("...") : {t*u};
+            else if (u > 0) return t < l::min()/u ? F::invoke<negative_overflow_error>("...") : {t*u};
+                    else return t!=0 && u < l::max()/t ? F::invoke<positive_overflow_error>("..") : {t*u};
+        else if constexpr (rsigned && !rbig)
+            return intmax_t(t) * intmax_t(u) > int_max_t(l::max()) ? F::invoke<positive_overflow_error>("...")
+                : intmax_t(t) * intmax_t(u) < int_max_t(l::min()) ? F::invoke<negative_overflow_error>("...") : {t*u};
+        else if constexpr (!rsigned && big)
+            return u > 0 && t > l::max()/u ? F::invoke<positive_overflow_error>("...") : {t*u};
+        else return uintmax_t(t) * uintmax_t(u) > l::max() ? F::invoke<positive_overflow_error>("...") : {t*u};
+    }
+    static checked_result<R> divide(const R& t, const R& u) {
+        if (u == 0) return F::invoke<domain_error>("...");
+        if constexpr (std::is_signed_v<R>)
+            return u==-1 && t==l::min() ? F::invoke<positive_overflow_error>("..") : {t/u};
+        else return {t/u};
+    }
+    static checked_result<R> modulus(const R& t, const R& u) {
+        if (u == 0) return F::invoke<domain_error>("...");
+        if constexpr (std::is_signed_v<R>) {
+            if (u >= 0) return t % u;
+            auto ux = checked::minus(u); return ux.exception() ? t : t % (R)ux;
+        } else return {t%u};
+    }
+    static checked_result<R> left_shift(const R& t, const R& u) {
+        if (u == 0) return t;
+        if (u < 0) return F::invoke<negative_shift>("...");
+        if (u > l::digits) return F::invoke<shift_too_large>("...");
+        if constexpr (std::is_signed_v<R>) {
+            if (t >= 0) if (safe_compare::greater_than(u, l::digits-significant_bits(t))) return F::invoke<shift_too_large>("...");
+                        else return t << u;
+            else return F::invoke<negative_shift>("...");
+        } else if (safe_compare::greater_than(u, l::digits-significant_bits(t))) return F::invoke<shift_too_large>("...");
+                else return t << u;
+    }
+    static checked_result<R> right_shift(const R& t, const R& u) {
+        if (u < 0) return F::invoke<negative_shift>("...");
+        if (u > l::digits) return F::invoke<shift_too_large>("...");
+        if constexpr (std::is_signed_v<R>) return (t < 0) ? F::invoke<negative_value_shift>("...") : (t >> u);
+        else return t >> u;
+    }
+    static checked_result<R> bitwise_{or|xor|and}(const R& t, const R& u) {
+        if (std::max(significant_bits(t),significant_bits(u)) > bits_type<R>::value)
+            return F::invoke<positive_overflow_error>("...");
+        return t | u; // t ^ u; t & u
+    }
+    static checked_result<R> bitwise_not(const R& t) {
+        if (significant_bits(t) > bits_type<R>::value) return F::invoke<positive_overflow_error>("...");
+        return ~t; // t ^ u; t & u
+    }
+};
+
+void display<T>(checked_result<T>& c); // just terminate()
+struct sum_value_type {
+    enum flag { known_value, less_than_min, greater_than_max, indeterminate, count } const m_flag;
+    static flag to_flat<T>(const checked_result<T>& t) const {
+        switch(t.m_e) {
+            case success: return known_value;
+            case negative_overflow_error: return less_than_min;
+            case positive_overflow_error: return greater_than_max;
+            default: return indeterminate;
+        }
+    }
+    ctor(const checked_result<T>& t) : m_flag{to_flag(t)} {}
+    operator uint8_t() const{ return {m_flag}; }
+};
+checked_result<T> operator+<T>(const checked_result<T>& t, const checked_result<T>& u) requires std::is_integral_v<T> {
+    const enum safe_numerics_error result[4*4] = {s,n,p,r, n,n,r,r, p,r,p,r, r,r,r,r};
+    auto e = result[ sum_value_type{t} * 4 + sum_value_type{u} ];
+    return e == success ? checked::add<T>(t, u) : {e, ""};
+};
+checked_result<T> operator+<T>(const checked_result<T>& t) requires std::is_integral_v<T> { return t; }
+checked_result<T> operator-<T>(const checked_result<T>& t, const checked_result<T>& u) requires std::is_integral_v<T> {
+    const enum safe_numerics_error result[4*4] = {s,p,n,r, n,r,n,r, p,p,r,r, r,r,r,r};
+    auto e = result[ sum_value_type{t} * 4 + sum_value_type{u} ];
+    return e == success ? checked::subtract<T>(t, u) : {e, ""};
+};
+checked_result<T> operator-<T>(const checked_result<T>& t) requires std::is_integral_v<T> { return checked_result<T>{0} - t; }
+
+struct product_value_type {
+    enum flag { less_than_min, less_than_zero, zero, greater_than_zero, greater_than_max, indeterminate, count, t_value, u_value, z_value } const m_flag;
+    static flag to_flat<T>(const checked_result<T>& t) const {
+        switch(t.m_e) {
+            case success: return t < 0 ? less_than_zero : t > 0 : greater_than_zero : zero;
+            case negative_overflow_error: return less_than_min;
+            case positive_overflow_error: return greater_than_max;
+            default: return indeterminate;
+        }
+    }
+    ctor(const checked_result<T>& t) : m_flag{to_flag(t)} {}
+    operator uint8_t() const{ return {m_flag}; }
+};
+checked_result<T> operator*<T>(const checked_result<T>& t, const checked_result<T>& u) requires std::is_integral_v<T> {
+    const enum safe_numerics_error result[6*6] = {gm,gm,z,lm,lm,i, gm,gz,z,lz,lm,i, z,z,z,z,z,i, lm,lz,z,gz,gm,i, lm,lm,z,gm,gm,i, i,i,i,i,i,i};
+    switch(result[ product_value_type{t} * 6 + product_value_type{u} ]) {
+        case less_than_min: return negative_overflow_error;
+        case zero: return T{0};
+        case greater_than_max: return positive_overflow_error;
+        case less_than_zero: case greater_than_zero: return checked::multiply<T>(t, u);
+        case indeterminate: return range_error;
+        default: assert(false);
+    }
+};
+checked_result<T> operator/<T>(const checked_result<T>& t, const checked_result<T>& u) requires std::is_integral_v<T> {
+    const enum safe_numerics_error result[6*6] = {i,gm,lm,lm,lm,i, z,gz,lm,lz,z,i, z,z,i,z,z,i, z,lz,gm,gz,z,i, lm,lm,gm,gm,i,i, i,i,i,i,i,i};
+    switch(result[ product_value_type{t} * 6 + product_value_type{u} ]) {
+        case less_than_min: return negative_overflow_error;
+        case zero: return T{0};
+        case greater_than_max: return positive_overflow_error;
+        case less_than_zero: case greater_than_zero: return checked::divide<T>(t, u);
+        case indeterminate: return range_error;
+        default: assert(false);
+    }
+};
+checked_result<T> operator%<T>(const checked_result<T>& t, const checked_result<T>& u) requires std::is_integral_v<T> {
+    const enum safe_numerics_error result[6*6] = {i,zv,i,zv,i,i, tv,gz,i,lz,t,i, z,z,i,z,z,i, tv,lz,i,gz,tv,i, i,uv,i,uv,i,i, i,i,i,i,i,i};
+    switch(result[ product_value_type{t} * 6 + product_value_type{u} ]) {
+        case zero: return T{0};
+        case less_than_zero: case greater_than_zero: return checked::modulus<T>(t, u);
+        case indeterminate: return range_error;
+        case t_value: return t; case u_value: return checked::subtract<T>(u, 1); case z_value: return checked::subtract<T>(1, u)
+        default: assert(false);
+    }
+};
+
+logic::tribool operator< <T>(const checked_result<T>& t, const checked_result<T>& u) {
+    enum class result_type : uint8_t { runtime, false_value, true_value, indeterminate };
+    const result_type resultx[4*4] = {r,f,t,i, t,i,t,i, f,f,i,i, i,i,i,i};
+    switch (resultx[sum_value_type{t}*4 + sum_value_type{u}]) {
+        case runtime: return (const T&)t < (const T&)u;
+        case false_value: return false; case true_value: return true;
+        case indeterminate: return logic::indeterminate;
+        default: assert(false);
+    }
+}
+logic::tribool operator>= <T>(const checked_result<T>& t, const checked_result<T>& u) { return !(t<u); }
+logic::tribool operator> <T>(const checked_result<T>& t, const checked_result<T>& u) { return u < t; }
+logic::tribool operator<= <T>(const checked_result<T>& t, const checked_result<T>& u) { return !(u<t); }
+logic::tribool operator== <T>(const checked_result<T>& t, const checked_result<T>& u) {
+    enum class result_type : uint8_t { runtime, false_value, true_value, indeterminate };
+    const result_type resultx[4*4] = {r,f,f,i, f,i,f,i, f,f,i,i, i,i,i,i};
+    switch (resultx[sum_value_type{t}*4 + sum_value_type{u}]) {
+        case runtime: return (const T&)t == (const T&)u;
+        case false_value: return false; case true_value: return true;
+        case indeterminate: return logic::indeterminate;
+        default: assert(false);
+    }
+}
+logic::tribool operator!= <T>(const checked_result<T>& t, const checked_result<T>& u) { return !(t==u); }
+
+checked_result<T> operator~ <T>(const checked_result<T>& t) requires std::is_integral_v<T> { return ~t.m_r; }
+checked_result<T> operator<< <T>(const checked_result<T>& t, const checked_result<T>& u) requires std::is_integral_v<T> {
+    const uint8_t result[6*6] = { 1,2,2,2,2,1, 3,4,5,6,2,1, 3,3,3,3,3,3, 3,7,5,8,9,1, 1,9,9,9,9,1, 1,1,1,1,1,1};
+    switch(result[ product_value_type{t} * 6 + product_value_type{u} ]) {
+        case 1: return range_error;
+        case 2: return negative_overflow_error;
+        case 3: return {0};
+        case 4: return t >> -u;
+        case 5: return t;
+        case 6: { checked_result<T> temp_t = t*2, temp_u = u-1; return -(-tempt << temp_u); }
+        case 7: return t >> -u;
+        case 8: { checked_result<T> r = checked::left_shift<T>(t,u); return r.m_e == shift_too_large ? positive_overflow_error : r; }
+        case 9: return positive_overflow_error;
+        default: assert(false);
+    }
+}
+checked_result<T> operator>> <T>(const checked_result<T>& t, const checked_result<T>& u) requires std::is_integral_v<T> {
+    const uint8_t result[6*6] = {2,2,2,2,1,1, 2,4,5,6,3,1, 3,3,3,3,3,3, 9,7,5,8,3,1, 9,9,9,9,1,1, 1,1,1,1,1,1};
+    switch(result[ product_value_type{t} * 6 + product_value_type{u} ]) {
+        case 1: return range_error;
+        case 2: return negative_overflow_error;
+        case 3: return {0};
+        case 4: return t << -u;
+        case 5: return t;
+        case 6: { checked_result<T> temp_t = t/2, temp_u = u-1; return -(-tempt >> temp_u); }
+        case 7: return t << -u;
+        case 8: { checked_result<T> r = checked::left_shift<T>(t,u); return r.m_e == shift_too_large ? 0 : r; }
+        case 9: return positive_overflow_error;
+        default: assert(false);
+    }
+}
+checked_result<T> operator| <T>(const checked_result<T>& t, const checked_result<T>& u) requires std::is_integral_v<T>
+{ return t.exception() || u.exception() ? range_error : checked::bitwise_or<T>((T)t, (T)u); }
+checked_result<T> operator^ <T>(const checked_result<T>& t, const checked_result<T>& u) requires std::is_integral_v<T>
+{ return t.exception() || u.exception() ? range_error : checked::bitwise_xor<T>((T)t, (T)u); }
+checked_result<T> operator& <T>(const checked_result<T>& t, const checked_result<T>& u) requires std::is_integral_v<T>
+{ return t.exception() || u.exception() ? range_error : checked::bitwise_and<T>((T)t, (T)u); }
+
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,R> (std::basic_ostream<Ch,Tr>& os, const checked_result<R>& r) {
+    bool e = r.exception(); os << e;
+    if (!e) os << (R)r; else os << std::error_code(r.m_e).message() << ':' << (char const*)r;
+    return os;
+}
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr> (std::basic_ostream<Ch,Tr>& os, const checked_result<signed char>& r) {
+    bool e = r.exception(); os << e;
+    if (!e) os << (int16_t)r; else os << std::error_code(r.m_e).message() << ':' << (char const*)r;
+    return os;
+}
+std::basic_istream<Ch,Tr>& operator>> <Ch,Tr,R> (std::basic_istream<Ch,Tr>& os, checked_result<R>& r) {
+    bool e; is >> e;
+    if (!e) is >> (R)r; else is >> std::error_code(r.m_e).message() >> ':' >> (char const*)r;
+    return is;
+}
+std::basic_istream<Ch,Tr>& operator>> <Ch,Tr> (std::basic_istream<Ch,Tr>& os, checked_result<signed char>& r) {
+    bool e; is >> e;
+    if (!e) { int16_t i; is >> i; r.m_contents.m_r = (signed char)i; }
+    else is >> std::error_code(r.m_e).message() >> ':' >> (char const*)r;
+    return is;
+}
+
+struct std::numeric_limits<checked_result<R>> : std::numeric_limits<R> {
+    static checked_result<R> min() noexcept { return {base::min()}; }
+    static checked_result<R> max() noexcept { return {base::max()}; }
+};
+
+```
+
+------
+### Safe Integer
+
+* Header `<boost/safe_numerics/safe_integer.hpp>`
+
+```c++
+struct is_safe<safe_base<T,min,max,P,E>> : std::true_type {};
+struct get_promotion_policy<safe_base<T,min,max,P,E>> { using type = P; };
+struct get_exception_policy<safe_base<T,min,max,P,E>> { using type = E; };
+struct base_type<safe_base<T,min,max,P,E>> { using type = T; };
+T base_value(const safe_base<T,min,max,P,E>& st) { return (T)st; }
+
+class safe_base<Stored,min,max,P,E> { Stored m_t;
+    Stored validated_cast<T>(const T& t) const;
+    void output<Ch,Tr>(std::basic_ostream<Ch,Tr>& os) const;
+    friend std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr>(std::basic_ostream<Ch,Tr>& os, const self& t) { t.output(os); return os; }
+    void input<Ch,Tr>(std::basic_istream<Ch,Tr>& is);
+    friend std::basic_istream<Ch,Tr>& operator>> <Ch,Tr>(std::basic_istream<Ch,Tr>& is, self& t) { t.input(is); return is; }
+public: struct skip_validation{};
+    ctor(); explicit ctor(const Stored& rhs, skip_validation);
+    ctor<T>(const T& t) requires std::is_convertible_v<T,Stored>;
+    ctor<T, T n, Px,Ex>(const safe_literal_impl<T,n,Px,Ex>& t);
+    ~dtor()=default; // copy/move ctor and assig =default
+    operator R <R> () const requires is_safe<R>::value;
+    self& operator= <T> (const T& rhs) { m_t = validated_cast(rhs); return *this; }
+    self& operator++() { return *this = *this + 1; } // and --
+    self& operator++(int) { self old_t = *this; ++(*this); return old_t; } // and --
+    auto operator+() const { return *this; } auto operator-() const { return 0 - *this;} auto operator~()const { return ~Stored{0u} ^ *this; }
+};
+struct std::numeric_limits<safe_base<T,min,max,P,E>> : std::numeric_limits<T> {
+    static safe_base lowest() noexcept { return {min, skip_validation{}}; }
+    static safe_base min() noexcept { return {min, skip_validation{}}; }
+    static safe_base max() noexcept { return {max, skip_validation{}}; }
+};
 ```
 
 ------
