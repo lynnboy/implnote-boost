@@ -458,18 +458,19 @@ struct get_exception_policy<safe_base<T,min,max,P,E>> { using type = E; };
 struct base_type<safe_base<T,min,max,P,E>> { using type = T; };
 T base_value(const safe_base<T,min,max,P,E>& st) { return (T)st; }
 
-class safe_base<Stored,min,max,P,E> { Stored m_t;
-    Stored validated_cast<T>(const T& t) const;
+class safe_base<Stored,min,max,P,E> { Stored m_t; using l = std::numeric_limits<R>;
+    Stored validated_cast<T>(const T& t) const { return validate_detail<Stored,min,max,E>::return_value(t); }
     void output<Ch,Tr>(std::basic_ostream<Ch,Tr>& os) const;
     friend std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr>(std::basic_ostream<Ch,Tr>& os, const self& t) { t.output(os); return os; }
     void input<Ch,Tr>(std::basic_istream<Ch,Tr>& is);
     friend std::basic_istream<Ch,Tr>& operator>> <Ch,Tr>(std::basic_istream<Ch,Tr>& is, self& t) { t.input(is); return is; }
 public: struct skip_validation{};
-    ctor(); explicit ctor(const Stored& rhs, skip_validation);
-    ctor<T>(const T& t) requires std::is_convertible_v<T,Stored>;
-    ctor<T, T n, Px,Ex>(const safe_literal_impl<T,n,Px,Ex>& t);
+    ctor() {dispatch<E,uninitialized_value>("...");}
+    explicit ctor(const Stored& rhs, skip_validation) : m_t{rhs} {}
+    ctor<T>(const T& t) requires std::is_convertible_v<T,Stored> : m_t{validated_cast(t)} {}
+    ctor<T, T n, Px,Ex>(const safe_literal_impl<T,n,Px,Ex>& t) : m_t{validated_cast(t)} {}
     ~dtor()=default; // copy/move ctor and assig =default
-    operator R <R> () const requires is_safe<R>::value;
+    operator R <R> () const requires is_safe<R>::value { return validate_detail<R,l::min(),l::max(),E>::return_value(m_t); }
     self& operator= <T> (const T& rhs) { m_t = validated_cast(rhs); return *this; }
     self& operator++() { return *this = *this + 1; } // and --
     self& operator++(int) { self old_t = *this; ++(*this); return old_t; } // and --
@@ -480,6 +481,199 @@ struct std::numeric_limits<safe_base<T,min,max,P,E>> : std::numeric_limits<T> {
     static safe_base min() noexcept { return {min, skip_validation{}}; }
     static safe_base max() noexcept { return {max, skip_validation{}}; }
 };
+
+struct dispatch_switch::dispatch_case<EP,act> {};
+struct dispatch_switch::dispatch_case<EP,uninitialized_value>
+{ static void invoke(const safe_numerics_error& e, const char* msg) { EP::on_uninitialized_value(e,msg); } };
+struct dispatch_switch::dispatch_case<EP,arithmetic_error>
+{ static void invoke(const safe_numerics_error& e, const char* msg) { EP::on_arithmetic_error(e,msg); } };
+struct dispatch_switch::dispatch_case<EP,implementation_defined_behavior>
+{ static void invoke(const safe_numerics_error& e, const char* msg) { EP::on_implementation_defined_behavior(e,msg); } };
+struct dispatch_switch::dispatch_case<EP,undefined_behavior>
+{ static void invoke(const safe_numerics_error& e, const char* msg) { EP::on_undefined_behavior(e,msg); } };
+void dispatch<EP,err>(const char* msg) { dispatch_switch::dispatch_case<EP,make_safe_numerics_action(err)>::invoke(err, msg); }
+struct dispatch_and_return<EP,R> { static checked_result<R> invoke<err>(const char*& msg) { dispatch<EP,err>(msg); return {err, msg}; } }
+
+struct validate_detail<R,min,max,E> {
+    using r_type = checked_result<R>; using l = std::numeric_limits<T>;
+    struct exception_possible { static R return_value<T>(const T& t)
+    { return heterogeneous_checked_operation<R,min,max,base_type<T>::type, dispatch_and_return<E,R>>::cast(t); } };
+    struct exception_not_possible { static R return_value<T>(const T& t){ return (R)base_value(t); } };
+    static R return_value<T>(const T& t) {
+        constexpr interval<r_type> t_interval{checked::cast<R>(base_value(l::min())), checked::cast<R>(base_value(l::max()))},
+                r_interval{r_type{min}, r_type{max}};
+        return std::conditional_t<r_interval.includes(t_interval), exception_not_possible, exception_policy>::return_value(t);
+    }
+};
+
+struct common_exception_policy<T,U> {
+    using t_ep = get_exception_policy<T>::type; using u_ep = get_exception_policy<U>::type;
+    using type = std::conditional_t<!is_same_v<void,u_ep>, u_ep, conditional_t<!is_same_v<void,t_ep>, t_ep, void>>;
+};
+struct common_promotion_policy<T,U> {
+    using t_pp = get_promotion_policy<T>::type; using u_pp = get_promotion_policy<U>::type;
+    using type = std::conditional_t<!is_same_v<void,u_pp>, u_pp, conditional_t<!is_same_v<void,t_pp>, t_pp, void>>;
+};
+
+std::pair<R,R> casting_helper<EP,R,T,U> (const T& t, const U& u) {
+    using r_type = checked_result<R>; using l = std::numeric_limits<R>;
+    const r_type tx = heterogeneous_checked_operation<R,l::min(),l::max(),base_type<T>::type,dispatch_and_return<EP,R>>::cast(base_value(t));
+    const r_type ux = heterogeneous_checked_operation<R,l::min(),l::max(),base_type<U>::type,dispatch_and_return<EP,R>>::cast(base_value(u));
+    const R tr = tx.exception ? (R)t : tx.m_conetnts.m_r, ur = ux.exception ? (R)u : ux.m_conetnts.m_r; return {tr,ur};
+}
+using anon::legal_overload<F<...>,T,U> = mp_and< mp_or<is_safe<T>,is_safe<U>>, mp_valid<F,base_type<T>::type,base_type<U>::type>>;
+
+class addition_result<T,U> {
+    using promotion_policy = common_promotion_policy<T,U>::type; using exception_policy = common_exception_policy<T,U>::type;
+    using result_base_type = promotion_policy::addition_result<T,U>::type; using r_type = checked_result<result_base_type>;
+    using lt = std::numeric_limits<T>; using lu = std::numeric_limits<U>; using l = std::numeric_limits<result_base_type>;
+    constexpr interval<r_type> ri = interval<r_type>{checked::cast<result_base_type>(base_value(lt::min())),cast(base_value(lt::max()))}
+                                + interval<r_type>{checked::cast<result_base_type>(base_value(lu::min())),cast(base_value(lu::max()))};
+    constexpr interval<result_base_type> reti{ri.l.exception()?l::min():ri.l, ri.u.exception()?l::max():ri.u};
+public: using type = safe_base<result_base_type, reti.l, reti.u, promotion_policy, exception_policy>;
+    static type return_value(const T& t, const U& u) {
+        if constexpr (ri.l.exception() || ri.u.exception() || !reti.includes(ri)) {
+            auto r = casting_helper<exception_policy,result_base_type>(t,u);
+            auto rx = checked_operation<result_base_type,dispatch_and_return<exception_policy,result_base_type>>::add(r.first,r.second);
+            return {rx.exception()?r.first+r.second:rx.m_contents.m_r, skip_validation{}};
+        } else return {(result_base_type)base_value(t) + (result_base_type)base_value(u), skip_validation{}};
+    }
+};
+using addition_operator<T,U> = decltype(std::declval<T const&>()+std::declval<U const&>());
+addition_result<T,U>::type operator+ <T,U> (const T& t, const U& u) requires legal_overload<addition_operator,T,U>::value { return addition_result<T,U>::return_value(t,u); }
+T operator+= <T,U> (T& t, const U& u) requires legal_overload<addition_operator,T,U>::value { t = (T)(t + u); return t; }
+
+class subtraction_result<T,U> {
+    using promotion_policy = common_promotion_policy<T,U>::type; using exception_policy = common_exception_policy<T,U>::type;
+    using result_base_type = promotion_policy::subtraction_result<T,U>::type; using r_type = checked_result<result_base_type>;
+    using lt = std::numeric_limits<T>; using lu = std::numeric_limits<U>; using l = std::numeric_limits<result_base_type>;
+    constexpr interval<r_type> ri = interval<r_type>{checked::cast<result_base_type>(base_value(lt::min())),cast(base_value(lt::max()))}
+                                - interval<r_type>{checked::cast<result_base_type>(base_value(lu::min())),cast(base_value(lu::max()))};
+    constexpr interval<result_base_type> reti{ri.l.exception()?l::min():ri.l, ri.u.exception()?l::max():ri.u};
+public: using type = safe_base<result_base_type, reti.l, reti.u, promotion_policy, exception_policy>;
+    static type return_value(const T& t, const U& u) {
+        if constexpr (ri.l.exception() || ri.u.exception() || !reti.includes(ri)) {
+            auto r = casting_helper<exception_policy,result_base_type>(t,u);
+            auto rx = checked_operation<result_base_type,dispatch_and_return<exception_policy,result_base_type>>::subtract(r.first,r.second);
+            return {rx.exception()?r.first+r.second:rx.m_contents.m_r, skip_validation{}};
+        } else return {(result_base_type)base_value(t) - (result_base_type)base_value(u), skip_validation{}};
+    }
+};
+using subtraction_operator<T,U> = decltype(std::declval<T const&>() - std::declval<U const&>());
+subtraction_result<T,U>::type operator- <T,U> (const T& t, const U& u) requires legal_overload<subtraction_operator,T,U>::value { return subtraction_result<T,U>::return_value(t,u); }
+T operator-= <T,U> (T& t, const U& u) requires legal_overload<subtraction_operator,T,U>::value { t = (T)(t - u); return t; }
+
+class multiplication_result<T,U> {
+    using promotion_policy = common_promotion_policy<T,U>::type; using exception_policy = common_exception_policy<T,U>::type;
+    using result_base_type = promotion_policy::multiplication_result<T,U>::type; using r_type = checked_result<result_base_type>;
+    using lt = std::numeric_limits<T>; using lu = std::numeric_limits<U>; using l = std::numeric_limits<result_base_type>;
+    constexpr interval<r_type> ri = interval<r_type>{checked::cast<result_base_type>(base_value(lt::min())),cast(base_value(lt::max()))}
+                                * interval<r_type>{checked::cast<result_base_type>(base_value(lu::min())),cast(base_value(lu::max()))};
+    constexpr interval<result_base_type> reti{ri.l.exception()?l::min():ri.l, ri.u.exception()?l::max():ri.u};
+public: using type = safe_base<result_base_type, reti.l, reti.u, promotion_policy, exception_policy>;
+    static type return_value(const T& t, const U& u) {
+        if constexpr (ri.l.exception() || ri.u.exception() || !reti.includes(ri)) {
+            auto r = casting_helper<exception_policy,result_base_type>(t,u);
+            auto rx = checked_operation<result_base_type,dispatch_and_return<exception_policy,result_base_type>>::multiply(r.first,r.second);
+            return {rx.exception()?r.first*r.second:rx.m_contents.m_r, skip_validation{}};
+        } else return {(result_base_type)base_value(t) * (result_base_type)base_value(u), skip_validation{}};
+    }
+};
+using multiplication_operator<T,U> = decltype(std::declval<T const&>() * std::declval<U const&>());
+multiplication_result<T,U>::type operator* <T,U> (const T& t, const U& u) requires legal_overload<multiplication_operator,T,U>::value { return multiplication_result<T,U>::return_value(t,u); }
+T operator*= <T,U> (T& t, const U& u) requires legal_overload<multiplication_operator,T,U>::value { t = (T)(t * u); return t; }
+
+class division_result<T,U> {
+    using promotion_policy = common_promotion_policy<T,U>::type; using exception_policy = common_exception_policy<T,U>::type;
+    using result_base_type = promotion_policy::division_result<T,U>::type; using r_type = checked_result<result_base_type>;
+    using L<T> = std::numeric_limits<T>; using lt = L<T>; using lu = L<U>; using l = L<result_base_type>;
+    constexpr interval<r_type> ti{checked::cast<result_base_type>(base_value(lt::min())),cast(base_value(lt::max()))},
+                                ui{checked::cast<result_base_type>(base_value(lu::min())),cast(base_value(lu::max()))};
+    static auto get_r_type_interval() {
+        if (ui.u < (r_type)0 || ui.l > (r_type)0) return ti % ui;
+        return utility::minmax<r_type>({ti.l/ui.l, ti.l/r_type(-1), ti.l/r_type(1), ti.l/ui.u, ti.u/ui.l, ti.u/r_type(-1), ti.u/r_type(1), ti.u/ui.u});
+    }
+    constexpr interval<r_type> ri = get_r_type_interval();
+    constexpr interval<result_base_type> reti{ri.l.exception()?l::min():ri.l, ri.u.exception()?l::max():ri.u};
+public: using type = safe_base<result_base_type, reti.l, reti.u, promotion_policy, exception_policy>;
+    static type return_value(const T& t, const U& u) {
+        if constexpr (ri.l.exception() || ri.u.exception() || !reti.includes(ri)) {
+            constexpr int bits = std::min(L<uintmax_t>::digits, std::max({l::digits, L<base_type<T>::type>::digits, L<base_type<U>::type>::digits})) + l::is_signed?1:0;
+            using temp_base = std::conditional_t<l::is_signed, boost::int_t<bits>::least, boost::uint_t<bits>::least>;
+            auto r = casting_helper<exception_policy,temp_base>(t,u);
+            auto rx = checked_operation<temp_base,dispatch_and_return<exception_policy,temp_base>>::divide(r.first,r.second);
+            return {rx.exception()?r.first/r.second:rx, skip_validation{}};
+        } else return {(result_base_type)base_value(t) / (result_base_type)base_value(u), skip_validation{}};
+    }
+};
+using division_operator<T,U> = decltype(std::declval<T const&>() / std::declval<U const&>());
+division_result<T,U>::type operator/ <T,U> (const T& t, const U& u) requires legal_overload<division_operator,T,U>::value { return division_result<T,U>::return_value(t,u); }
+T operator/= <T,U> (T& t, const U& u) requires legal_overload<division_operator,T,U>::value { t = (T)(t / u); return t; }
+
+class modulus_result<T,U> {
+    using promotion_policy = common_promotion_policy<T,U>::type; using exception_policy = common_exception_policy<T,U>::type;
+    using result_base_type = promotion_policy::modulus_result<T,U>::type; using r_type = checked_result<result_base_type>;
+    using L<T> = std::numeric_limits<T>; using lt = L<T>; using lu = L<U>; using l = L<result_base_type>;
+    constexpr interval<r_type> ti{checked::cast<result_base_type>(base_value(lt::min())),cast(base_value(lt::max()))},
+                                ui{checked::cast<result_base_type>(base_value(lu::min())),cast(base_value(lu::max()))};
+    static auto get_r_type_interval() {
+        if (ui.u < (r_type)0 || ui.l > (r_type)0) return ti % ui;
+        return utility::minmax<r_type>({ti.l/ui.l, ti.l/r_type(-1), ti.l/r_type(1), ti.l/ui.u, ti.u/ui.l, ti.u/r_type(-1), ti.u/r_type(1), ti.u/ui.u});
+    }
+    constexpr interval<r_type> ri = get_r_type_interval();
+    constexpr interval<result_base_type> reti{ri.l.exception()?l::min():ri.l, ri.u.exception()?l::max():ri.u};
+public: using type = safe_base<result_base_type, reti.l, reti.u, promotion_policy, exception_policy>;
+    static type return_value(const T& t, const U& u) {
+        if constexpr (ri.l.exception() || ri.u.exception() || !reti.includes(ri)) {
+            constexpr int bits = std::min(L<uintmax_t>::digits, std::max({l::digits, L<base_type<T>::type>::digits, L<base_type<U>::type>::digits})) + l::is_signed?1:0;
+            using temp_base = std::conditional_t<l::is_signed, boost::int_t<bits>::least, boost::uint_t<bits>::least>;
+            auto r = casting_helper<exception_policy,temp_base>(t,u);
+            auto rx = checked_operation<temp_base,dispatch_and_return<exception_policy,temp_base>>::divide(r.first,r.second);
+            return {rx.exception()?r.first%r.second:rx, skip_validation{}};
+        } else return {(result_base_type)base_value(t) % (result_base_type)base_value(u), skip_validation{}};
+    }
+};
+using modulus_operator<T,U> = decltype(std::declval<T const&>() % std::declval<U const&>());
+modulus_result<T,U>::type operator% <T,U> (const T& t, const U& u) requires legal_overload<modulus_operator,T,U>::value { return modulus_result<T,U>::return_value(t,u); }
+T operator%= <T,U> (T& t, const U& u) requires legal_overload<modulus_operator,T,U>::value { t = (T)(t % u); return t; }
+
+class less_than_result<T,U> {
+    using promotion_policy = common_promotion_policy<T,U>::type; using exception_policy = common_exception_policy<T,U>::type;
+    using result_base_type = promotion_policy::comparison_result<T,U>::type; using r_type = checked_result<result_base_type>;
+    using L<T> = std::numeric_limits<T>; using lt = L<T>; using lu = L<U>; using l = L<result_base_type>;
+    constexpr interval<r_type> ti{checked::cast<result_base_type>(base_value(lt::min())),cast(base_value(lt::max()))},
+                                ui{checked::cast<result_base_type>(base_value(lu::min())),cast(base_value(lu::max()))};
+public: static bool return_value(const T& t, const U& u) {
+        if constexpr (ti < ui) return true; if constexpr (ti > ui) return false;
+        if constexpr (ti.l.exception() || ti.u.exception() || ui.l.exception() || ui.u.exception()) {
+            auto r = casting_helper<exception_policy,result_base_type>(t,u);
+            return safe_compare::less_than(r.first, r.second);
+        } else return (result_base_type)base_value(t) < (result_base_type)base_value(u);
+    }
+};
+using {less_than|greater_than}_<or_equal>_operator<T,U> = decltype(std::declval<T const&>() {<|>|<=|>=} std::declval<U const&>());
+bool operator< <T,U> (const T& t, const U& u) requires legal_overload<less_than_operator<T,U>,T,U>::value { return less_than_result<T,U>::return_value(t,u); }
+bool operator> <T,U> (const T& t, const U& u) requires legal_overload<greater_than_operator<T,U>,T,U>::value { return u < t; }
+bool operator<= <T,U> (const T& t, const U& u) requires legal_overload<less_than_or_equal_operator<T,U>,T,U>::value { return !(t < u); }
+bool operator>= <T,U> (const T& t, const U& u) requires legal_overload<greater_than_or_equal_operator<T,U>,T,U>::value { return !(u < t); }
+
+class equal_result<T,U> {
+    using promotion_policy = common_promotion_policy<T,U>::type; using exception_policy = common_exception_policy<T,U>::type;
+    using result_base_type = promotion_policy::comparison_result<T,U>::type; using r_type = checked_result<result_base_type>;
+    using L<T> = std::numeric_limits<T>; using lt = L<T>; using lu = L<U>; using l = L<result_base_type>;
+    constexpr interval<r_type> ti{checked::cast<result_base_type>(base_value(lt::min())),cast(base_value(lt::max()))},
+                                ui{checked::cast<result_base_type>(base_value(lu::min())),cast(base_value(lu::max()))};
+public: static bool return_value(const T& t, const U& u) {
+        if constexpr (!intersect(ti,ui)) return false;
+        if constexpr (ti.l.exception() || ti.u.exception() || ui.l.exception() || ui.u.exception()) {
+            auto r = casting_helper<exception_policy,result_base_type>(t,u);
+            return safe_compare::equal(r.first, r.second);
+        } else return (result_base_type)base_value(t) == (result_base_type)base_value(u);
+    }
+};
+using <not>_equal_to_operator<T,U> = decltype(std::declval<T const&>() {==|!=} std::declval<U const&>());
+bool operator== <T,U> (const T& t, const U& u) requires legal_overload<equal_to_operator<T,U>,T,U>::value { return equal<T,U>::return_value(t,u); }
+bool operator!= <T,U> (const T& t, const U& u) requires legal_overload<not_equal_to_operator<T,U>,T,U>::value { return !(t == u); }
 ```
 
 ------
