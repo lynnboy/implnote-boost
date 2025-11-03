@@ -460,9 +460,14 @@ T base_value(const safe_base<T,min,max,P,E>& st) { return (T)st; }
 
 class safe_base<Stored,min,max,P,E> { Stored m_t; using l = std::numeric_limits<R>;
     Stored validated_cast<T>(const T& t) const { return validate_detail<Stored,min,max,E>::return_value(t); }
-    void output<Ch,Tr>(std::basic_ostream<Ch,Tr>& os) const;
+    void output<Ch,Tr>(std::basic_ostream<Ch,Tr>& os) const
+    { os << ((std::is_same_v<T,signed char> || is_same_v<T,unsigned char> || is_same_v<T,wchar_t>) ? (int)m_t : m_t); }
     friend std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr>(std::basic_ostream<Ch,Tr>& os, const self& t) { t.output(os); return os; }
-    void input<Ch,Tr>(std::basic_istream<Ch,Tr>& is);
+    void input<Ch,Tr>(std::basic_istream<Ch,Tr>& is) {
+        if (std::is_same_v<T,signed char> || is_same_v<T,unsigned char> || is_same_v<T,wchar_t>)
+        { is >> std::ws; if (is.peek() == '-') is.setstate(is.failbit); }
+        is >> m_t; if (is.fail()) dispatch<E,domain_error>("..."); else validated_cast(m_t);
+    }
     friend std::basic_istream<Ch,Tr>& operator>> <Ch,Tr>(std::basic_istream<Ch,Tr>& is, self& t) { t.input(is); return is; }
 public: struct skip_validation{};
     ctor() {dispatch<E,uninitialized_value>("...");}
@@ -674,6 +679,215 @@ public: static bool return_value(const T& t, const U& u) {
 using <not>_equal_to_operator<T,U> = decltype(std::declval<T const&>() {==|!=} std::declval<U const&>());
 bool operator== <T,U> (const T& t, const U& u) requires legal_overload<equal_to_operator<T,U>,T,U>::value { return equal<T,U>::return_value(t,u); }
 bool operator!= <T,U> (const T& t, const U& u) requires legal_overload<not_equal_to_operator<T,U>,T,U>::value { return !(t == u); }
+
+class {left|right}_shift_result<T,U> {
+    using promotion_policy = common_promotion_policy<T,U>::type; using exception_policy = common_exception_policy<T,U>::type;
+    using result_base_type = promotion_policy::{left|right}_shift_result<T,U>::type; using r_type = checked_result<result_base_type>;
+    using L<T> = std::numeric_limits<T>; using lt = L<T>; using lu = L<U>; using l = L<result_base_type>;
+    constexpr interval<r_type> ri = interval<r_type> ri{checked::cast<result_base_type>(base_value(lt::min())),cast(base_value(lt::max()))}
+                                {<<|>>} interval<r_type> ri{checked::cast<result_base_type>(base_value(lu::min())),cast(base_value(lu::max()))};
+    constexpr interval<result_base_type> reti{ri.l.exception()?l::min():ri.l, ri.u.exception()?l::max():ri.u};
+public: using type = safe_base<result_base_type, reti.l, reti.u, promotion_policy, exception_policy>;
+    static type return_value(const T& t, const U& u) {
+        if constexpr (ri.l.exception() || ri.u.exception() || !reti.includes(ri)) {
+            auto r = casting_helper<exception_policy,result_base_type>(t,u);
+            auto rx = checked_operation<result_base_type,dispatch_and_return<exception_policy,result_base_type>>::{left|right}_shift(r.first,r.second);
+            return {rx.exception() ? r.first {<<|>>} r.second : rx.m_contents.m_r, skip_validation()};
+        } else return {(result_base_type)base_value(t) {<<|>>} (result_base_type)base_value(u), skip_validation()};
+    }
+};
+using {left|right}_shift_operator<T,U> = decltype(std::declval<T const&>() {==|!=} std::declval<U const&>());
+{left|right}_shift_result<T,U> operator{<<|>>} <T,U> (const T& t, const U& u) requires Numeric<T>() && legal_overload<{left|right}_shift_operator<T,U>,T,U>::value { return {left|right}_shift_result<T,U>::return_value(t,u); }
+T operator{<<|>>}= <T,U> (T& t, const U& u) requires Numeric<T>() && legal_overload<{left|right}_shift_operator,T,U>::value { t = (T)(t << u); return t; }
+
+using stream_{output|input}_operator<T,Ch,Tr> = decltype(std::declval<std::basic_{o|i}stream<Ch,Tr>&>() {>>|<<} std::declval<T[const]&>());
+std::basic_ostream<Ch,Tr>& operator<< <T,Ch,Tr>(std::basic_ostream<Ch,Tr>& os, const T& t) requires mp_valid<stream_output_operator,T,Ch,Tr>::value { t.output(os); return os; }
+std::basic_istream<Ch,Tr>& operator>> <T,Ch,Tr>(std::basic_istream<Ch,Tr>& is, T& t) requires mp_valid<stream_input_operator,T,Ch,Tr>::value { t.input(is); return is; }
+
+class bitwise_{or|xor|and}_result<T,U> {
+    using promotion_policy = common_promotion_policy<T,U>::type; using exception_policy = common_exception_policy<T,U>::type;
+    using result_base_type = promotion_policy::bitwise_{or|xor|and}_result<T,U>::type; using r_type = std::make_unsigned_t<result_base_type>;
+    constexpr r_type min{0}, max = round_out(std::max(r_type{base_value{std::numeric_limits<T>::max()}}, r_type{base_value{std::numeric_limits<U>::max()}}));
+public: using type = safe_base<result_base_type, min, max, promotion_policy, exception_policy>;
+    static type return_value(const T& t, const U& u) { return {(result_base_type)base_value(t) {|/^/&} (result_base_type)base_value(u), skip_validation()}; }
+};
+using bitwise_{or|xor|and}_operator<T,U> = decltype(std::declval<T const&>() {|/^/&} std::declval<U const&>());
+bitwise_{or|xor|and}_result<T,U> operator{|/^/&} <T,U> (const T& t, const U& u) requires legal_overload<bitwise_{or|xor|and}_operator<T,U>,T,U>::value { return bitwise_{or|xor|and}_result<T,U>::return_value(t,u); }
+T operator{|/^/&}= <T,U> (T& t, const U& u) requires legal_overload<bitwise_{or|xor|and}_operator,T,U>::value { t = (T)(t {|/^/&} u); return t; }
+```
+
+#### Safe Integer Policy
+
+```c++
+struct native { // promotion policy
+    struct addition_result<T,U> { using type = decltype(base_type<T>::type() + base_type<U>::type()); };
+    struct subtraction_result<T,U> { using type = decltype(base_type<T>::type() - base_type<U>::type()); };
+    struct multiplication_result<T,U> { using type = decltype(base_type<T>::type() * base_type<U>::type()); };
+    struct division_result<T,U> { using type = decltype(base_type<T>::type() / base_type<U>::type()); };
+    struct modulus_result<T,U> { using type = decltype(base_type<T>::type() % base_type<U>::type()); };
+    struct comparison_result<T,U> { using type = decltype(base_type<T>::type() + base_type<U>::type()); };
+    struct {left|right}_shift_result<T,U> { using type = decltype(base_type<T>::type() {<<|>>} base_type<U>::type()); };
+    struct bitwise_{or|and|xor}_result<T,U> { using type = decltype(base_type<T>::type() {|/&/^} base_type<U>::type()); };
+};
+
+using safe<T,P=native,E=default_exception_policy> = safe_base<T,std::numeric_limits<T>::min(),std::numeric_limits<T>::max(),P,E>;
+```
+
+#### Automatic Policy
+
+```c++
+struct automatic {
+private:
+    struct defer_stored_signed_lazily { using type = utility::signed_stored_type<min,max>; };
+    struct defer_stored_unsigned_lazily { using type = utility::unsigned_stored_type<min,max>; };
+    struct result_type<T,min,max> { using type = conditional_t<numeric_limits<T>::is_signed, defer_stored_signed_lazily, defer_stored_unsigned_lazily>::type<min,max>; };
+public:
+    struct addition_result<T,U> {
+        using lt = std::numeric_limits<T>; using lu = std::numeric_limits<U>; using l = std::numeric_limits<temp_base_type>;
+        using temp_base_type = std::conditional_t<!lt::is_signed && !lu::is_signed, uintmax_t, intmax_t>; using r_type = checked_result<temp_base_type>;
+        constexpr static interval<r_type> ri = interval<r_type>{checked::cast<temp_base_type>(base_value{lt::min()}), checked::cast(base_value{lt::max()})}
+                                            + interval<r_type>{checked::cast<temp_base_type>(base_value{lu::min()}), checked::cast(base_value{lu::max()})};
+        using type = result_type<temp_base_type, ri.l.exception()?l::min():ri.l, ri.u.exception()?l::max():ri.u>;
+    };
+    struct subtraction_result<T,U> {
+        using lt = std::numeric_limits<T>; using lu = std::numeric_limits<U>; using l = std::numeric_limits<temp_base_type>;
+        using temp_base_type = intmax_t; using r_type = checked_result<temp_base_type>;
+        constexpr static interval<r_type> ri = interval<r_type>{checked::cast<temp_base_type>(base_value{lt::min()}), checked::cast(base_value{lt::max()})}
+                                            - interval<r_type>{checked::cast<temp_base_type>(base_value{lu::min()}), checked::cast(base_value{lu::max()})};
+        using type = result_type<temp_base_type, ri.l.exception()?l::min():ri.l, ri.u.exception()?l::max():ri.u>;
+    };
+    struct multiplication_result<T,U> {
+        using lt = std::numeric_limits<T>; using lu = std::numeric_limits<U>; using l = std::numeric_limits<temp_base_type>;
+        using temp_base_type = std::conditional_t<!lt::is_signed && !lu::is_signed, uintmax_t, intmax_t>; using r_type = checked_result<temp_base_type>;
+        constexpr static interval<r_type> ri = interval<r_type>{checked::cast<temp_base_type>(base_value{lt::min()}), checked::cast(base_value{lt::max()})}
+                                            * interval<r_type>{checked::cast<temp_base_type>(base_value{lu::min()}), checked::cast(base_value{lu::max()})};
+        using type = result_type<temp_base_type, ri.l.exception()?l::min():ri.l, ri.u.exception()?l::max():ri.u>;
+    };
+    struct division_result<T,U> {
+        using lt = std::numeric_limits<T>; using lu = std::numeric_limits<U>; using l = std::numeric_limits<temp_base_type>;
+        using temp_base_type = std::conditional_t<!lt::is_signed && !lu::is_signed, uintmax_t, intmax_t>; using r_type = checked_result<temp_base_type>;
+        constexpr static interval<r_type> rl = {checked::cast<temp_base_type>(base_value{lt::min()}), checked::cast(base_value{lt::max()})},
+                                        ru = {checked::cast<temp_base_type>(base_value{lu::min()}), checked::cast(base_value{lu::max()})};
+        constexpr static interval<r_type> rx() { if (ul.u < 0 || ul.l > 0) return ti/ui;
+            return utility::minmax({ti.l/ui.l, ti.l/r_type(-1), ti.l/r_type(1), ti.l/ui.u, ti.u/ui.l, ti.u/r_type(-1), ti.u/r_type(0), ti.u/ui.u}); }
+        constexpr static interval<r_type> ri = rx();
+        using type = result_type<temp_base_type, ri.l.exception()?l::min():ri.l, ri.u.exception()?l::max():ri.u>;
+    };
+    struct modulus_result<T,U>; // same as division_result
+    struct comparison_result<T,U> {
+        using lt = std::numeric_limits<T>; using lu = std::numeric_limits<U>; using l = std::numeric_limits<temp_base_type>;
+        using temp_base_type = std::conditional_t<!lt::is_signed && !lu::is_signed, uintmax_t, intmax_t>; using r_type = checked_result<temp_base_type>;
+        constexpr static interval<r_type> rl = {checked::cast<temp_base_type>(base_value{lt::min()}), checked::cast(base_value{lt::max()})},
+                                        ru = {checked::cast<temp_base_type>(base_value{lu::min()}), checked::cast(base_value{lu::max()})};
+        constexpr static interval<r_type> ri = {min(ti.l,ui.l,max(ti.u,ui.u))};
+        using type = result_type<temp_base_type, ri.l.exception()?l::min():ri.l, ri.u.exception()?l::max():ri.u>;
+    };
+    struct left_shift_result<T,U> {
+        using lt = std::numeric_limits<T>; using lu = std::numeric_limits<U>; using l = std::numeric_limits<temp_base_type>;
+        using temp_base_type = std::conditional_t<!lt::is_signed && !lu::is_signed, uintmax_t, intmax_t>; using r_type = checked_result<temp_base_type>;
+        constexpr static interval<r_type> ri = interval<r_type>{checked::cast<temp_base_type>(base_value{lt::min()}), checked::cast(base_value{lt::max()})}
+                                            << interval<r_type>{checked::cast<temp_base_type>(base_value{lu::min()}), checked::cast(base_value{lu::max()})};
+        using type = result_type<temp_base_type, ri.l.exception()?l::min():ri.l, ri.u.exception()?l::max():ri.u>;
+    };
+    struct right_shift_result<T,U> {
+        using lt = std::numeric_limits<T>; using lu = std::numeric_limits<U>; using l = std::numeric_limits<temp_base_type>;
+        using temp_base_type = std::conditional_t<!lt::is_signed && !lu::is_signed, uintmax_t, intmax_t>; using r_type = checked_result<temp_base_type>;
+        constexpr static r_type u_min = checked::cast<temp_base_type>(base_value{lu::min()});
+        constexpr static interval<r_type> ti = {checked::cast<temp_base_type>(base_value{lt::min()}), checked::cast(base_value{lt::max()})},
+                                        ui = {u_min.exception()?r_type(0):u_min, checked::cast<temp_base_type>(base_value{lu::max()})};
+        using type = result_type<temp_base_type, ri.l.exception()?l::min():ri.l, ri.u.exception()?l::max():ri.u>;
+    };
+    struct bitwise_and_result<T,U> { using type = decltype(base_type<T>::type() & base_type<U>::type()); };
+    struct bitwise_or_result<T,U> { using type = decltype(base_type<T>::type() | base_type<U>::type()); };
+    struct bitwise_xor_result<T,U> { using type = decltype(base_type<T>::type() ^ base_type<U>::type()); };
+};
+```
+
+#### C++ Policy
+
+```c++
+struct cpp<CharBits,ShortBits,IntBits,LongBits,LongLongBits> {
+    using local_char_type = int_t<CharBits>::exact;
+    using local_short_type = int_t<ShortBits>::exact;
+    using local_int_type = int_t<IntBits>::exact;
+    using local_long_type = int_t<LongBits>::exact;
+    using local_long_long_type = int_t<LongLongBits>::exact;
+
+    using rank<T> = conditional_t<is_same_v<local_char_type,make_signed_t<T>>, integral_constant<int,1>,
+                    conditional_t<is_same_v<local_short_type,make_signed_t<T>>, integral_constant<int,2>,
+                    conditional_t<is_same_v<local_int_type,make_signed_t<T>>, integral_constant<int,3>,
+                    conditional_t<is_same_v<local_long_type,make_signed_t<T>>, integral_constant<int,4>,
+                    conditional_t<is_same_v<local_long_long_type,make_signed_t<T>>, integral_constant<int,5>, 6>>>>>;
+    using higher_ranked_type<T,U> = conditional_t<(rank<T>::value < rank<U>::value), U, T>;
+    using copy_sign<T,U> = conditional_t<std::is_signed_v<U>, make_signed_t<T>, make_unsigned_t<T>>;
+    using integral_promotion<T> = copy_sign<higher_ranked_type<local_int_type, T>, T>;
+    using select_signed<T,U> = conditional_t<std::numeric_limits<T>::is_signed, T, U>;
+    using select_unsigned<T,U> = conditional_t<std::numeric_limits<T>::is_signed, U, T>;
+    using usual_arithmetic_conversions<T,U> = conditional_t<is_same_v<T,U>,T,
+                    conditional_t<numeric_limits<T>::is_signed == conditional_t<numeric_limits<U>::is_signed, higher_ranked_type<T,U>,
+                    conditional_t<rank<select_unsigned<T,U>>::value >= select_signed<T,U>>::value, select_unsigned<T,U>,
+                    conditional_t<numeric_limits<select_signed<T,U>>::digits >= numeric_limits<select_unsigned<T,U>>::digits, select_signed<T,U>, make_signed<selected_signed<T,U>>>>>>;
+    using result_type<T,U> = usual_arithmetic_conversions<integral_promotion<base_type<T>::type>, integral_promotion<base_type<U>::type>>::type;
+
+    struct addition_result<T,U> { using type = result_type<T,U>; };
+    struct subtraction_result<T,U> { using type = result_type<T,U>; };
+    struct multiplication_result<T,U> { using type = result_type<T,U>; };
+    struct division_result<T,U> { using type = result_type<T,U>; };
+    struct modulus_result<T,U> { using type = result_type<T,U>; };
+    struct comparison_result<T,U> { using type = result_type<T,U>; };
+    struct left_shift_result<T,U> { using type = result_type<T,U>; };
+    struct right_shift_result<T,U> { using type = result_type<T,U>; };
+    struct bitwise_and_result<T,U> { using type = result_type<T,U>; };
+    struct bitwise_or_result<T,U> { using type = result_type<T,U>; };
+    struct bitwise_xor_result<T,U> { using type = result_type<T,U>; };
+};
+```
+
+#### Safe Literal Integer
+
+```c++
+struct is_safe<safe_literal_impl<T,n,P,E>> : std::true_type {};
+struct get_promotion_policy<safe_literal_impl<T,n,P,E>> { using type = P; };
+struct get_exception_policy<>safe_literal_impl<T,n,P,E>> { using type = E; };
+struct base_type<safe_literal_impl<T,n,P,E>> { using type = T; };
+T base_value<T,n,P,E>(const safe_literal_impl<T,n,P,E>&) { return n; }
+std::basic_ostream<Ch,Tr>& operator << <Ch,Tr,T,n,P,E> (std::basic_ostream<Ch,Tr>& os, const safe_literal_impl<T,n,P,E>&)
+{ return os << (std::is_same_v<T,signed char> || std::is_same_v<T,unsigned char> ? (int)n : n); }
+
+struct safe_literal_impl<T,n,P,E> {
+    ctor(){}
+    operator R <R>() const requires !is_safe<R>::value { using l = std::numeric_limits<R>;
+        return validate_detail<R,l::min(),l::min(),E>::return_value(*this); }
+    self operator+() const { return {}; } // unary +
+    auto operator-() const requires !checked::minus(n).exception() { return self<T,-n,P,E>{}; }
+    auto operator~() const requires !checked::bitwise_not(n).exception() { return self<T,~n,P,E>{}; }
+};
+using safe_signed_literal<n,P=void,E=void> = safe_literal_impl<signed_stored_type<n,n>,n,P,E>;
+using safe_unsigned_literal<n,P=void,E=void> = safe_literal_impl<unsigned_stored_type<n,n>,n,P,E>;
+auto make_safe_literal_impl<T,n,P=void,E=void> () requires std::is_signed_v<T> { return safe_signed_literal<n,P,E>{}; }
+auto make_safe_literal_impl<T,n,P=void,E=void> () requires !std::is_signed_v<T> { return safe_unsigned_literal<n,P,E>{}; }
+auto make_safe_literal<T n, P, E> { return make_safe_literal_impl<T,n,P,E>(); }
+
+struct std::numeric_limits<safe_literal_impl<T,n,P,E>> : numeric_limits<T> {
+    using SL = safe_literal_impl<T,n,P,E>;
+    static SL {lowest|min|max}() constexpr { return {}; }
+};
+```
+
+#### Range Value
+
+```c++
+struct range_value<T> { const T& m_t; ctor(const T& t): m_t{t} {} };
+range_value<T> make_range_value<T>(const T& t) { return {t}; }
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,T> (std::basic_ostream<Ch,Tr>& os, const range_value<T>& t)
+{ return os << make_interval<T>() << t.m_t; }
+struct result_display<T> { const T& m_t; ctor(const T& t): m_t{t} {} }; // same as range_value
+range_value<T> make_result_display<T>(const T& t) { return {t}; }
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,T> (std::basic_ostream<Ch,Tr>& os, const result_display<T>& r)
+{ return os << std::hex << make_range_value(r.m_t) << '(' << std::dec << r.m_t << ')'; }
+
+using safe_signed_range<min,max,P=native,E=default_exception_policy> = safe_base<signed_stored_type<min,max>,min,max>;
+using safe_unsigned_range<min,max,P=native,E=default_exception_policy> = safe_base<unsigned_stored_type<min,max>,min,max>;
 ```
 
 ------
