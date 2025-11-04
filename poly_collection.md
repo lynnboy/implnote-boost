@@ -35,23 +35,6 @@ public: ctor<Alloc>(Alloc& a, U {const&|&&} x) noexcept(...);
 };
 ```
 
-#### Callable Wrappers
-
-```c++
-class detail::callable_wrapper<SiR(Args...)> {
-    struct table { R(*call)(void*, Args...); const std::type_info& info; std::function<R(Args...)>(*convert)(void*); };
-    table* pt; void* px;
-public: explicit ctor<Callable> (Callable& x) noexcept requires !std::is_same_v<Callable,self> && is_invocable_r_v<R,Calalble,Args...>;
-    ctor(const self&)=default; self& operator=(const self&)=default;
-    explicit operator bool() const noexcept { return true; }
-    R operator() (Args...args) const { return pt->call(px, std::forward<Args>(args)...); }
-    const std::type_info& target_type() const noexcept { return pt->info; }
-    <const> T* target<T> <const> noexcept { return typeid(T) == pt->info? (<const>T*)(px) : nullptr; }
-    operator std::function<R(Args...)>() const noexcept { return pt->convert(px); }
-    <const> void* data() <const> noexcept { return px; }
-};
-```
-
 #### Allocator Adaptor
 
 ```c++
@@ -134,35 +117,6 @@ public: using base_iterator = BaseIt;
     ctor()=default; ctor(const self&)=default; self& operator=(const self&)=default;
     ctor<BaseIt2>(const self<PolyColl,BaseIt2>& x);
     std::iterator_traits<BaseIt>::reference operator[] <Diff> (Diff n) const;
-};
-
-class detail::stride_iterator<Value> : public boost::iterator_facade<self, Value, random_access_traversal_tag> {
-    using char_pointer=conditional_t<is_const_v<Value>, const char*, char*>;
-    Value* p; size_t stride_;
-
-    static char_pointer char_ptr(Value* p) noexcept;
-    static Value*   value_ptr(char_pointer p) noexcept;
-    Value& dereference() const noexcept;
-    bool equal(const self& x) const noexcept;
-    void {increment|decrement} () noexcept;
-    void advance<Int>(Int n) noexcept;
-    ptrdiff_t distance_to(const self& x) const noexcept;
-public:
-    ctor()=default; ctor(Value* p, size_t stride);
-    ctor(const self&)=default; self& operator=(const self&)=default;
-    ctor<NonConstValue> (const self<NonConstValue>& x) noexcept requires std::is_same_v<Value, const NonConstValue>;
-    self& operator= <NonConstValue> (const self<NonConstValue>& x) noexcept requires std::is_same_v<Value, const NonConstValue>;
-    self& operator=(Value* p_) noexcept;
-    operator Value*() const noexcept;
-    explicit operator DerivedValue* <DerivedValue> () const noexcept requires is_base_of_v<Value,DerivedValue> && (!is_const_v<Value> || is_const_v<DerivedValue>);
-    size_t stride() const noexcept;
-};
-
-struct detail::callable_wrapper_iterator<CW> : public boost::iterator_adaptor<self, CW*> {
-    ctor()=default; ctor(const self&)=default; self& operator=(const self&)=default;
-    explicit ctor(CW* p) noexcept; ctor<NonConstCW>(const self<NonConstCW>& x) noexcept requires is_same_v<CW, const NonConstCW>;
-    self& operator=(CW* p) noexcept; self& operator= <NonConstCW> (const self<NonConstCW>& x) noexcept requires is_same_v<CW, const NonConstCW>;
-    explicit operator Callable* <Callable> () const noexcept requires is_constructible_v<CW, Callable&> && (!is_const_v<CW> || is_const_v<Callable>);
 };
 ```
 
@@ -472,6 +426,28 @@ void swap<M,A> (poly_collection<M,A>& x, poly_collection<M,A>& y);
 * Header `<boost/poly_collection/base_collection.hpp>`
 
 ```c++
+class detail::stride_iterator<Value> : public boost::iterator_facade<self, Value, random_access_traversal_tag> {
+    using char_pointer=conditional_t<is_const_v<Value>, const char*, char*>;
+    Value* p; size_t stride_;
+
+    static char_pointer char_ptr(Value* p) noexcept;
+    static Value*   value_ptr(char_pointer p) noexcept;
+    Value& dereference() const noexcept;
+    bool equal(const self& x) const noexcept;
+    void {increment|decrement} () noexcept;
+    void advance<Int>(Int n) noexcept;
+    ptrdiff_t distance_to(const self& x) const noexcept;
+public:
+    ctor()=default; ctor(Value* p, size_t stride);
+    ctor(const self&)=default; self& operator=(const self&)=default;
+    ctor<NonConstValue> (const self<NonConstValue>& x) noexcept requires std::is_same_v<Value, const NonConstValue>;
+    self& operator= <NonConstValue> (const self<NonConstValue>& x) noexcept requires std::is_same_v<Value, const NonConstValue>;
+    self& operator=(Value* p_) noexcept;
+    operator Value*() const noexcept;
+    explicit operator DerivedValue* <DerivedValue> () const noexcept requires is_base_of_v<Value,DerivedValue> && (!is_const_v<Value> || is_const_v<DerivedValue>);
+    size_t stride() const noexcept;
+};
+
 struct base_model<Base> {
     using value_type = Base; using type_index = std::type_info;
     using is_implementation<Derived> = std::is_base_of<Base,Derived>;
@@ -502,6 +478,26 @@ void swap<B,A> (base_collection<B,A>& x, base_collection<B,A>& y);
 * Header `<boost/poly_collection/function_collection.hpp>`
 
 ```c++
+class detail::callable_wrapper<SiR(Args...)> {
+    struct table { R(*call)(void*, Args...); const std::type_info& info; std::function<R(Args...)>(*convert)(void*); };
+    table* pt; void* px;
+public: explicit ctor<Callable> (Callable& x) noexcept requires !std::is_same_v<Callable,self> && is_invocable_r_v<R,Calalble,Args...>;
+    ctor(const self&)=default; self& operator=(const self&)=default;
+    explicit operator bool() const noexcept { return true; }
+    R operator() (Args...args) const { return pt->call(px, std::forward<Args>(args)...); }
+    const std::type_info& target_type() const noexcept { return pt->info; }
+    <const> T* target<T> <const> noexcept { return typeid(T) == pt->info? (<const>T*)(px) : nullptr; }
+    operator std::function<R(Args...)>() const noexcept { return pt->convert(px); }
+    <const> void* data() <const> noexcept { return px; }
+};
+
+struct detail::callable_wrapper_iterator<CW> : public boost::iterator_adaptor<self, CW*> {
+    ctor()=default; ctor(const self&)=default; self& operator=(const self&)=default;
+    explicit ctor(CW* p) noexcept; ctor<NonConstCW>(const self<NonConstCW>& x) noexcept requires is_same_v<CW, const NonConstCW>;
+    self& operator=(CW* p) noexcept; self& operator= <NonConstCW> (const self<NonConstCW>& x) noexcept requires is_same_v<CW, const NonConstCW>;
+    explicit operator Callable* <Callable> () const noexcept requires is_constructible_v<CW, Callable&> && (!is_const_v<CW> || is_const_v<Callable>);
+};
+
 struct function_model<R(Args...)> {
     using value_type = callable_wrapper<R(Args...)>; using type_index = std::type_info;
     using is_implementation<Callable> = std::is_invocable_r<R,Callable&,Args...>;
@@ -531,17 +527,148 @@ void swap<S,A> (function_collection<S,A>& x, function_collection<S,A>& y);
 ------
 #### `any_collection`
 
-* Header `<boost/hash2/siphash.hpp>`
+* Header `<boost/poly_collection/any_collection.hpp>`
 
 ```c++
+struct detail::any_iterator<Any> : public boost::iterator_adaptor<self, Any*> {
+    ctor()=default; ctor(const self&)=default; self& operator=(const self&)=default;
+    explicit ctor(Any* p) noexcept; ctor<NonConstAny>(const self<NonConstAny>& x) noexcept requires is_same_v<Any, const NonConstAny>;
+    self& operator=(Any* p) noexcept; self& operator= <NonConstAny> (const self<NonConstAny>& x) noexcept requires is_same_v<Any, const NonConstAny>;
+    explicit operator Concrete* <Concrete> () const noexcept requires !is_const_v<Any> || is_const_v<Concrete>;
+};
+
+struct detail::any_model<Concept> {
+    using value_type = type_erasure::any<std::conditional_t<type_erasure::is_subconcept<typeid_<>,Concept>::value, Concept, mpl::vector2<Concept,typeid_>>, type_erasure::_self&>;
+    using type_index = std::type_info;
+    using is_implementation<Concrete> = std::true_type; using is_terminal<T> = ...;
+    static const std::type_info& index<T>() { return typeid(T); }
+    static const std::type_info& subindex<T>(const T&) { return typeid(T); }
+    static const std::type_info& subindex<Concept2,T>(const type_erasure::any<Concept2,T>& a) { return type_erasure::typeid_of(a); }
+    static <const> void* subaddress(<const>T& x) { return addressof(x); }
+    static <const> void* subaddress<Concept2,T>(<const> type_erasure::any<Concept2,T>& a) { return type_erasure::any_cast<<const> void*>(&a); }
+    using <const>_base_iterator = callable_wrapper_iterator<<const> value_type>;
+    using <const>_base_sentinel = <const> value_type*;
+    using <const>_iterator<Concrete> = <const> Concrete*;
+    using segment_backend<Alloc> = segment_backend<self,Alloc>;
+    using segment_backend_implementation<Concrete,Alloc> = split_segment<self,Concrete,Alloc>;
+    static base_iterator nonconst_iterator(const_base_iterator it);
+    static iterator<T> nonconst_iterator<T>(const_iterator<T> it);
+};
+
+class any_collection<Concept,Alloc> : public common_impl::poly_collection<any_model<Concept>,Alloc> {
+    using base_type = base; <const> base_type& base() <const> noexcept;
+public: using base::ctor; // all 5 ctor/op= =default
+};
+bool operator== <C,A> (const any_collection<C,A>& x, const any_collection<C,A>& y); // and !=
+void swap<C,A> (any_collection<C,A>& x, any_collection<C,A>& y);
 ```
 
 ------
 #### `variant_collection`
 
-* Header `<boost/hash2/hmac.hpp>`
+* Header `<boost/poly_collection/variant_collection.hpp>`
 
 ```c++
+class fixed_variant<...Ts> {
+    static constexpr size_t N = sizeof...(Ts); using index_type = ...; // choose unsigned char, unsigned short, size_t by N
+    index_type index_;
+protected: ctor(const self&)=default; self& operator=(const self&)=default;
+public: explicit ctor<T, i=mp_find<self,T>::value> (const T&) requires i < mp_size<self>::value;
+    size_t index() const noexcept; bool valueless_by_exception() const noexcept; // always false
+};
+
+struct fixed_variant_store<T> { ctor<...Args> (Args&&...args); T value; };
+struct fixed_variant_closure<T,Base> : fixed_variant_store<T>, Base {
+    ctor<...Args>(Args&&...args) noexcept(...) requires std::is_constructible_v<T,Args&&...>;
+    ctor(self{const&|&&})=default; self& operator=(self&&)=default;
+    bool operator== <Q=T>(const self& x) const noexcept(...) requires is_equality_comparable_v<Q>;
+};
+
+struct bad_variant_access : std::exception { ctor()noexcept; const whar* what() const noexcept; };
+
+struct variant_size<V>;
+size_t variant_size_v<V> = variant_size<V>::value;
+struct is_fixed_variant<T>;
+struct variant_alternative<i,V>;
+using variant_alternative_t<i,V> = variant_alternative<i,V>::type;
+bool holds_alternative<T,...Ts>(const fixed_variant<Ts...>& x) noexcept;
+
+<const> T{&|&&} <unsafe>_get<T,...Ts>(<const> fixed_variant<Ts...>{&|&&} x);
+variant_alternative_t<i,V&&> <unsafe>_get<i,V>(V&& x);
+<const> variant_alternative_t<i,fixed_variant<Ts...>> get_if<i,...Ts>(<const> fixed_variant<Ts...>* px) noexcept;
+<const> T* get_if<T,...Ts>(<const> fixed_variant<Ts...>* px) noexcept;
+struct deduced;
+auto visit<R=deduced,F> (F&& f) -> conditional_t<is_same_v<R,deduced>, invoke_result_t<F&&>, R>;
+auto visit<R=deduced,F,V> (F&& f, V&& v) -> conditional_t<is_same_v<R,deduced>, invoke_result_t<F&&, V&&>, R>;
+auto visit<R=deduced,F,V1,V2,...Vs> (F&& f, V1&& v1, V2&& v2, Vs&&...xs) -> conditional_t<is_same_v<R,deduced>, invoke_result_t<F&&, V1&&, V2&&, Vs&&...>, R>;
+auto visit_by_index<R=deduced,V,...Fs> (V&&x, Fs&&...fs) -> conditional_t<is_same_v<R,deduced>, invoke_result_t<Fs...[0]&&,decltype(get<0>(x))>, R>;
+bool operator== <...Ts> (const fixed_variant<Ts...>& x, const fixed_variant<Ts...> y); // and !=, <, >, <=, >=
+
+class detail::fixed_variant_alternative_iterator<Variant,T> : boost::iterator_facade<self, T, random_access_traversal_tag> {
+    T* p;
+    using char_pointer = conditional_t<is_const_v<V>, const char*, char*>;
+    static char_pointer char_ptr(T* p) noexcept; static T* value_ptr(char_pointer p) noexcept;
+    T& dereference() const noexcept; bool equal(const self& x) const noexcept;
+    void {increment|decrement}() noexcept;
+    void advance<Int>(Int n) noexcept; ptrdiff_t distance_to(const self& x) const noexcept;
+public:
+    ctor()=default; ctor(const self&)=default; self& operator=(const self&)=default;
+    ctor(T* p) noexcept; ctor<NonConstT>(const self<NonConstT>& x) noexcept requires is_same_v<T, const NonConstT>;
+    self& operator=(T* p) noexcept; self& operator= <NonConstT> (const self<NonConstT>& x) noexcept requires is_same_v<T, const NonConstT>;
+    operator T* () const noexcept;
+    size_t stride() const noexcept { return sizeof(fixed_variant_closure<remove_const_t<T>, Variant>); }
+};
+
+class detail::fixed_variant_iterator<V> : boost::iterator_facade<self, V, random_access_traversal_tag> {
+    V* p; size_t stride_;
+    using char_pointer = conditional_t<is_const_v<V>, const char*, char*>;
+    static char_pointer char_ptr(V* p) noexcept; static V* value_ptr(char_pointer p) noexcept;
+    V& dereference() const noexcept; bool equal(const self& x) const noexcept;
+    void {increment|decrement}() noexcept;
+    void advance<Int>(Int n) noexcept; ptrdiff_t distance_to(const self& x) const noexcept;
+public:
+    ctor()=default; ctor(const self&)=default; self& operator=(const self&)=default;
+    ctor(V* p) noexcept; ctor<NonConstV>(const self<NonConstV>& x) noexcept requires is_same_v<V, const NonConstV>;
+    self& operator=(V* p) noexcept; self& operator= <NonConstV> (const self<NonConstV>& x) noexcept requires is_same_v<V, const NonConstV>;
+    operator V* () const noexcept;
+    explicit operator fixed_variant_alternative_iterator<NonConstV,T> <T,NonConstT=remove_const_t<T>,NonConstV=remove_const_t<V>> () const noexcept
+        requires mp_contains<NonConstV,NonConstT>::value && (!is_const_v<V> || is_const_v<T>);
+    size_t stride() const noexcept
+};
+
+struct detail::variant_model_is_subvariant<V,...Ts>;
+struct detail::variant_model_is_subset<TL1,TL2>;
+auto detail::invoke_visit<F,...Ts>(F&& f, const fixed_variant<Ts...>& x) -> decltype(...) { return visit(std::forward<F>(f),x); }
+auto detail::invoke_visit<F,...Ts>(F&& f, const std::variant<Ts...>& x) -> decltype(...) { return std::visit(std::forward<F>(f),x); }
+auto detail::invoke_visit<F,...Ts>(F&& f, const boost::variant2::variant<Ts...>& x) -> decltype(...) { return visit(std::forward<F>(f),x); }
+
+struct detail::variant_model<...Ts> {
+    using value_type = fixed_variant<Ts...>; using type_index = size_t; using acceptable_type_list = mp_list<Ts...>;
+    using is_terminal<T> = mp_contains<acceptable_type_list,T>;
+    using is_implementation<Concrete> = std::bool_constant<is_terminal<T>::value || variant_model_is_subvariant<T,Ts...>::value>;
+    static const type_index index<T>() { return mp_find<acceptable_type_list,T>::value; }
+    static const type_index subindex<T>(const T&) requires is_terminal<T>::value { return index<T>(); }
+    static const type_index subindex<V<...>,...Qs>(const V<Qs...>& x) requires !is_terminal<T>::value
+    { return mp_with_index<sizeof...(Qs)>(i,[](auto i){return mp_find<acceptable_type_list,mp_at<mp_list<Qs...>,i>>::value;}); }
+    static <const> void* subaddress(<const>T& x)
+    { if constexpr (is_terminal<T>::value) return addressof(x); else return invoke_visit([](auto const& x){return (const void*)addressof(x);}); }
+    static const std::type_info& subtype_info<T> (const T& x)
+    { if constexpr (is_terminal<T>::value) return typeid(x); else return invoke_visit([](auto const& x){return typeid(T);}); }
+    using <const>_base_iterator = fixed_variant_iterator<<const> value_type>;
+    using <const>_base_sentinel = <const> value_type*;
+    using <const>_iterator<Concrete> = fixed_variant_alternative_iterator<value_type, <const> T>;
+    using segment_backend<Alloc> = segment_backend<self,Alloc>;
+    using segment_backend_implementation<T,Alloc> = split_segment<self,T,Alloc>;
+    static base_iterator nonconst_iterator(const_base_iterator it);
+    static iterator<T> nonconst_iterator<T>(const_iterator<T> it);
+};
+
+class variant_collection<TypeList,Alloc> : public common_impl::poly_collection<mp_rename<TypeList,variant_model>,Alloc> {
+    using base_type = base; <const> base_type& base() <const> noexcept;
+public: using base::ctor; // all 5 ctor/op= =default
+};
+bool operator== <TL,A> (const variant_collection<TL,A>& x, const variant_collection<TL,A>& y); // and !=
+void swap<TL,A> (variant_collection<TL,A>& x, variant_collection<TL,A>& y);
 ```
 
 ------
