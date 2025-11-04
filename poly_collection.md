@@ -35,6 +35,23 @@ public: ctor<Alloc>(Alloc& a, U {const&|&&} x) noexcept(...);
 };
 ```
 
+#### Callable Wrappers
+
+```c++
+class detail::callable_wrapper<SiR(Args...)> {
+    struct table { R(*call)(void*, Args...); const std::type_info& info; std::function<R(Args...)>(*convert)(void*); };
+    table* pt; void* px;
+public: explicit ctor<Callable> (Callable& x) noexcept requires !std::is_same_v<Callable,self> && is_invocable_r_v<R,Calalble,Args...>;
+    ctor(const self&)=default; self& operator=(const self&)=default;
+    explicit operator bool() const noexcept { return true; }
+    R operator() (Args...args) const { return pt->call(px, std::forward<Args>(args)...); }
+    const std::type_info& target_type() const noexcept { return pt->info; }
+    <const> T* target<T> <const> noexcept { return typeid(T) == pt->info? (<const>T*)(px) : nullptr; }
+    operator std::function<R(Args...)>() const noexcept { return pt->convert(px); }
+    <const> void* data() <const> noexcept { return px; }
+};
+```
+
 #### Allocator Adaptor
 
 ```c++
@@ -116,10 +133,10 @@ class detail::local_iterator_impl<PolyColl,BaseIt>: public boost::iterator_adapt
 public: using base_iterator = BaseIt;
     ctor()=default; ctor(const self&)=default; self& operator=(const self&)=default;
     ctor<BaseIt2>(const self<PolyColl,BaseIt2>& x);
-    std::iterator_traits<BaesIt>::reference operator[] <Diff> (Diff n) const;
+    std::iterator_traits<BaseIt>::reference operator[] <Diff> (Diff n) const;
 };
 
-class stride_iterator<Value> : public boost::iterator_facade<self, Value, random_access_traversal_tag> {
+class detail::stride_iterator<Value> : public boost::iterator_facade<self, Value, random_access_traversal_tag> {
     using char_pointer=conditional_t<is_const_v<Value>, const char*, char*>;
     Value* p; size_t stride_;
 
@@ -139,6 +156,13 @@ public:
     operator Value*() const noexcept;
     explicit operator DerivedValue* <DerivedValue> () const noexcept requires is_base_of_v<Value,DerivedValue> && (!is_const_v<Value> || is_const_v<DerivedValue>);
     size_t stride() const noexcept;
+};
+
+struct detail::callable_wrapper_iterator<CW> : public boost::iterator_adaptor<self, CW*> {
+    ctor()=default; ctor(const self&)=default; self& operator=(const self&)=default;
+    explicit ctor(CW* p) noexcept; ctor<NonConstCW>(const self<NonConstCW>& x) noexcept requires is_same_v<CW, const NonConstCW>;
+    self& operator=(CW* p) noexcept; self& operator= <NonConstCW> (const self<NonConstCW>& x) noexcept requires is_same_v<CW, const NonConstCW>;
+    explicit operator Callable* <Callable> () const noexcept requires is_constructible_v<CW, Callable&> && (!is_const_v<CW> || is_const_v<Callable>);
 };
 ```
 
@@ -222,10 +246,35 @@ struct detail::segment_backend<Model,Alloc> { // base interface
 class detail::packed_segment<Model,Concrete,Alloc> : public segment_backend<Model,Alloc> {
     using value_type = Model::value_type; using final_type = {SFINAE Model::final_type<Concrete> ?? Concrete};
     using store_value_type = value_holder<final_type,Concrete>;
-    using segment_allocator_type = std::allocator_traits<Alloc>::rebind_alloc<store_value_type>;
-    using store = std::vector<store_value_type, segment_allocator_type>;
+    using store = std::vector<store_value_type, std::allocator_traits<Alloc>::rebind_alloc<store_value_type>>;
     using <const>_store_iterator = store::<const>_iterator;
     using const_iterator = base::const_iterator<Concrete>;
+    using segment_allocator_type = std::allocator_traits<Alloc>::rebind_alloc<self>;
+    store s;
+public: virtual ~dtor()=default; // and all virtual overrides
+    static segment_backend_unique_ptr make(const segment_allocator_type& a);
+    base_iterator nv_{begin|end}() const noexcept;
+    bool nv_empty() const noexcept; size_t nv_{size|max_size|capacity} const noexcept;
+    base_sentinel nv_reserve(size_t n); base_sentinel nv_shrink_to_fit();
+    range nv_emplace<It,...Args>(It p, Args&&...args);
+    range nv_emplace_back<..Args>(Args&&...args);
+    range nv_push_back(Concrete {const&|&&} x);
+    range nv_insert(const_iterator p, Concrete {const&|&&} x);
+    range nv_insert<It>(<const_iterator p>, It first, It last);
+    range nv_erase(const_iterator p, <const_iterator last>);
+    base_sentinel nv_clear() noexcept;
+};
+
+class detail::split_segment<Model,Concrete,Alloc> : public segment_backend<Model,Alloc> {
+    using value_type = Model::value_type;
+    using store_value_type = value_holder<Concrete>;
+    using store = std::vector<store_value_type, std::allocator_traits<Alloc>::rebind_alloc<store_value_type>>;
+    using <const>_store_iterator = store::<const>_iterator;
+    using index = std::vector<value_type, std::allocator_traits<Alloc>::rebind_alloc<value_type>>;
+    using const_index_iterator = index::const_iterator;
+    using const_iterator = base::const_iterator<Concrete>;
+    using segment_allocator_type = std::allocator_traits<Alloc>::rebind_alloc<self>;
+    store s; index i;
 public: virtual ~dtor()=default; // and all virtual overrides
     static segment_backend_unique_ptr make(const segment_allocator_type& a);
     base_iterator nv_{begin|end}() const noexcept;
@@ -296,6 +345,127 @@ struct detail::is_closed_collection<Model>; // exists Model::acceptable_type_lis
 struct detail::is_acceptable<T,Model>; // Model::is_implementation<T> Model::acceptable_type_list
 ```
 
+#### Basic Collection Implementation
+
+```c++
+class common_impl::poly_collection<Model,Alloc> {
+    static constexpr bool is_closed_collection = is_closed_collection<Model>::value;
+    using segment_allocator_type = allocator_adaptor<Alloc>;
+    using segment_type = segment<Model,segment_allocator_type>;
+    using <const>_segment_base_iterator = segment_type::<const>_base_iterator;
+    using <const>_segment_base_sentinel = segment_type::<const>_base_sentinel;
+    using <const>_segment_iterator<T> = segment_type::<const>_iterator<T>;
+    using segment_map = segment_map<type_index, std::allocator_traits<segment_allocator_type>::rebind_alloc<segment_type>>;
+    using segment_map_allocator_type = segment_map::allocator_type;
+    using <const>_segment_map_iterator = segment_map::<const>_iterator;
+    using iterator_impl<isConst> = iterator_impl<self, isConst>;
+    using local_iterator_impl<BaseIt> = local_iterator_impl<self,BaseIt>;
+    class segment_info_iterator_impl<SegmentInfo> : public boost::iterator_adaptor<self, const_segment_map_iterator, SegmentInfo, std::input_iterator_tag, SegmentInfo> {
+        ctor(const_segment_map_iterator it);
+        SegmentInfo dereference() const noexcept;
+    public: ctor()=default; ctor(const self&)=default; self& operator=(const self&)=default;
+        ctor<SegmentInfo2>(const self<SegmentInfo2>& x) requires is_base_of_v<SegmentInfo, SegmentInfo2>;
+        self& operator=<SegmentInfo2>(const self<SegmentInfo2>& x) requires is_base_of_v<SegmentInfo, SegmentInfo2>;
+    };
+    using nonconst_version<It> = ...; // const_xx_iterator -> xx_iterator
+
+    segment_map map;
+
+    static auto index <T> () -> decltype(...) { return Model::index<T>(); }
+    static auto subindex <T> (const T& x) -> decltype(...) { return Model::subindex(x); }
+    void initialize_map(); void initialize_map(segment_map&);
+    static const std::type_info& type_info(const std::type_info&); static const std::type_info& type_info<TI>(const TI&);
+    static const std::type_info& subtype_info<T>(const T&);
+    const_segment_map_iterator get_map_iterator_for<T>(const T&) requires is_acceptable<decay_t<T>,Model>;
+    const_segment_map_iterator get_map_iterator_for<T>(const T&) const requires !is_acceptable<decay_t<T>,Model>;
+    const_segment_map_iterator get_map_iterator_for<T>(const T&, const segment_type&);
+    const_segment_map_iterator get_map_iterator_for<T>();
+    const_segment_map_iterator get_map_iterator_for(const type_index&)<const>;
+    static segment_type& segment(const_segment_map_iterator pos);
+    segment_base_iterator push_back<T>(segment_type&, T&&);
+    static segment_base_iterator local_insert<T,BaseIt,U>(segment_type&, BaseIt, U&&);
+
+public: using value_type = segment_type::value_type; using allocator_type = Alloc;
+    using size_type = size_t; using difference_type = ptrdiff_t;
+    using <const>_reference = <const> value_type&; using <const>_pointer = std::allocator_traits<Alloc>::<const>_pointer;
+    using type_index = Model::type_index;
+    using <const>_iterator = iterator_impl<{false|true}>;
+    using <const>_local_base_iterator = local_iterator_impl<<const>_segment_base_iterator>;
+    using <const>_local_iterator<T> = local_iterator_impl<<const>_segment_iterator<T>>;
+    class const_base_segment_info {
+    protected: const_segment_map_iterator it; ctor(const_segment_map_iterator it) noexcept;
+    public: ctor(const self&)=default; self& operator=(const self&)=default;
+        const_local_base_iterator <c>{begin|end}() const noexcept;
+        const_local_iterator<T> <c>{begin|end}<T>() const noexcept;
+        const type_index& type_info() const;
+    };
+    class base_segment_info : public const_base_segment_info {
+    public: // using base::{ctor|begin|end}
+        local_base_iterator {begin|end}() noexcept;
+        local_iterator<T> <c>{begin|end}<T>() noexcept;
+    };
+    class const_segment_info<T> {
+    protected: const_segment_map_iterator it; ctor(const_segment_map_iterator it) noexcept;
+    public: ctor(const self&)=default; self& operator=(const self&)=default;
+        const_local_iterator<T> <c>{begin|end}() const noexcept;
+    };
+    class segment_info<T> : public const_segment_info<T> {
+    public: // using base::{ctor|begin|end}
+        local_iterator<T> <c>{begin|end}() noexcept;
+    };
+    using <const>_base_segment_info_iterator = segment_info_iterator_impl<const_base_segment_info>;
+    class const_segment_traversal_info {
+    protected: segment_map* pmap; ctor(const segment_map& map) noexcept;
+    public: ctor(const self&)=default; self& operator=(const self&)=default;
+        const_base_segment_info_iterator <c>{begin|end}() const noexcept;
+    };
+    class segment_traversal_info : public const_segment_traversal_info {
+    public: // using base::{ctor|begin|end}
+        base_segment_info_iterator<T> <c>{begin|end}() noexcept;
+    };
+
+    ctor(<const allocator_type& a>); ctor(self {const&|&&} x, <const allocator_type& a>);
+    ctor<It>(It first, It last, const allocator_type& a={});
+    self& operator=(self {const&|&&} x);
+    allocator_type get_allocator() const noexcept;
+    void register_types<...T>() requires is_acceptable<decay_t<T>,Model>; && ... && !Model::is_closed_collection;
+    bool is_registered(const type_index& info) const requires !Model::is_closed_collection;
+    bool is_registered<T>() const requires is_acceptable<decay_t<T>,Model>; && !Model::is_closed_collection;
+
+    iterator {begin|end}() noexcept; const_iterator <c>{begin|end}() const noexcept;
+    local_base_iterator {begin|end}(const type_index&); const_local_base_iterator <c>{begin|end}(const type_index&) const;
+    local_iterator<T> {begin|end}<T>() noexcept requires is_acceptable<decay_t<T>,Model>; const_local_iterator<T> <c>{begin|end}<T>() const noexcept requires is_acceptable<decay_t<T>,Model>;
+    <const>_base_segment_info segment(const type_index& info) <const>;
+    <const>_segment_info<T> segment<T>() <const> requires is_acceptable<decay_t<T>,Model>;
+    <const>_segment_traversal_info segment_traversal() <const> noexcept;
+
+    bool empty() const noexcept; bool empty(const type_index& info) const; bool empty<T>() const requires is_acceptable<decay_t<T>,Model>;
+    size_type size() const noexcept; size_type size(const type_index& info) const; size_type size<T>() const requires is_acceptable<decay_t<T>,Model>;
+    size_type max_size(const type_index& info) const; size_type max_size<T>() const requires is_acceptable<decay_t<T>,Model>;
+    size_type capacity(const type_index& info) const; size_type capacity<T>() const requires is_acceptable<decay_t<T>,Model>;
+    void reserve(size_type n); void reserve(const type_info&, size_type); void reserve<T>(size_type n) requires is_acceptable<decay_t<T>,Model>;
+    void shrink_to_fit(); void shrink_to_fit(const type_info&); void shrink_to_fit<T>() requires is_acceptable<decay_t<T>,Model>;
+
+    iterator emplace<T,...Args>(Args&&...args) requires is_acceptable<decay_t<T>,Model>;
+    iterator emplace_hint<T,...Args>(const_iterator hint, Args&&...args) requires is_acceptable<decay_t<T>,Model>;
+    local_base_iterator emplace_pos<T,...Args>(<const>_local_base_iterator pos, Args&&...args);
+    local_iterator<T> emplace_pos<T,...Args>(<const>_local_iterator<T> pos, Args&&...args);
+    iterator insert<T>(<const_iterator hint>, T&& x) requires Model::is_implementation<decay_t<T>>;
+    nonconst_version<local_iterator_impl<BaseIt>> insert<BaseIt,T>(local_iterator_impl<BaseIt> pos, T&& x) requires Model::is_implementation<decay_t<T>>;
+    void insert<It>(<const_iterator hint>, It first, It last) requires Model::is_implementation<decay_t<It::value_type>>;
+    void insert<isConst>(<const_iterator hint>, iterator_impl<isConst> first, iterator_impl<isConst> last);
+    void insert<BaseIt>(<const_iterator hint>, local_iterator_impl<BaseIt> first, local_iterator_impl<BaseIt> last);
+    local_base_iterator insert<It>(const_local_base_iterator pos, It first, It last) requires Model::is_implementation<decay_t<It::value_type>>;
+    local_iterator<T> insert<T,It>(<const>_local_iterator<T> pos, It first, It last);
+    iterator erase(const_iterator pos, <const_iterator last>);
+    nonconst_version<local_iterator_impl<BaseIt>> erase<BaseIt>(local_iterator_impl<BaseIt> pos, <local_iterator_impl<BaseIt> last>);
+    void clear() noexcept; void clear(const type_index&); void clear<T>() requires is_acceptable<decay_t<T>,Model>;
+    void swap(self&);
+};
+bool operator== <M,A> (const poly_collection<M,A>& x, const poly_collection<M,A>& y); // and !=
+void swap<M,A> (poly_collection<M,A>& x, poly_collection<M,A>& y);
+```
+
 ------
 #### `base_collection`
 
@@ -306,29 +476,60 @@ struct base_model<Base> {
     using value_type = Base; using type_index = std::type_info;
     using is_implementation<Derived> = std::is_base_of<Base,Derived>;
     using is_terminal<T> = is_final<T>;
-    static const std::type_info& index();
-    static const std::type_info& subindex(const T&) { if constexpr(is_terminal<T>) return typeid(T); else return typeid(x); }
+    static const std::type_info& index<T>();
+    static const std::type_info& subindex<T>(const T&) { if constexpr(is_terminal<T>) return typeid(T); else return typeid(x); }
     static <const> void* subaddress(<const>T& x) { if constexpr(is_terminal<T>) return addressof(x); else return dynamic_cast<void*>(addressof(x)); }
-    using <const>_base_iterator = stride_iterator<[const]Base>;
-    using <const>_base_sentinel = <const> Base*;
+    using <const>_base_iterator = stride_iterator<[const]value_type>;
+    using <const>_base_sentinel = <const> value_type*;
     using <const>_iterator<Derived> = <const> Derived*;
-    using segment_backend<Alloc>=segment_backend<self,Alloc>;
-    using segment_backend_implementation<Derived,Alloc>=packed_segment<self,Derived,Alloc>;
+    using segment_backend<Alloc> = segment_backend<self,Alloc>;
+    using segment_backend_implementation<Derived,Alloc> = packed_segment<self,Derived,Alloc>;
     static base_iterator nonconst_iterator(const_base_iterator it);
     static iterator<T> nonconst_iterator<T>(const_iterator<T> it);
 };
+
+class base_collection<Base,Alloc> : public common_impl::poly_collection<base_model<Base>,Alloc> {
+    using base_type = base; <const> base_type& base() <const> noexcept;
+public: using base::ctor; // all 5 ctor/op= =default
+};
+bool operator== <B,A> (const base_collection<B,A>& x, const base_collection<B,A>& y); // and !=
+void swap<B,A> (base_collection<B,A>& x, base_collection<B,A>& y);
 ```
 
 ------
-#### XXH3-128
+#### `function_collection`
 
-* Header `<boost/hash2/xxh3.hpp>`
+* Header `<boost/poly_collection/function_collection.hpp>`
 
 ```c++
+struct function_model<R(Args...)> {
+    using value_type = callable_wrapper<R(Args...)>; using type_index = std::type_info;
+    using is_implementation<Callable> = std::is_invocable_r<R,Callable&,Args...>;
+    using is_terminal<T> = ...; // T is not spec of callable_wrapper
+    static const std::type_info& index<T>();
+    static const std::type_info& subindex<T>(const T&) { return typeid(T); }
+    static const std::type_info& subindex<Sig>(callable_wrapper<Sig> const& f) { return f.target_type(); }
+    static <const> void* subaddress(<const>T& x) { return addressof(x); }
+    static <const> void* subaddress<Sig>(<const> callable_wrapper<Sig>& f) { return f.data(); }
+    using <const>_base_iterator = callable_wrapper_iterator<<const> value_type>;
+    using <const>_base_sentinel = <const> value_type*;
+    using <const>_iterator<Callable> = <const> Callable*;
+    using segment_backend<Alloc> = segment_backend<self,Alloc>;
+    using segment_backend_implementation<Callable,Alloc> = split_segment<self,Callable,Alloc>;
+    static base_iterator nonconst_iterator(const_base_iterator it);
+    static iterator<T> nonconst_iterator<T>(const_iterator<T> it);
+};
+
+class function_collection<Sig,Alloc> : public common_impl::poly_collection<function_model<Sig>,Alloc> {
+    using base_type = base; <const> base_type& base() <const> noexcept;
+public: using base::ctor; // all 5 ctor/op= =default
+};
+bool operator== <S,A> (const function_collection<S,A>& x, const function_collection<S,A>& y); // and !=
+void swap<S,A> (function_collection<S,A>& x, function_collection<S,A>& y);
 ```
 
 ------
-#### SipHash and HalfSipHash
+#### `any_collection`
 
 * Header `<boost/hash2/siphash.hpp>`
 
@@ -336,71 +537,9 @@ struct base_model<Base> {
 ```
 
 ------
-#### HMAC
+#### `variant_collection`
 
 * Header `<boost/hash2/hmac.hpp>`
-
-```c++
-```
-
-------
-#### MD5
-
-* Header `<boost/hash2/md5.hpp>`
-
-```c++
-```
-
-------
-#### SHA-1
-
-* Header `<boost/hash2/sha1.hpp>`
-
-```c++
-```
-
-------
-#### SHA-2 Family
-
-* Header `<boost/hash2/sha2.hpp>`
-
-```c++
-```
-
-------
-#### SHA-3 Family
-
-* Header `<boost/hash2/sha3.hpp>`
-
-```c++
-```
-
-------
-#### RIPEMD Family
-
-* Header `<boost/hash2/ripemd.hpp>`
-
-```c++
-```
-
-------
-#### BLAKE2 Faimly
-
-* Header `<boost/hash2/blake2.hpp>`
-
-```c++
-```
-
-------
-### Common Bits
-
-```c++
-```
-
-------
-### Object Hashing
-
-* Header `<boost/hash2/hash_append.hpp>`, `<boost/hash2/hash_append_fwd.hpp>`
 
 ```c++
 ```
