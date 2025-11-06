@@ -207,6 +207,200 @@ public: // types from base
     void merge(self& r); void merge<BinPred>(self& r, BinPred pred);
     void merge(iterator f, iterator l, self& from); void merge<BinPred>(iterator f, iterator l, self& from, BinPred pred);
 };
+
+struct detail::ref_pair<F,S> { using first_type = F; using second_type = S;
+    const F& first; S second;
+    ctor<F2,S2>(const std::pair<F2,S2>& p); ctor<RP>(const RP* rp);
+    const self* operator->() const;
+    friend bool operator==(self l, self r); // and !=, <, >, <=, >=
+};
+struct detail::ptr_map_iterator<It,F,S> : boost::iterator_adaptor<self, It, ref_pair<F,S>, use_default, ref_pair<F,S>> {
+    ctor(); explicit ctor(const It& it); ctor<It2,F2,S2>(const self<It2,F2,S2>& r);
+};
+
+class detail::associative_ptr_container<Config,CA> : public reversible_ptr_container<Config,CA> {
+    using container_type = Config::container_type;
+public: using key_type = Config::key_type;
+    using key_compare = Config::key_compare; using value_compare = Config::value_compare;
+    using hasher = Config::hasher; using key_equal = Config::key_equal;
+    using <const>_iterator = Config::<const>_iterator; using <const>_local_iterator = Config::<const>_local_iterator;
+    ctor(); ctor<Size>(Size n, unordered_associative_container_tag);
+    ctor<Comp,A>(const Comp& comp, const A& a); ctor<InIt,Comp,A>(InIt f, InIt l, const Comp& comp, const A& a);
+    ctor<Hash,Pred,A>(const Hash& hash, const Pred& pred, const A& a); ctor<InIt,Hash,Pred,A>(InIt f, InIt l, const Hash& hash, const Pred& pred, const A& a);
+    explicit ctor<PtrCont>(std::unique_ptr<PtrCont> r); ctor( const self& r); ctor<C,V>(const self<C,V>& r);
+    self& operator=<PtrCont>(std::unique_ptr<PtrCont> r); self& operator=<PtrCont>(self r);
+
+    key_compare key_comp() const; value_compare value_comp() const;
+    size_type erase(const key_type& x);
+    iterator erase(iterator f, iterator l); iterator erase<Range>(const Range& r) requires !is_convertible_v<Range&,key_type&>;
+    using base::begin; using base::end; using base::cbegin; using base::cend;
+protected:
+    void {single|multi}_transfer<AssocPtrCont>(AssocPtrCont::iterator p, <AssocPtrCont::iterator last>, AssocPtrCont& from);
+    <const>_reference front() <const>; <const>_reference back() <const>;
+    hasher hash_function() const; key_equal key_eq() const;
+    size_type bucket_count() const; size_type max_bucket_count() const; size_type bucket_size(size_type n) const;
+    float load_factor() const; float max_load_factor() const; void max_load_factor(float factor);
+    void rehash(size_type n);
+    <const>_local_iterator {begin|end}(size_type n) <const>; const_local_iterator c{begin|end}(size_type n) const;
+};
+
+struct detail::select_value_compare<T> { using type = T::value_compare; };
+struct detail::select_key_compare<T> { using type = T::key_compare; };
+struct detail::select_hasher<T> { using type = T::hasher; };
+struct detail::select_key_equal<T> { using type = T::key_equal; };
+struct detail::select_iterator<T> { using type = T::iterator; };
+struct detail::select_<const>_local_iterator<T> { using type = T::<const>_local_iterator; };
+
+struct detail::map_config<T,VoidPtrMap,ordered> {
+    using U =remove_nullable<T>::type; using value_type = U; using key_type = VoidPtrMap::key_type;
+    using void_container_type = VoidPtrMap; using allocator_type = VoidPtrMap::allocator_type;
+    using value_compare = mpl::eval_if_c<ordered, select_value_compare<VoidPtrMap>, identity<void>>::type;
+    using key_compare = mpl::eval_if_c<ordered, select_key_compare<VoidPtrMap>, identity<void>>::type;
+    using hasher = mpl::eval_if_c<ordered, identity<void>, select_hasher<VoidPtrMap>>::type;
+    using key_equal = mpl::eval_if_c<ordered, identity<void>, select_key_equal<VoidPtrMap>>::type;
+    using container_type = mpl::if_c<ordered, ordered_associative_container_tag, unordered_associative_container_tag>::type;
+    using <const>_iterator = ptr_map_iterator<VoidPtrMap::<const>_iterator, key_type, <const> U* const>;
+    using <const>_local_iterator = ptr_map_iterator<mpl::eval_if_c<ordered, select_iterator<VoidPtrMap>, select_<const>_local_iterator<VoidPtrMap>>::type, key_type, U* const>;
+    static <const> U* get_<const>_pointer<It>(It i);
+    static constexpr bool allow_null = is_nullable<T>::value;
+};
+
+class detail::ptr_map_adapter_base<T,VoidPtrMap,CA,ordered> : public associative_ptr_container<map_config<T,VoidPtrMap,ordered>,CA> {
+    const_mapped_reference lookup(const key_type& key) const;
+    mapped_reference insert_lookup(const key_type& key);
+protected: size_type bucket(const key_type& k) const;
+public: // all other types from base
+    using mapped_type = base::value_type; using value_type = iterator_value<iterator>;
+    using <const>_mapped_reference = base::<const>_reference;
+    using <const>_reference = iterator_value<const_iterator>; using <const>_pointer = <const>_reference;
+    using base::ctor; using base::operator=; // all except tagged other than `unordered_associative_container_tag`
+    <const>_iterator find(const key_type& x) <const>;
+    size_type count(const key_type& x) const;
+    <const>_iterator {lower|upper}_bound(const key_type& x) <const>;
+    iterator_range<<const>_iterator> equal_range(const key_type& x) <const>;
+    mapped_reference operator[](const key_type& k); <const>_mapped_reference at(const key_type& k)<const>;
+    auto_type replace(iterator p, mapped_type x); auto_type replace<U>(iterator p, std::unique_ptr<U> x);
+};
+
+class ptr_map_adapter<T,VoidPtrMap,CA=heap_clone_allocator,ordered=true> : public ptr_map_adapter_base<T,VoidPtrMap,CA,ordered> {
+    void safe_insert(const key_type& k, auto_type ptr);
+    void map_basic_clone_and_insert<It>(It f, It l);
+public: // types from base: <const>_iterator, size_type, key_type, const_reference, auto_type, mapped_type
+    using allocator_type = VoidPtrMap::allocator_type;
+    ctor(); ctor(const self& r); ctor<K,U,CA2,b>(const self<K,U,CA2,b>& r); ctor<U>(std::unique_ptr<U> r);
+    ctor<Size>(Size n, unordered_associative_container_tag);
+    explicit ctor<Comp>(const Comp& comp, const allocator_type& a);
+    ctor<Hash,Pred,A>(const Hash&, const Pred&, const A& a);
+    ctor<InIt>(InIt f, InIt l);
+    ctor<InIt,Comp>(InIt f, InIt l, const Comp, const allocator_type&={});
+    ctor<InIt,Hash,Pred,A>(InIt f, InIt l, const Hash&, const Pred&, const A& a);
+    self& operator=(self r); self& operator=<U>(std::unique_ptr<U> r);
+
+    void insert<InIt>(InIt f, InIt l); void insert<Range>(const Range& r);
+    std::pair<iterator,bool> insert(key_type& k, mapped_type x); std::pair<iterator,bool> insert<U>(const key_type& k, std::unique_ptr<U> x);
+    iterator insert<F,S>(iterator p, ref_pair<F,S> p);
+    iterator insert(iterator p, key_type& k, mapped_type x); iterator insert<U>(iterator p, const key_type& k, std::unique_ptr<U> x);
+    bool transfer<PtrMapAdapter>(PtrMapAdapter::iterator p, PtrMapAdapter& from);
+    size_type transfer<PtrMapAdapter>(PtrMapAdapter::iterator f, PtrMapAdapter::iterator l, PtrMapAdapter& from);
+    size_type transfer<PtrMapAdapter,Range>(const Range& r, PtrMapAdapter& from) requires !is_same_v<Range,PtrMapAdapter::iterator>;
+    size_type transfer<PtrMapAdapter>(PtrMapAdapter& from);
+};
+
+class ptr_multimap_adapter<T,VoidPtrMultiMap,CA=heap_clone_allocator,ordered=true> : public ptr_map_adapter_base<T,VoidPtrMultiMap,CA,ordered> {
+    void safe_insert(const key_type& k, auto_type ptr);
+    void map_basic_clone_and_insert<It>(It f, It l);
+public: // types from base: <const>_iterator, size_type, key_type, const_reference, auto_type, mapped_type
+    using allocator_type = VoidPtrMultiMap::allocator_type;
+    ctor(); ctor(const self& r); ctor<K,U,CA2,b>(const self<K,U,CA2,b>& r); ctor<U>(std::unique_ptr<U> r);
+    ctor<Size>(Size n, unordered_associative_container_tag);
+    explicit ctor<Comp>(const Comp& comp, const allocator_type& a);
+    ctor<Hash,Pred,A>(const Hash&, const Pred&, const A& a);
+    ctor<InIt>(InIt f, InIt l);
+    ctor<InIt,Comp>(InIt f, InIt l, const Comp, const allocator_type&={});
+    ctor<InIt,Hash,Pred,A>(InIt f, InIt l, const Hash&, const Pred&, const A& a);
+    self& operator=(self r); self& operator=<U>(std::unique_ptr<U> r);
+
+    void insert<InIt>(InIt f, InIt l); void insert<Range>(const Range& r);
+    iterator insert(key_type& k, mapped_type x); iterator insert<U>(const key_type& k, std::unique_ptr<U> x);
+    iterator insert<F,S>(iterator p, ref_pair<F,S> p);
+    iterator insert(iterator p, key_type& k, mapped_type x); iterator insert<U>(iterator p, const key_type& k, std::unique_ptr<U> x);
+    void transfer<PtrMapAdapter>(PtrMapAdapter::iterator p, PtrMapAdapter& from);
+    size_type transfer<PtrMapAdapter>(PtrMapAdapter::iterator f, PtrMapAdapter::iterator l, PtrMapAdapter& from);
+    size_type transfer<PtrMapAdapter,Range>(const Range& r, PtrMapAdapter& from) requires !is_same_v<Range,PtrMapAdapter::iterator>;
+    void transfer<PtrMapAdapter>(PtrMapAdapter& from);
+
+    bool is_null<It,F,S>(const self<It,F,S>& it);
+};
+
+struct detail::set_config<Key,VoidPtrSet,ordered> {
+    using value_type = Key; using key_type = Key;
+    using void_container_type = VoidPtrSet; using allocator_type = VoidPtrSet::allocator_type;
+    using value_compare = mpl::eval_if_c<ordered, select_value_compare<VoidPtrSet>, identity<void>>::type;
+    using key_compare = value_compare;
+    using hasher = mpl::eval_if_c<ordered, identity<void>, select_hasher<VoidPtrSet>>::type;
+    using key_equal = mpl::eval_if_c<ordered, identity<void>, select_key_equal<VoidPtrSet>>::type;
+    using container_type = mpl::if_c<ordered, ordered_associative_container_tag, unordered_associative_container_tag>::type;
+    using <const>_iterator = void_ptr_iterator<VoidPtrSet::<const>_iterator, <const> Key>;
+    using <const>_local_iterator = void_ptr_iterator<mpl::eval_if_c<ordered, select_iterator<VoidPtrSet>, select_<const>_local_iterator<VoidPtrSet>>::type, <const> Key>;
+    static <const> Key* get_<const>_pointer<It>(It i);
+    static constexpr bool allow_null = false;
+};
+
+class detail::ptr_set_adapter_base<Key,VoidPtrSet,CA=heap_clone_allocator,ordered=true> : public associative_ptr_container<set_config<Key,VoidPtrSet,ordered>,CA> {
+protected: size_type bucket(const key_type& k) const;
+public: using key_type = Key;
+    using base::ctor; using base::operator=; // all except tagged other than `unordered_associative_container_tag`
+    using base::erase; size_type erase(const key_type& x);
+    <const>_iterator find(const key_type& x) <const>;
+    size_type count(const key_type& x) const;
+    <const>_iterator {lower|upper}_bound(const key_type& x) <const>;
+    iterator_range<<const>_iterator> equal_range(const key_type& x) <const>;
+};
+
+class ptr_set_adapter<Key,VoidPtrSet,CA=heap_clone_allocator,ordered=true> : public ptr_set_adapter_base<Key,VoidPtrSet,CA,ordered> {
+    void set_basic_clone_and_insert<It>(It f, It l);
+public: // types from base: <const>_iterator, size_type, auto_type
+    using allocator_type = VoidPtrSet::allocator_type;
+    ctor(); ctor(const self& r); ctor<U,Set,CA2,b>(const self<U,Set,CA2,b>& r); explicit ctor<U>(std::unique_ptr<U> r);
+    ctor<Size>(Size n, unordered_associative_container_tag);
+    explicit ctor<Comp>(const Comp& comp, const allocator_type& a);
+    ctor<Size,Hash,Pred,A>(Size n, const Hash&, const Pred&, const A& a);
+    ctor<Hash,Pred,A>(const Hash&, const Pred&, const A& a);
+    ctor<InIt>(InIt f, InIt l);
+    ctor<InIt,Comp,A>(InIt f, InIt l, const Comp, const A&={});
+    ctor<InIt,Hash,Pred,A>(InIt f, InIt l, const Hash&, const Pred&, const A& a);
+    self& operator=<U,Set,CA2,b>(const self<U,Set,CA2,b>& r); self& operator=<T>(std::unique_ptr<T> r);
+
+    std::pair<iterator,bool> insert(key_type* k); std::pair<iterator,bool> insert<U>(std::unique_ptr<U> x);
+    iterator insert(iterator p, key_type* x); iterator insert<U>(iterator p, std::unique_ptr<U> x);
+    void insert<InIt>(InIt f, InIt l); void insert<Range>(const Range& r) requires !is_pointer_or_integral<Range>;
+    bool transfer<PtrSetAdapter>(PtrSetAdapter::iterator p, PtrSetAdapter& from);
+    size_type transfer<PtrSetAdapter>(PtrMapAdapter::iterator f, PtrSetAdapter::iterator l, PtrSetAdapter& from);
+    size_type transfer<PtrSetAdapter,Range>(const Range& r, PtrSetAdapter& from) requires !is_same_v<Range,PtrSetAdapter::iterator>;
+    size_type transfer<PtrSetAdapter>(PtrSetAdapter& from);
+};
+
+class ptr_multiset_adapter<Key,VoidPtrMultiSet,CA=heap_clone_allocator,ordered=true> : public ptr_set_adapter_base<Key,VoidPtrMultiSet,CA,ordered> {
+    void set_basic_clone_and_insert<It>(It f, It l);
+public: // types from base: <const>_iterator, size_type, auto_type
+    using allocator_type = VoidPtrMultiSet::allocator_type;
+    ctor(); ctor(const self& r); explicit ctor<U,Set,CA2,b>(const self<U,Set,CA2,b>& r); explicit ctor<U>(std::unique_ptr<U> r);
+    ctor<Size>(Size n, unordered_associative_container_tag);
+    explicit ctor<Comp>(const Comp& comp, const allocator_type& a);
+    ctor<Hash,Pred,A>(const Hash&, const Pred&, const A& a);
+    ctor<InIt>(InIt f, InIt l);
+    ctor<InIt,Comp>(InIt f, InIt l, const Comp, const allocator_type&={});
+    ctor<InIt,Hash,Pred,A>(InIt f, InIt l, const Hash&, const Pred&, const A& a);
+    self& operator=<U,Set,CA2,b>(const self<U,Set,CA2,b>& r); self& operator=<T>(std::unique_ptr<T> r);
+
+    iterator insert(key_type* k); iterator insert<U>(std::unique_ptr<U> x);
+    iterator insert(iterator p, key_type* x); iterator insert<U>(iterator p, std::unique_ptr<U> x);
+    void insert<InIt>(InIt f, InIt l); void insert<Range>(const Range& r) requires !is_pointer_or_integral<Range>;
+    bool transfer<PtrSetAdapter>(PtrSetAdapter::iterator p, PtrSetAdapter& from);
+    size_type transfer<PtrSetAdapter>(PtrMapAdapter::iterator f, PtrSetAdapter::iterator l, PtrSetAdapter& from);
+    size_type transfer<PtrSetAdapter,Range>(const Range& r, PtrSetAdapter& from) requires !is_same_v<Range,PtrSetAdapter::iterator>;
+    size_type transfer<PtrSetAdapter>(PtrSetAdapter& from);
+};
 ```
 
 ------
@@ -271,6 +465,118 @@ public: using size_type = base::size_type; using iterator = base::iterator; usin
     friend void swap(self&, self&);
 };
 
+class ptr_map<Key,T,Comp=std::less<Key>,CA=heap_clone_allocator,A=std::allocator<std::pair<const Key,void_ptr<T>::type>>>
+    : ptr_map_adapter<T,std::map<Key,void_ptr<T>::type,Comp,A>,CA> {
+public:
+    ctor(); explicit ctor(const Comp& comp, const A& a={}); ctor<U>(const self<Key,U>& r); explicit ctor(std::unique_ptr<self> r );
+    ctor<InIt>(InIt f, InIt l); ctor<InIt>(InIt f, InIt l, const Comp& comp, const A& a={});
+    self& operator=(self r); self& operator=(std::unique_ptr<self> r);
+    std::unique_ptr<self> release(); std::unique_ptr<self> clone() const;
+    using base::release;
+
+    friend self* new_clone(const self& r);
+    friend void swap(self&, self&);
+};
+
+class ptr_multimap<Key,T,Comp=std::less<Key>,CA=heap_clone_allocator,A=std::allocator<std::pair<const Key,void*>>>
+    : ptr_multimap_adapter<T,std::multimap<Key,void*,Comp,A>,CA> {
+public:
+    ctor(); explicit ctor(const Comp& comp, const A& a={}); ctor<U>(const self<Key,U>& r); explicit ctor(std::unique_ptr<self> r );
+    ctor<InIt>(InIt f, InIt l); ctor<InIt>(InIt f, InIt l, const Comp& comp, const A& a={});
+    self& operator=(self r); self& operator=(std::unique_ptr<self> r);
+    std::unique_ptr<self> release(); std::unique_ptr<self> clone() const;
+    using base::release;
+
+    friend self* new_clone(const self& r);
+    friend void swap(self&, self&);
+};
+
+class ptr_set<Key,Comp=std::less<Key>,CA=heap_clone_allocator,A=std::allocator<void_ptr<Key>::type>>
+    : ptr_set_adapter<Key,std::set<void_ptr<Key>::type,void_ptr_indirect_fun<Comp,Key>,A>,CA, true> {
+public:
+    ctor(); explicit ctor(const Comp& comp, const A& a={}); ctor<U>(const self<U>& r); explicit ctor(std::unique_ptr<self> r );
+    ctor<InIt>(InIt f, InIt l); ctor<InIt>(InIt f, InIt l, const Comp& comp, const A& a={});
+    self& operator=(self r); self& operator=(std::unique_ptr<self> r);
+    std::unique_ptr<self> release(); std::unique_ptr<self> clone() const;
+    using base::release;
+
+    friend self* new_clone(const self& r);
+    friend void swap(self&, self&);
+};
+
+class ptr_multiset<Key,Comp=std::less<Key>,CA=heap_clone_allocator,A=std::allocator<void*>>
+    : ptr_multiset_adapter<Key,std::multiset<void*,void_ptr_indirect_fun<Comp,Key>,A>,CA, true> {
+public:
+    ctor(); explicit ctor(const Comp& comp, const A& a={}); ctor<U>(const self<U>& r); explicit ctor(std::unique_ptr<self> r );
+    ctor<InIt>(InIt f, InIt l); ctor<InIt>(InIt f, InIt l, const Comp& comp, const A& a={});
+    self& operator=(self r); self& operator=(std::unique_ptr<self> r);
+    std::unique_ptr<self> release(); std::unique_ptr<self> clone() const;
+    using base::release;
+
+    friend self* new_clone(const self& r);
+    friend void swap(self&, self&);
+};
+
+class ptr_unordered_map<Key,T,Hash=boost::hash<Key>,Pred=std::equal_to<Key>,CA=heap_clone_allocator,A=std::allocator<std::pair<const Key,void_ptr<T>::type>>>
+    : ptr_map_adapter<T,boost::unordered_map<Key,void_ptr<T>::type,Hash,Pred,A>,CA,false> {
+    using base::{lower|upper}_bound; using base::<c>r{begin|end}; using base::{key|value}_comp; using base::{front|back}; // disable
+public:
+    ctor(); explicit ctor(size_type n); explicit ctor(size_type n, const Hash&, const Pred&={}, const A& a={});
+    ctor<U>(const self<Key,U>& r); explicit ctor(std::unique_ptr<self> r);
+    ctor<InIt>(InIt f, InIt l); ctor<InIt>(InIt f, InIt l, const Hash&, const Pred&={}, const A& a={});
+    self& operator=(self r); self& operator=(std::unique_ptr<self> r);
+    std::unique_ptr<self> release(); std::unique_ptr<self> clone() const;
+    using base::release;
+
+    friend self* new_clone(const self& r);
+    friend void swap(self&, self&);
+};
+
+class ptr_unordered_multimap<Key,T,Hash=boost::hash<Key>,Pred=std::equal_to<Key>,CA=heap_clone_allocator,A=std::allocator<std::pair<const Key,void*>>>
+    : ptr_multimap_adapter<T,boost::unordered_multimap<Key,void*,Hash,Pred,A>,CA,false> {
+    using base::{lower|upper}_bound; using base::<c>r{begin|end}; using base::{key|value}_comp; using base::{front|back}; // disable
+public:
+    ctor(); explicit ctor(size_type n); explicit ctor(size_type n, const Hash&, const Pred&={}, const A& a={});
+    ctor<U>(const self<Key,U>& r); explicit ctor(std::unique_ptr<self> r);
+    ctor<InIt>(InIt f, InIt l); ctor<InIt>(InIt f, InIt l, const Hash&, const Pred&={}, const A& a={});
+    self& operator=(self r); self& operator=(std::unique_ptr<self> r);
+    std::unique_ptr<self> release(); std::unique_ptr<self> clone() const;
+    using base::release;
+
+    friend self* new_clone(const self& r);
+    friend void swap(self&, self&);
+};
+
+class ptr_unordered_set<Key,Hash=boost::hash<Key>,Pred=std::equal_to<Key>,CA=heap_clone_allocator,A=std::allocator<void_ptr<Key>::type>>
+    : ptr_set_adapter<Key,boost::unordered_set<void_ptr<Key>::type,void_ptr_indirect_fun<Hash,Key>,void_ptr_indirect_fun<Pred,Key>,A>,CA,false> {
+    using base::{lower|upper}_bound; using base::<c>r{begin|end}; using base::{key|value}_comp; using base::{front|back}; // disable
+public:
+    ctor(); explicit ctor(size_type n); explicit ctor(size_type n, const Hash&, const Pred&={}, const A& a={});
+    ctor<U>(const self<U>& r); explicit ctor(std::unique_ptr<self> r);
+    ctor<InIt>(InIt f, InIt l); ctor<InIt>(InIt f, InIt l, const Hash&, const Pred&={}, const A& a={});
+    self& operator=(self r); self& operator=(std::unique_ptr<self> r);
+    std::unique_ptr<self> release(); std::unique_ptr<self> clone() const;
+    using base::release;
+
+    friend self* new_clone(const self& r);
+    friend void swap(self&, self&);
+};
+
+class ptr_unordered_multiset<Key,Hash=boost::hash<Key>,Pred=std::equal_to<Key>,CA=heap_clone_allocator,A=std::allocator<void*>>
+    : ptr_multiset_adapter<Key,boost::unordered_multiset<void*,void_ptr_indirect_fun<Hash,Key>,void_ptr_indirect_fun<Pred,Key>,A>,CA,false> {
+    using base::{lower|upper}_bound; using base::<c>r{begin|end}; using base::{key|value}_comp; using base::{front|back}; // disable
+public:
+    ctor(); explicit ctor(size_type n); explicit ctor(size_type n, const Hash&, const Pred&={}, const A& a={});
+    ctor<U>(const self<U>& r); explicit ctor(std::unique_ptr<self> r);
+    ctor<InIt>(InIt f, InIt l); ctor<InIt>(InIt f, InIt l, const Hash&, const Pred&={}, const A& a={});
+    self& operator=(self r); self& operator=(std::unique_ptr<self> r);
+    std::unique_ptr<self> release(); std::unique_ptr<self> clone() const;
+    using base::release;
+
+    friend self* new_clone(const self& r);
+    friend void swap(self&, self&);
+};
+
 class ptr_circular_buffer<T,CA=heap_clone_allocator,A=std::allocator<void>> : ptr_sequence_adapter<T,boost::circular_buffer<void_ptr<T>::type,A>,CA> {
     using circular_buffer_type = boost::circular_buffer<void_ptr<T>::type,A>;
 public: using value_type = base::value_type; using <const>_pointer = <const> value_type*;
@@ -305,6 +611,43 @@ public: using value_type = base::value_type; using <const>_pointer = <const> val
     friend self* new_clone(const self& r);
     friend void swap(self&, self&);
 };
+
+class ptr_back_insert_iterator<PtrCont> {
+protected: PtrCont* container;
+public: using iterator_category = std::output_iterator_tag; using container_type = PtrCont;
+    using value_type = void; using difference_type = void; using pointer = void; using reference = void;
+    explicit ctor(PtrCont& cont);
+    self& operator=(PtrCont::value_type r) { container->push_back(container->null_policy_allocate_clone(r)); return *this; }
+    self& operator=(PtrCont::const_reference r) { container->push_back(container->null_policy_allocate_clone(&r)); return *this; }
+    self& operator=<T>(std::unique_ptr<T> r) { container->push_back(std::move(r)); return *this; }
+    self& operator*(); self& operator++(); self operator++(int) { return *this; }
+};
+
+class ptr_front_insert_iterator<PtrCont> {
+protected: PtrCont* container;
+public: using iterator_category = std::output_iterator_tag; using container_type = PtrCont;
+    using value_type = void; using difference_type = void; using pointer = void; using reference = void;
+    explicit ctor(PtrCont& cont);
+    self& operator=(PtrCont::value_type r) { container->push_front(container->null_policy_allocate_clone(r)); return *this; }
+    self& operator=(PtrCont::const_reference r) { container->push_front(container->null_policy_allocate_clone(&r)); return *this; }
+    self& operator=<T>(std::unique_ptr<T> r) { container->push_front(std::move(r)); return *this; }
+    self& operator*(); self& operator++(); self operator++(int) { return *this; }
+};
+
+class ptr_insert_iterator<PtrCont> {
+protected: PtrCont* container; PtrCont::iterator iter;
+public: using iterator_category = std::output_iterator_tag; using container_type = PtrCont;
+    using value_type = void; using difference_type = void; using pointer = void; using reference = void;
+    explicit ctor(PtrCont& cont, PtrCont::iterator it);
+    self& operator=(PtrCont::value_type r) { container->insert(iter, container->null_policy_allocate_clone(r)); return *this; }
+    self& operator=(PtrCont::const_reference r) { container->insert(iter, container->null_policy_allocate_clone(&r)); return *this; }
+    self& operator=<T>(std::unique_ptr<T> r) { container->insert(iter, std::move(r)); return *this; }
+    self& operator*(); self& operator++(); self operator++(int) { return *this; }
+};
+
+ptr_back_insert_iterator<PtrCont> ptr_back_inserter<PtrCont>(PtrCont& cont);
+ptr_front_insert_iterator<PtrCont> ptr_front_inserter<PtrCont>(PtrCont& cont);
+ptr_insert_iterator<PtrCont> ptr_inserter<PtrCont>(PtrCont& cont, PtrCont::iterator it);
 ```
 
 ------
@@ -337,7 +680,7 @@ public: using value_type = base::value_type; using <const>_pointer = <const> val
 
 * `<boost/pointee.hpp>`
 * `<boost/next_prior.hpp>`
-* `<boost/iterator/iterator_adapter.hpp>`
+* `<boost/iterator/iterator_adaptor.hpp>`
 * `<boost/iterator/iterator_traits.hpp>`
 * `<boost/iterator/reverse_iterator.hpp>`
 
