@@ -651,6 +651,42 @@ ptr_insert_iterator<PtrCont> ptr_inserter<PtrCont>(PtrCont& cont, PtrCont::itera
 ```
 
 ------
+#### Serialization Support
+
+```c++
+const char* detail::{count|item|first|second}() { return ""; } // corresponding func name
+T const& detail::serialize_as_const<T>(T const& r) { return r; }
+
+void detail::save_helper<Ar,Config,CA>(Ar& ar, const reversible_ptr_container<Config,CA>& c);
+void detail::load_helper<Ar,Config,CA>(Ar& ar, reversible_ptr_container<Config,CA>& c, reversible_ptr_container<Config,CA>::size_type n);
+
+void serialization::save<Ar,Config,CA>(Ar& ar, const reversible_ptr_container<Config,CA>& c, unsigned ver);
+void serialization::load<Ar,Config,CA>(Ar& ar, reversible_ptr_container<Config,CA>& c, unsigned ver);
+
+void serialization::save<Ar,T,VoidPtrMap,CA,ordered>(Ar& ar, const ptr_map_adapter_base<T,VoidPtrMap,CA,ordered>& c, unsigned ver);
+void serialization::load<Ar,T,VoidPtrMap,CA,ordered>(Ar& ar, ptr_map_adapter<T,VoidPtrMap,CA,ordered>& c, unsigned ver);
+void serialization::load<Ar,T,VoidPtrMap,CA,ordered>(Ar& ar, ptr_multimap_adapter<T,VoidPtrMap,CA,ordered>& c, unsigned ver);
+
+void serialization::save<Ar,T,n,CA>(Ar& ar, const ptr_array<T,n,CA>& c, unsigned ver) { save_helper(ar, c); }
+void serialization::load<Ar,T,n,CA>(Ar& ar, ptr_array<T,n,CA>& c, unsigned ver)
+{ for (size_type i=0; i!=n; ++i) { T* p; ar >> make_nvp(item(), p); c.replace(i,p); } }
+void serialization::serialize<Ar,T,n,CA>(Ar& ar, ptr_array<T,n,CA>& c, unsigned ver) { core::split_free(ar,c,ver); }
+void serialization::serialize<Ar,T,CA,A>(Ar& ar, ptr_deque<T,CA,A>& c, unsigned ver) { core::split_free(ar,c,ver); }
+void serialization::serialize<Ar,T,CA,A>(Ar& ar, ptr_list<T,CA,A>& c, unsigned ver) { core::split_free(ar,c,ver); }
+void serialization::load<Ar,T,n,CA>(Ar& ar, ptr_vector<T,n,CA>& c, unsigned ver)
+{ size_type n; ar >> make_nvp(count(), n); c.reserve(n); load_helper(ar,c,n); }
+void serialization::serialize<Ar,T,CA,A>(Ar& ar, ptr_vector<T,CA,A>& c, unsigned ver) { core::split_free(ar,c,ver); }
+void serialization::serialize<Ar,Key,T,Comp,CA,A>(Ar& ar, ptr_map<Key,T,Comp,CA,A>& c, unsigned ver) { core::split_free(ar,c,ver); }
+void serialization::serialize<Ar,Key,T,Comp,CA,A>(Ar& ar, ptr_multimap<Key,T,Comp,CA,A>& c, unsigned ver) { core::split_free(ar,c,ver); }
+void serialization::serialize<Ar,T,CA,A>(Ar& ar, ptr_set<T,CA,A>& c, unsigned ver) { core::split_free(ar,c,ver); }
+void serialization::serialize<Ar,T,CA,A>(Ar& ar, ptr_multiset<T,CA,A>& c, unsigned ver) { core::split_free(ar,c,ver); }
+void serialization::serialize<Ar,Key,T,Hash,Pred,CA,A>(Ar& ar, ptr_unordered_map<Key,T,Hash,Pred,CA,A>& c, unsigned ver) { core::split_free(ar,c,ver); }
+void serialization::serialize<Ar,Key,T,Hash,Pred,CA,A>(Ar& ar, ptr_unordered_multimap<Key,T,Hash,Pred,CA,A>& c, unsigned ver) { core::split_free(ar,c,ver); }
+void serialization::serialize<Ar,T,Hash,Pred,CA,A>(Ar& ar, ptr_unordered_set<T,Hash,Pred,CA,A>& c, unsigned ver) { core::split_free(ar,c,ver); }
+void serialization::serialize<Ar,T,Hash,Pred,CA,A>(Ar& ar, ptr_unordered_multiset<T,Hash,Pred,CA,A>& c, unsigned ver) { core::split_free(ar,c,ver); }
+```
+
+------
 ### Dependency
 
 #### Boost.Array
