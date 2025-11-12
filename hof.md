@@ -264,7 +264,94 @@ constexpr identity_base const& identity = identity_base{};
 ##### Placeholders
 
 ```c++
+struct detail::simple_placeholder<n>{};
+struct std::is_placeholder<simple_placeholder<n>> : std::integral_constant<int, n> {};
 
+struct operators::call
+{ constexpr auto operator() <F,...Ts> (F&& f, Ts&&...xs) const noexcept(...) ->decltype(...) { return f(fwd<Ts>(xs)...); } };
+
+// add, subtract, multiply, divide, remainder, shift_right, shift_left
+// greater_than, less_than, less_than_equal, greater_than_equal, equal, not_equal
+// bit_and, xor_, bit_or, and_, or_
+// assign_add, assign_subtract, assign_multiply, assign_divide, assign_remainder
+// assign_shift_right, assign_shift_left, assign_bit_and, assign_bit_or, assign_xor
+struct operators::NAME {
+    constexpr auto operator() <T,U> (T&& x, U&& y) const noexcept(...) -> decltype(...)
+    { return boost::hof::forward<T>(x) BIN_OP boost::hof::forward<U>(y); }
+};
+// not_, compl_, unary_plus, unary_subtract, dereference, increment, decrement
+struct operators::NAME {
+    constexpr auto operator() <T> (T&& x) const noexcept(...) -> decltype(...)
+    { return UN_OP boost::hof::forward<T>(x); }
+};
+
+struct placeholder<n> {
+    constexpr auto operator() <...Ts> (Ts&&...xs) const noexcept(...) -> decltype(...)
+    { return lazy(operators::call())(simple_placeholder<n>{}, fwd<Ts>(xs)...); }
+    // not_, compl_, unary_plus, unary_subtract, dereference, increment, decrement
+    constexpr auto operator UN_OP () const noexcept(...) -> decltype(...)
+    { return lazy(operators::NAME{})(simple_placeholder<n>{}); }
+    // assign_add, assign_subtract, assign_multiply, assign_divide, assign_remainder
+    // assign_shift_right, assign_shift_left, assign_bit_and, assign_bit_or, assign_xor
+    constexpr auto operator ASN_OP <T> (T&& x) const noexcept(...) -> decltype(...)
+    { return lazy(operators::NAME{})(simple_placeholder<n>{}, fwd<T>(x)); }
+};
+// add, subtract, multiply, divide, remainder, shift_right, shift_left
+// greater_than, less_than, less_than_equal, greater_than_equal, equal, not_equal
+// bit_and, xor_, bit_or, and_, or_
+constexpr auto operator BIN_OP <T,n> (const placeholder<n>&, T&& x) noexcept(...) -> decltype(...)
+{ return lazy(operators::NAME{})(simple_placeholder<n>{}, fwd<T>(x)); }
+constexpr auto operator BIN_OP <T,n> (T&& x, const placeholder<n>&) noexcept(...) -> decltype(...)
+{ return lazy(operators::NAME{})(fwd<T>(x), simple_placeholder<n>{}); }
+constexpr auto operator BIN_OP <n,m> (const placeholder<n>&, const placeholder<m>&) noexcept(...) -> decltype(...)
+{ return lazy(operators::NAME{})(simple_placeholder<n>&, simple_placeholder<m>{}); }
+
+constexpr static auto const & placeholders::_1 = placeholder<1>{}; // up to _9
+using placeholders::_1; // up to _9
+
+
+struct detail::unnamed_placeholder {
+    struct partial_op<T,Invoker> { T val;
+        constexpr ctor<X,...Xs>(X&& x, Xs&&...xs) : val(fwd<X>(x), fwd<Xs>(xs)...) {}
+        struct partial_ap_failure{
+            struct apply<Failure> { struct of<...Xs>;struct of<X> : Failure::of<const T, X>{}; };
+        };
+        struct failure : failure_map<partial_ap_failure, Invoker> {};
+        constexpr auto operator() <X> (X&& x) const noexcept(...) ->decltype(...) { return Invoker{}(val, fwd<X>(x)); }
+    };
+    static constexpr partial_ap<T,Invoker> make_partial_ap<Invoker,T>(T&& x) { return {fwd<T>(x)}; }
+    struct left<Op> {
+        struct failure : failure_for<Op> {};
+        constexpr auto operator() <T,X> (T&& val, X&& x) const noexcept(...) ->decltype(...) { return Op{}(fwd<T>(val), fwd<X>(x)); }
+    };
+    struct right<Op> {
+        struct right_failure{
+            struct apply<Failure> { struct of<T,U,...Ts> : Failure::of<U, T, Ts...>{}; };
+        };
+        struct failure : failure_map<right_failre,Op> {};
+        constexpr auto operator() <T,X> (T&& val, X&& x) const noexcept(...) ->decltype(...) { return Op{}(fwd<X>(x), fwd<T>(val)); }
+    };
+    // not_, compl_, unary_plus, unary_subtract, dereference, increment, decrement
+    constexpr auto operator UN_OP () const noexcept(...) -> decltype(...) { return operators::NAME{}; }
+    // assign_add, assign_subtract, assign_multiply, assign_divide, assign_remainder
+    // assign_shift_right, assign_shift_left, assign_bit_and, assign_bit_or, assign_xor
+    constexpr auto operator ASN_OP <T> (T&& x) const noexcept(...) -> decltype(...)
+    { partial_ap<T,left<operators::NAME>>{x}; }
+};
+// add, subtract, multiply, divide, remainder, shift_right, shift_left
+// greater_than, less_than, less_than_equal, greater_than_equal, equal, not_equal
+// bit_and, xor_, bit_or, and_, or_
+constexpr auto operator BIN_OP <T,n> (const placeholder<n>&, T&& x) noexcept(...) -> decltype(...)
+{ return unnamed_placeholder::make_partial_ap<unnamed_placeholder::right<operators::NAME>>{decay(x)}; }
+constexpr auto operator BIN_OP <T,n> (T&& x, const placeholder<n>&) noexcept(...) -> decltype(...)
+{ return unnamed_placeholder::make_partial_ap<unnamed_placeholder::left<operators::NAME>>{decay(x)}; }
+constexpr auto operator BIN_OP <n,m> (const placeholder<n>&, const placeholder<m>&) noexcept(...) -> decltype(...)
+{ return oerators::NAME{}; }
+
+constexpr static auto const & placeholders::_ = unnamed_placeholder{};
+using placeholders::_;
+
+struct std::is_placeholder<placeholder<n>> : std::integral_constant<int,n>{};
 ```
 
 ------
@@ -328,8 +415,59 @@ struct std::is_bind_expression<lazy_invoker<F,Pack>> : std::true_type {};
 struct std::is_bind_expression<lazy_nullary_invoker<F>> : std::true_type {};
 ```
 
+##### `protect`
+
+```c++
+struct protect_adaptor<F> : callable_base<F> { using fit_rewritable1_tag = self; }
+constexpr auto const& protect = make<protect_adaptor>{};
+```
+
+##### `reveal`
+
+```c++
+struct detail::has_failure<T>; // trait for T::failure
+struct detail::identity_failure {
+    T operator()<T>(T&& x);
+    static T&& val<T>();
+    using defer<Template<...>,...Ts> = Template<Ts...>;
+};
+struct get_failure<F> { struct of<...Ts>{ using apply<Id> = ...; }; };
+struct as_failure<Template<...>> { struct of<...Ts>{ using apply<Id> = ...; }; };
+using detail::apply_failure<Failure,...Ts> = Failure::of<Ts...>;
+struct detail::reveal_failure<F,Failure> {
+    constexpr auto operator() <...Ts> (Ts&&...xs) const ->apply_failure<Failure,Ts...>::apply<identity_failure>;
+};
+struct detail::traverse_failure<F,Failure=get_failure<F>,_=void> : reveal_failure<F,Failure>{};
+struct detail::traverse_failure<F,Failure,holder<Failure::children>::type> : Failure::children::overloads<F>{};
+struct detail::transform_failures<Failure,Transform,_=void> : Transform::apply<Failure>{};
+struct detail::transform_failures<Failure,Transform,holder<Failure::children>> : Failure::children::transform<Transform>{};
+struct with_failures<...Fs>{ using children = JOIN(failures,Fs...); };
+struct failures<Failure,...Failures> {
+    using transform<Transform> = with_failures<transform_failures<Failure,Transform>, transform_failures<Failures,Transform>...>;
+    struct overloads<F,FailureBase=JOIN(failures,Failures...)> : traverse_failure<F,Failure>, FailureBase::overloads<F> { using base::operator(); };
+};
+struct failures<Failure> {
+    using transform<Transform> = with_failures<transform_failures<Failure,Transform>>;
+    using overloads<F> = traverse_failure<F,Failure>;
+};
+struct failure_map<Transform,...Fs> : with_failures<transform_failures<get_failure<Fs>,Transform>...>{};
+struct failure_for<...Fs> : with_failures<get_failure<Fs>...>{};
+struct reveal_adaptor<F,Base=callable_base<F>> : traverse_failure<Base>, Base
+{ using fit_rewritable1_tag = self; using base::operator(); };
+struct reveal_adaptor<reveal_adaptor<F>> : reveal_adaptor<F>{};
+
+constexpr auto const& reveal = make<reveal_adaptor>();
+```
+
 ------
 ### Type Traits
+
+##### `is_invocable`
+
+```c++
+struct is_invocable<F,...Ts> : can_be_called<apply_f, F, Ts...>{};
+struct is_invocable<F(Ts...), Us...> requires !std::is_same_v<F,F> {};
+```
 
 ##### `unpack_sequence`
 
@@ -465,6 +603,6 @@ struct unpack_sequence<pack_base<T,Ts...>> {
 constexpr_deduce, pp, recursive_consexpr_depth, result_type, unpack_tuple
 
 capture, compose, decorate, eval, first_of, fix, flip, flow, fold, function_param_limit, function,
-if, implicit, indirect, infix, is_invocable, is_unpackable, lambda, lift, limit
-match, mutable, partial, pipable, placeholders, proj, project, repeat_while, repeat
-result, reveal, reverse_fold, rotate, static, tap, unpack, version
+if, implicit, indirect, infix, is_unpackable, lambda, lift, limit
+match, mutable, partial, pipable, proj, repeat_while, repeat
+result, reverse_fold, rotate, static, tap, unpack, version
