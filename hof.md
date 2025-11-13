@@ -84,10 +84,35 @@ struct detail::make<Adaptor<...>> {
 };
 std::remove_reference_t<T>&& move<T>(T&& x) noexcept { return (...)x; }
 
+struct detail::pair_tag<i,T,U>{};
+struct detail::is_same_template<T,U> : std::false_type{}; // trait
+struct detail::is_same_template<X<Ts...>,X<Us...>> : std::true_type{}; // trait
+struct detail::is_related_template<U,T> : is_same_template<T,U>{};
+struct detail::is_related<T,U> : std::bool_constant<is_base_of_v<T,U>||is_base_of_v<U,T>||is_related_template<T,U>::value> {};
+struct detail::pair_holder<i,T,U> : std::conditional_t<is_related<T,U>::value, alias_empty<T,pair_tag<i,T,U>>, alias_try_inherit<T,pair_tag<i,T,U>>> {};
+struct detail::compressed_pair<First,Second> : pair_holder<0,First,Second>::type, pair_holder<1,Second,First>::type {
+    using first_base = ...; using second_base = ...;
+    constexpr ctor<X,Y>(X&& x, Y&& y) noexcept(...) requires(...) {}
+    constexpr const Base& get_alias_base<Base,...Xs> get_alias_base(Xs&&...xs) const noexcept { return always_ref(*this)(xs...); }
+    constexpr const First& first<...Xs>(Xs&&...xs) const noexcept { return always_value(get_alias_base<first_base>(xs...), xs...); }
+    constexpr const Second& second<...Xs>(Xs&&...xs) const noexcept { return always_value(get_alias_base<second_base>(xs...), xs...); }
+};
+constexpr compressed_pair<T,U> detail::make_compressed_pair<T,U>(T x, U y) noexcept(...) { return {(T&&)x, (U&&)y}; }
+
+struct detail::function_result_type<F,_=void>{};
+struct detail::function_result_type<F,holder<F::result_type>>{ using result_type = F::result_type; };
+struct detail::compose_function_result_type<F,G,_=void> : function_result_type<F>{};
+struct detail::compose_function_result_type<F,G,holder<...>> { using result_type = decltype(declval<F>()(declval<G::result_type>())); };
+```
+
+##### `alias` - tagged wrapper
+
+```c++
 struct alias_tag<T>;
 struct has_tag<T,Tag>; // trait
 constexpr <const> T& detail::lvalue<T>(<const> T& x) noexcept { return x; }
 struct alias<T,Tag=void> { T value; };
+
 constexpr auto alias_value<Tag,T,...Ts> (alias<T, Tag> {const&|&} a, Ts&&...)
     noexcept(...) -> decltype(...) { return lvalue(a.value); }
 constexpr auto alias_value<Tag,T,...Ts>(alias<T, Tag> && a, Ts&&...)
@@ -111,21 +136,6 @@ struct alias_tag<alias_static<T,Tag>> { using type = Tag; };
 
 struct detail::alias_try_inherit<T,Tag> : std::conditional_t<is_class_v<T>&&!is_final_v<T>&&!is_polymorphic_v<T>, alias_inherit<T,Tag>, alias<T,Tag>> {};
 struct detail::alias_empty<T,Tag> : std::conditional_t<is_empty_v<T>, alias_try_inherit<T,Tag>::type, alias<T,Tag>>;
-
-struct detail::pair_tag<i,T,U>{};
-struct detail::is_same_template<T,U> : std::false_type{}; // trait
-struct detail::is_same_template<X<Ts...>,X<Us...>> : std::true_type{}; // trait
-struct detail::is_related_template<U,T> : is_same_template<T,U>{};
-struct detail::is_related<T,U> : std::bool_constant<is_base_of_v<T,U>||is_base_of_v<U,T>||is_related_template<T,U>::value> {};
-struct detail::pair_holder<i,T,U> : std::conditional_t<is_related<T,U>::value, alias_empty<T,pair_tag<i,T,U>>, alias_try_inherit<T,pair_tag<i,T,U>>> {};
-struct detail::compressed_pair<First,Second> : pair_holder<0,First,Second>::type, pair_holder<1,Second,First>::type {
-    using first_base = ...; using second_base = ...;
-    constexpr ctor<X,Y>(X&& x, Y&& y) noexcept(...) requires(...) {}
-    constexpr const Base& get_alias_base<Base,...Xs> get_alias_base(Xs&&...xs) const noexcept { return always_ref(*this)(xs...); }
-    constexpr const First& first<...Xs>(Xs&&...xs) const noexcept { return always_value(get_alias_base<first_base>(xs...), xs...); }
-    constexpr const Second& second<...Xs>(Xs&&...xs) const noexcept { return always_value(get_alias_base<second_base>(xs...), xs...); }
-};
-constexpr compressed_pair<T,U> detail::make_compressed_pair<T,U>(T x, U y) noexcept(...) { return {(T&&)x, (U&&)y}; }
 ```
 
 #### Macros:
@@ -134,20 +144,21 @@ constexpr compressed_pair<T,U> detail::make_compressed_pair<T,U>(T x, U y) noexc
 * `NOEXCEPT(...)`, `NOEXCEPT_CONSTRUCTIBLE(...)`
 * `STATIC_CONSTEXPR`, `STATIC_AUTO_REF`,
 * `STATIC_CONST_VAR(v)`, `DECLARE_STATIC_VAR(v,...)`
+    * Variables are actually: `static constexpr auto& VAR = static_const_var_factory() = INITIALIZER;`
 * `INHERIT_DEFAULT(C,...)`, `INHERIT_DEFAULT_EMPTY(C,...)` define default ctor
 * `DELEGATE_CONSTRUCTOR(C,T,v)`, `INHERIT_CONSTRUCTOR(Derived,Base)`
 * `SFINAE_<MANUAL>_RESULT(...)` = `auto`, `SFINAE_<MANUAL>_RETURNS` = `RETURNS`
 * `JOIN(c,...)` = `c<__VA_ARGS__>`
+* `RECURSIVE_CONSTEXPR_DEPTH` = 16
 ##### Library macros
 * `IS_XXX(...)` = `std::is_xxx<__VA_ARGS>::value` for type traits
 * `FORWARD(...)`
 * `ENABLE_IF_CONVERTIBLE`, `ENABLE_IF_CONVERTIBLE_UNPACK`, `ENALBE_IF_BASE_OF`, `ENABLE_IF_CONSTRUCTIBLE`
-##### Other macros
 
 ------
 ### Functions
 
-##### `always`
+##### `always` - wrap and return fixed value
 
 ```c++
 struct detail::always_base<T> { T x;
@@ -176,7 +187,7 @@ auto f = always(x); // f always returns x
 assert(x == f(a,b,c,d));
 ```
 
-##### `arg`
+##### `arg` - forward return n-th arg
 
 ```c++
 struct detail::perfect_ref<T>{
@@ -204,7 +215,7 @@ assert(arg3(1,2,3,4,5)==3);
 assert(arg4('a','b','c','d','e')=='d');
 ```
 
-##### `construct`
+##### `construct` - factories
 
 ```c++
 struct detail::construct_f<T> {
@@ -239,7 +250,7 @@ constexpr auto construct_meta <T> () ->construct_meta_f<T> noexcept { return {};
 constexpr auto construct_meta <Temp<...>> () ->construct_meta_template_f<Temp> noexcept { return {}; }
 ```
 
-##### `decay`
+##### `decay` - forward decayed arg
 
 ```c++
 struct detail::decay_mf<T> : unwrap_reference<std::decay_t<T>> {};
@@ -250,7 +261,7 @@ struct detail::decay_f {
 constexpr decay_f const& decay = decay_f{};
 ```
 
-##### `identity`
+##### `identity` - forwards its arg
 
 ```c++
 struct detail::identity_base{
@@ -261,7 +272,7 @@ struct detail::identity_base{
 constexpr identity_base const& identity = identity_base{};
 ```
 
-##### Placeholders
+##### Placeholders - supports operators to create bind expressions
 
 ```c++
 struct detail::simple_placeholder<n>{};
@@ -357,7 +368,7 @@ struct std::is_placeholder<placeholder<n>> : std::integral_constant<int,n>{};
 ------
 ### Function Adaptors
 
-##### `combine`
+##### `combine` - zip each function on each arg
 
 ```c++
 struct detail::combine_adaptor_base<seq<n...>,F,Gs...> : F, pack_base<seq<n...>,Gs...> {
@@ -369,6 +380,231 @@ struct detail::combine_adaptor_base<seq<n...>,F,Gs...> : F, pack_base<seq<n...>,
 struct combine_adaptor<F,...Gs> : combine_adaptor_base<gens<sizeof...(Gs)>::type, callable_base<F>, callable_base<Gs>...> {};
 constexpr combine_adaptor& combine{};
 // assert( combine(f,gs...)(xs...) == f(gs(xs)...) )
+```
+
+##### `compose` - function composition
+
+```c++
+struct detail::compose_kernel<F1,F2> : compressed_pair<F1,F2>, compose_function_result_type<F1,F2> {
+    constexpr auto operator()<...Ts> const noexcept(...) ->result_of<const F1&, result_of<const F2&,id_<Ts>...>>
+    { return first(xs...)(second(xs...)(fwd<Ts>(xs)...)); }
+};
+
+struct compose_adaptor<F,...Fs> : compose_kernel<callable_base<F>,JOIN(compose_adaptor,callable_base<Fs>...)> {
+    using fit_rewritable_tag = self; using tail = JOIN(compose_adaptor,callable_base<Fs>...);
+    constexpr ctor<X,...Xs> (X&& f1, Xs&&...fs) noexcept(...) requires(...):base(fwd<X>(f1)),tail(fwd<Xs>(fs)...) {}
+    constexpr ctor<X> (X&& f1) noexcept(...) requires(...) :base(fwd<X>(f1)) {}
+};
+struct compose_adaptor<F> : callable_base<F> { using fit_rewritable_tag = self;
+    constexpr ctor<X> (X&& f1) noexcept(...) requires(...) :base(fwd<X>(f1)) {}
+};
+struct compose_adaptor<F1,F2> : compose_kernel<callable_base<F1>,callable_base<F2>> { using fit_rewritable_tag = self; };
+
+constexpr auto const& compose = make<compose_adaptor>();
+// assert( compose(f,g)(xs...) == f(g(xs...)) );
+```
+
+##### `decorate` - create decorator function
+
+```c++
+struct detail::decorator_invoke<D,T,F> : compressed_pair<compressed_pair<D,T>,F> {
+    constexpr const compressed_pair<D,T>& get_pair<...Ts>(Ts&&...xs) const noexcept { return first(xs...); }
+    constexpr const F& base_function<...Ts>(Ts&&...xs) const noexcept { return second(xs...); }
+    constexpr const D& get_decorator<...Ts>(Ts&&...xs) const noexcept { get_pair(xs...).first(xs...); }
+    constexpr const T& get_data<...Ts>(Ts&&...xs) const noexcept { get_pair(xs...).second(xs...); }
+    struct decorator_invoke_failure {
+        struct apply<Failure> { struct of<...Ts> : Failure::of<const T&, const F&, Ts...> {}; };
+    };
+    struct failure : failure_map<decorator_invoke_failure, D> {};
+    constexpr auto operator() <...Ts> (Ts&&...xs) const noexcept(...) ->result_of<const D&, id_<const T&>, id_<const F&>, id_<Ts>...>
+    { return get_decorator(xs...)(get_data(xs...), base_function(xs...), fwd<Ts>(xs)...); }
+};
+struct detail::decoration<D,T> : compressed_pair<D,T> {
+    constexpr const D& get_decorator <...Ts> (Ts&&...xs) const noexcept { return first(xs...); }
+    constexpr const T& get_data <...Ts> (Ts&&...xs) const noexcept { return second(xs...); }
+    constexpr auto operator() <F> (F f) const noexcept(...) ->decorator_invoke<D, T, detail::callable_base<F>>
+    { return {*this, (callable_base<F>&&)f}; }
+};
+struct decorate_adaptor<F> : callable_base<F> {
+    using fit_rewritable1_tag = self;
+    constexpr const base& base_function<...Ts>(Ts&&...xs) const noexcept { return always_ref(*this)(xs...); }
+    constexpr auto operator() <T> (T f) const noexcept(...) ->decoration<base,T> { return {base_function(x), (T&&)x}; }
+};
+
+constexpr auto const& decorate = make<decorate_adaptor>();
+// auto decorator = decorate([](auto arg, auto f, auto v...){/*do sth with arg*/ return f(v...);});
+```
+
+##### `first_of` - call first viable overloads
+
+```c++
+struct detail::basic_first_of_adaptor<F1,F2>: F1,F2 {
+    constexpr ctor<A,B>(A&& f1, B&& f2) noexcept(...) requires(...);
+    constexpr ctor<X>(X&& x) noexcept(...) requires(...);
+    constexpr auto operator() <...Ts,F=select<Ts...>::type> (Ts&&...xs) const
+        noexcept(...) -> result_of<select<Ts...>::type, id_<Ts>...> { return (*this)(fwd<Ts>(xs)...); }
+};
+struct detail::conditional_kernel<F1,F2> : compressed_pair<F1,F2> {
+    constexpr auto operator() <...Ts> (Ts&&...xs) const noexcept(...) -> result_of<select<Ts...>::type, id_<Ts>...>
+    { if constexpr (is_invocable<F1,Ts...>::value) return first(xs...)(fwd<Ts>(xs)...) : second(xs...)(fwd<Ts>(xs)...); }
+};
+
+struct first_of_adaptor<F,...Fs> : conditional_kernel<F,JOIN(first_of_adaptor,Fs...)> {
+    using fit_rewritable_tag = self; using kernel_base = JOIN(self, Fs...);
+    constexpr ctor<X,...Xs>(X&& f1, Xs&&...fs) noexcept(...) requires(...);
+    constexpr ctor<X,...Xs>(X&& f1) noexcept(...) requires(...);
+    struct failure : failure_for<F,Fs...> {};
+};
+struct first_of_adaptor<F> : F { using fit_rewritable_tag = self; struct failure : failure_for<F> {}; };
+struct first_of_adaptor<F1,F2> : conditional_kernel<F1,F2> {
+    using fit_rewritable_tag = self;
+    struct failure : failure_for<F1,F2> {};
+};
+
+constexpr auto const& first_of = make<first_of_adaptor>();
+// first_of([](int){return 1;},[](float){return 2;})(3.0) == 1
+```
+
+##### `fix` - fixed-point combinator
+
+```c++
+struct detail::compute_indirect_ref<F> { using type = indirect_adaptor<const F*>; };
+struct detail::compute_indirect_ref<indirect_adaptor<F*>> { using type = indirect_adaptor<F*>; }
+constexpr indirect_adaptor<const F*> detail::make_indirect_ref<F>(const F& f) noexcept { return {&f}; }
+constexpr indirect_adaptor<const F*> detail::make_indirect_ref<F>(const indirect_adaptor<F*>& f) noexcept { return f; }
+
+struct detail::fix_result<F,_=void>{ struct apply<...Ts> { using type = decltype(declval<F>()(delcval<Ts>()...)); }; };
+struct detail::fix_result<F,holder<F::result_type>::type> { struct apply<...> { using type = F::result_type; }; };
+struct detail::fix_adaptor_base<F,R,n> : F {
+    using base_ref_type = compute_indirect_ref<F>::type; using derived = self<base_ref_type, R, n-1>; // recursion
+    constexpr const F& base_function<...Ts>(Ts&&...xs) const noexcept { return always_ref(*this)(xs...); }
+    constexpr derived derived_function<...Ts>(Ts&&...xs) const noexcept { return {make_indirect_ref(base_function(xs...))}; }
+    struct fix_failure { struct apply<Failure> { struct of<...Ts> : Failure::of<derived, Ts...>{}; }; };
+    struct failure : failure_map<fix_failure, F> {};
+    constexpr auto operator() <...Ts> (Ts&&...xs) const noexcept(...) ->result_of<const F&, id_<derived>, id_<Ts>...>::type
+    { return base_function(xs...)(derived_function(xs...), fwd<Ts>(xs)...); }
+};
+struct detail::fix_adaptor_base<F,R,0> : F {
+    const F& base_function<...Ts>(Ts&&...) const noexcept { return *this; }
+    struct fix_failure { struct apply<Failure> { struct of<...Ts> : Failure::of<self, Ts...>{}; }; };
+    struct failure : failure_map<fix_failure, F> {};
+    auto operator() <...Ts> (Ts&&...xs) const->R::apply<self,Ts...>::type
+    { return base_function(xs...)(*this, fwd<Ts>(xs)...); }
+};
+
+struct fix_adaptor<F> : fix_adaptor_base<F, fix_result<F>, RECURSIVE_CONSTEXPR_DEPTH> { using fit_rewritable1_tag = self; };
+struct result_adaptor<R,fix_adaptor<F>> : fix_adaptor<self<R,F>> {};
+
+constexpr auto const& fix = make<fix_adaptor>();
+// assert( fix(f)(xs...) == f(fix(f), xs...) );
+```
+
+##### `flip` - swap first two args
+
+```c++
+struct flip_adaptor<F> : callable_base<F> {
+    using fit_rewritable1_tag self;
+    base& base_function<...Ts>(Ts&&...xs) const { return always_ref(*this)(xs...); }
+    struct flip_failure { struct apply<Failure> { struct of<T,U,...Ts> : Failure::of<U,T,Ts...>{}; }; };
+    struct failure : failure_map<flip_failure, callable_base<F>>{};
+    constexpr auto operator()<T,U,...Ts>(T&& x, U&& y, Ts&&...xs) const noexcept(...) ->decltype(...) requires(...)
+    { base_function(xs...)(fwd<U>(y), fwd<T>(x), fwd<Ts>(xs)...); }
+};
+
+constexpr auto const& flip = make<flip_adaptor>();
+// assert( flip(f)(x,y,xs...) == f(y,x,xs...) );
+```
+
+##### `flow` - invoke functions one by one
+
+```c++
+struct detail::flow_kernel<F1,F2> : compressed_pair<callable_base<F1>,callable_base<F2>>, compose_function_result_type<F2,F1> {
+    constexpr auto operator()<...Ts>(Ts&&...xs) const noexcept(...) ->result_of<const callable_base<F2>&, result_of<const callable_base<F1>&, id_<Ts>...>>
+    { return second(xs...)(first(xs...)(fwd<Ts>(xs)...)); }
+};
+struct flow_adaptor<F,...Fs> : flow_kernel<F,JOIN(flow_adaptor,Fs...)> {
+    using fit_rewritable_tag self; using tail = JOIN(flow_adaptor,Fs...);
+    constexpr ctor<X,...Xs>(X&& f1, Xs&&...fs) noexcept(...) requires(...) : base(fwd<X>(f1), tail{fwd<Xs>(fs)...}){}
+    constexpr ctor<X>(X&& f1) noexcept(...) : base(fwd<X>(f1)) {}
+};
+struct flow_adaptor<F> : callable_base<F> {
+    using fit_rewritable_tag self;
+    constexpr ctor<X>(X&& f1) noexcept(...) requires(...) : base(fwd<X>(f1)) {}
+};
+struct flow_adaptor<F1,F2> : flow_kernel<callable_base<F1>,callable_base<F2>> { using fit_rewritable_tag self; };
+
+constexpr auto const& flow = make<flow_adaptor>();
+// assert( flow(f,g)(xs...) == g(f(xs...)) );
+```
+
+##### `fold` - invoke binary function on sequence
+
+```c++
+struct detail::v_fold {
+    constexpr auto operator()<F,State,T,...Ts>(const F& f, State&& state, T&& x, Ts&&...xs) const noexcept(...)
+        -> result_of<const v_fold&, id_<const F&>, result_of<const F&, id_<State>, id_<T>>, id_<Ts>...>
+    { (*this)(f, f(fwd<State>(state), fwd<T>(x)), fwd<Ts>(xs)...); }
+    constexpr State operator()<F,State>(const F&, State&& state) const noexcept { return fwd<State>(state); }
+};
+struct fold_adaptor<F,_=void> : compressed_pair<callable_base<F>, State> {
+    constexpr const callable_base<F>& base_function<...Ts>(Ts&&...xs) const noexcept { return first(xs...); }
+    constexpr State get_state<...Ts>(Ts&&...xs) const noexcept { return second(xs...); }
+    constexpr auto operator()<...Ts>(Ts&&...xs) const noexcept(...) -> result_of<v_fold, id_<const callable_base<F>&>, id_<State>, id_<Ts>...>
+    { return v_fold{}(base_function(xs...), get_state(xs...), fwd<Ts>(xs)...); }
+};
+struct fold_adaptor<F,void> : callable_base<F> {
+    constexpr const callable_base<F>& base_function<...Ts>(Ts&&...xs) const noexcept { return always_ref(*this)(xs...); }
+    constexpr auto operator()<...Ts>(Ts&&...xs) const noexcept(...) -> result_of<v_fold, id_<const callable_base<F>&>, id_<Ts>...>
+    { return v_fold{}(base_function(xs...), fwd<Ts>(xs)...); }
+};
+
+constexpr auto const& fold = make<fold_adaptor>();
+// assert( fold(f,z)() == z ); // z is init state
+// assert( fold(f)(x, xs...) == fold(f,x)(xs...) );
+// assert( fold(f,z)(x, xs...) == fold(f, f(z,x))(xs...) );
+```
+
+##### `implicit` - (static) deduce template parameter type
+
+```c++
+struct detail::is_implicit_callable<F,Pack,X>; // is_convertible< decltype(pack(f)), X >
+struct implicit<F<...>> {
+    struct invoker<Pack> { Pack p;
+        constexpr ctor(Pack pp) noexcept(...) : p{move(pp)} {}
+        constexpr operator X() const noexcept(...) requires (...) { return p(F<X>()); }
+    };
+    struct make_invoker { constexpr invoker<Pack> operator()<Pack>(Pack p) const noexcept(...) {return {move(p)}; } };
+    constexpr auto operator()<...Ts>(Ts&&...xs) const noexcept(...) ->decltype(...)
+    { return make_invoker{}(pack_basic(fwd<Ts>(xs)...)); }
+};
+```
+
+##### `indirect` - dereference before call
+
+```c++
+struct indirect_adaptor<F> : F {
+    using fit_rewritable1_tag = self;
+    constexpr const F& base_function<...Ts>(Ts&&...xs) const noexcept { return always_ref(*this)(xs...); }
+    struct failure : failure_for<decltype(*std::declval<F>())> {};
+    constexpr auto operator()<...Ts>(Ts&&...xs) const noexcept(...) -> result_of<decltype(*std::declval<F>()), id_<Ts>...>
+    { return (*base_function(xs...))(fwd<Ts>(xs)...); }
+};
+struct indirect_adaptor<F*> {
+    using fit_rewritable1_tag = self; F* f;
+    constexpr ctor() noexcept{}  constexpr ctor(F* x) noexcept :f{x}{}
+    constexpr F& base_function<...Ts>(Ts&&...xs) const noexcept { return *f; }
+    struct failure : failure_for<F> {};
+    constexpr auto operator()<...Ts>(Ts&&...xs) const noexcept(...) -> result_of<F, id_<Ts>...>
+    { return base_function(xs...)(fwd<Ts>(xs)...); }
+};
+
+constexpr auto const& indirect = make<indirect_adaptor>();
+// assert( indirect(f)(xs...) == (*f)(xs...) );
+```
+
+##### `infix`
+
+```c++
 ```
 
 ##### `lazy`
@@ -415,11 +651,41 @@ struct std::is_bind_expression<lazy_invoker<F,Pack>> : std::true_type {};
 struct std::is_bind_expression<lazy_nullary_invoker<F>> : std::true_type {};
 ```
 
+##### `match`
+
+```c++
+```
+
+##### `mutable`
+
+```c++
+```
+
+##### `partial`
+
+```c++
+```
+
+##### `pipable`
+
+```c++
+```
+
+##### `proj`
+
+```c++
+```
+
 ##### `protect`
 
 ```c++
 struct protect_adaptor<F> : callable_base<F> { using fit_rewritable1_tag = self; }
 constexpr auto const& protect = make<protect_adaptor>{};
+```
+
+##### `result`
+
+```c++
 ```
 
 ##### `reveal`
@@ -459,14 +725,67 @@ struct reveal_adaptor<reveal_adaptor<F>> : reveal_adaptor<F>{};
 constexpr auto const& reveal = make<reveal_adaptor>();
 ```
 
+##### `reverse_fold`
+
+```c++
+```
+
+##### `rotate`
+
+```c++
+```
+
+##### `static`
+
+```c++
+```
+
+##### `unpack`
+
+```c++
+```
+
+------
+### Decorators
+
+##### `capture` - wrap args for pending function call
+
+```c++
+```
+
+##### `if`
+
+```c++
+```
+
+##### `limit`
+
+```c++
+```
+
+##### `repeat`, `repeat_while`
+
+```c++
+```
+
 ------
 ### Type Traits
+
+##### `function_param_limit`
+
+```c++
+```
 
 ##### `is_invocable`
 
 ```c++
 struct is_invocable<F,...Ts> : can_be_called<apply_f, F, Ts...>{};
 struct is_invocable<F(Ts...), Us...> requires !std::is_same_v<F,F> {};
+```
+
+##### `is_unpackable`
+
+```c++
 ```
 
 ##### `unpack_sequence`
@@ -487,7 +806,7 @@ struct unpack_sequence<Seq,_=void> { using not_unpackable=void; };
 
 #### Functions
 
-##### `apply`, `apply_eval`
+##### `apply`, `apply_eval` - `INVOKE`
 
 ```c++
 struct detail::apply_mem_fn;
@@ -525,6 +844,11 @@ struct detail::apply_eval_f {
 
 constexpr apply_f const& apply = apply_f{}; // INVOKE
 constexpr apply_eval_f const& apply_eval = apply_eval_f{}; // = f(arg()...), ordered
+```
+
+##### `eval`
+
+```c++
 ```
 
 ##### `pack`
@@ -598,11 +922,9 @@ struct unpack_sequence<pack_base<T,Ts...>> {
     { return unpack_pack_base(fwd<F>(f), fwd<P>(p)); }
 };
 ```
+##### `tap`
 
-
-constexpr_deduce, pp, recursive_consexpr_depth, result_type, unpack_tuple
-
-capture, compose, decorate, eval, first_of, fix, flip, flow, fold, function_param_limit, function,
-if, implicit, indirect, infix, is_unpackable, lambda, lift, limit
-match, mutable, partial, pipable, proj, repeat_while, repeat
-result, reverse_fold, rotate, static, tap, unpack, version
+```c++
+```
+constexpr_deduce, unpack_tuple
+function, lambda, lift, version
