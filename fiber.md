@@ -138,6 +138,16 @@ public: using id = context::id;
 };
 bool operator<(fiber const& l, fiber const& r) noexcept { return l.get_id() < r.get_id(); }
 void swap(fiber& l, fiber& r) noexcept { return l.swap(r); }
+
+fiber::id this_fiber::get_id() noexcept;
+void this_fiber::yield() noexcept;
+void this_fiber::sleep_until<Clock,Duration>(std::chrono::time_point<Clock,Duration> const& sleep_time_);
+void this_fiber::sleep_for<Rep,Period>(std::chrono::duration<Rep,Period> const& timeout_duration);
+PROPS& this_fiber::properties<PROPS>();
+
+bool has_ready_fibers() noexcept;
+bool initialize_thread(algorithm::ptr_t algo, stack_allocator_wrapper&& salloc) noexcept;
+void use_scheduling_algorithm<SchedAlgo,...Args>(Args&&...args) noexcept;
 ```
 
 ##### Scheduler
@@ -169,6 +179,297 @@ public: ctor(algorithm::ptr_t algo) noexcept; ctor(self const&)=delete; self& op
   void attach_dispatcher_context(intrusive_ptr<context>) noexcept;
   void attach_worker_context(context*) noexcept; void detach_worker_context(context*) noexcept;
 };
+```
+
+##### Fiber Specific Storage
+
+```c++
+class detail::fss_cleanup_function {
+  std::atomic<size_t> use_count_{0};
+public: using ptr_t = intrusive_ptr<self>;
+  ctor()=default; virtual ~dtor()=default;
+  virtual void operator()(void* data) =0;
+  friend void intrusive_ptr_add_ref(self* p) noexcept;
+  friend void intrusive_ptr_release(self* p) noexcept;
+};
+
+class fiber_specific_ptr<T> {
+  struct default_cleanup_function : fss_cleanup_function
+  { void operator()(void* data) noexcept override { delete (T*)data; } };
+  struct custom_cleanup_function : fss_cleanup_function {
+    void (*fn)(T*); explicit ctor(void(*fn_)(T*)) noexcept;
+    void operator()(void* data) noexcept override { if (fn) fn((T*)data); }
+  };
+  fss_cleanup_function::ptr_t cleanup_fn_;
+public: using element_type = T; // no copy
+  ctor() :cleanup_fn_{new default_cleanup_function{}}{}
+  explicit ctor(void(*fn)(T*)) :cleanup_fn_{new custom_cleanup_function{fn}}{}
+  ~dtor() { auto active_ctx=context::active(); if (active_ctx) active_ctx->set_fss_data(this, cleanup_fn_, nullptr, true); }
+  T* get() const noexcept { (T*)context::active()->get_fss_data(this); }
+  T* operator->() const noexcept; T& operator*() const noexcept;
+  T* release() { T* tmp=get(); context::active()->set_fss_data(this, cleanup_fn_, nullptr, false); return tmp; }
+  void reset(T* t) { T* c=get() if (c!=t) context::active()->set_fss_data(this, cleanup_fn_, t, true); }
+};
+```
+
+##### Threadings
+
+```c++
+class mutex {
+  spinlock wait_queue_splk_{}; wait_queue wait_queue_{}; context* owner_{nullptr};
+public: ctor()=default; dtor();
+  void lock(); bool try_lock(); void unlock();
+};
+class recursive_mutex {
+  spinlock wait_queue_splk_{}; wait_queue wait_queue_{}; context* owner_{nullptr}; size_t count{0};
+public: ctor()=default; dtor(); // no copy
+  void lock(); bool try_lock(); void unlock();
+};
+class timed_mutex {
+  spinlock wait_queue_splk_{}; wait_queue wait_queue_{}; context* owner_{nullptr};
+public: ctor()=default; dtor(); // no copy
+  void lock(); bool try_lock(); void unlock();
+  bool try_lock_until<Clock,Duration>(time_point<Clock,Duration> const& timeout_time_);
+  bool try_lock_for<Rep,Period>(duration<Rep,Period> const& timeout_duration);
+};
+class recursive_timed_mutex {
+  spinlock wait_queue_splk_{}; wait_queue wait_queue_{}; context* owner_{nullptr}; size_t count{0};
+public: ctor()=default; dtor(); // no copy
+  void lock(); bool try_lock(); void unlock();
+  bool try_lock_until<Clock,Duration>(time_point<Clock,Duration> const& timeout_time_);
+  bool try_lock_for<Rep,Period>(duration<Rep,Period> const& timeout_duration);
+};
+
+enum class cv_status { no_timeout=1, timeout };
+class condition_variable_any {
+  spinlock wait_queue_splk_{}; wait_queue wait_queue_{};
+public: ctor()=default; ~dtor(); // no copy
+  void notify_one() noexcept; void notify_all() noexcept;
+  void wait<LockType,[Pred]>(LockType& lt, <Pred pred>);
+  cv_status wait_until<LockType,Clock,Duration>(LockType& lt, time_point<Clock,Duration> const& timeout_time);
+  bool wait_until<LockType,Clock,Duration,Pred>(LockType& lt, time_point<Clock,Duration> const& timeout_time, Pred pred);
+  cv_status wait_for<LockType,Rep,Period>(LockType& lt, duration<Rep,Period> const& timeout_time);
+  bool wait_for<LockType,Rep,Period,Pred>(LockType& lt, duration<Rep,Period> const& timeout_time, Pred pred);
+};
+class condition_variable {
+  condition_variable_any cnd_;
+public: ctor()=default; // no copy
+  void notify_one() noexcept; void notify_all() noexcept;
+  void wait<[Pred]>(std::unique_lock<mutex>& lt, <Pred pred>);
+  cv_status wait_until<Clock,Duration>(std::unique_lock<mutex>& lt, time_point<Clock,Duration> const& timeout_time);
+  bool wait_until<Clock,Duration,Pred>(std::unique_lock<mutex>& lt, time_point<Clock,Duration> const& timeout_time, Pred pred);
+  cv_status wait_for<Rep,Period>(std::unique_lock<mutex>& lt, duration<Rep,Period> const& timeout_time);
+  bool wait_for<Rep,Period,Pred>(std::unique_lock<mutex>& lt, duration<Rep,Period> const& timeout_time, Pred pred);
+};
+
+class barrier {
+  size_t initial_, current_, cycle_{0}; mutex mtx_{}; conditional_variable cond_{};
+public:
+  explicit ctor(size_t);
+  bool wait();
+};
+
+enum class channel_op_status { success, empty, full, closed, timeout };
+class buffered_channel<T> { using slot_type = value_type;
+  mutable spinlock splk_{}; wait_queue waiting_producers_{}, waiting_consumers_{};
+  slot_type* slots_; size_t pidx_{0}, cidx_{0}, capacity_; bool closed_{false};
+  bool is_full_() const noexcept { return cidx_==((pidx_+1)%capacity_); }
+  bool is_empty_() const noexcept { return cidx_==pidx_; }
+  bool is_closed_() const noexcept { return closed_; }
+public: using value_type = std::remove_reference_t<T>;
+  explicit ctor(size_t capacity); ~dtor(); // no copy
+  bool is_closed() const noexcept; void close() noexcept;
+  channel_op_status <try>_push(value_type {const&|&&} value);
+  channel_op_status push_wait_for<Rep,Period>(value_type {const&|&&} value, duration<Rep,Period> const& timeout_duration);
+  channel_op_status push_wait_until<Clock,Duration>(value_type {const&|&&} value, time_point<Clock,Duration> const& timeout_time);
+  channel_op_status <try>_pop(value_type& value); value_type value_pop();
+  channel_op_status pop_wait_for<Rep,Period>(value_type& value, duration<Rep,Period> const& timeout_duration);
+  channel_op_status pop_wait_until<Clock,Duration>(value_type& value, time_point<Clock,Duration> const& timeout_time);
+  class iterator {
+    using storage_type = std::aligned_storage<sizeof(value_type), alignof(value_type)>::type;
+    buffered_channel* chan_{nullptr}; storage_type storage_;
+    void increment_(bool initial=false);
+  public: using iterator_category = std::input_iterator_tag;
+    using difference_type = std::ptrdiff_t; using pointer = value_type*; using reference = value_type&;
+    ctor()=default; ctor(self const&) noexcept; self& operator=(self const&) noexcept;
+    explicit ctor(buffered_channel<T>* chan) noexcept;
+    bool operator==(self const&) const noexcept // and !=
+    self& operator++(); const self operator++(int)=delete;
+    reference operator*() noexcept; pointer operator->() noexcept;
+  };
+  friend iterator begin(self& chan); friend iterator end(self&);
+};
+class unbuffered_channel<T> {
+  struct slot { value_type value; waker w; ctor(value_type {const&|&&} value_, waker&& w); };
+  std::atomic<slot*> slot_{nullptr}; std::atomic_bool closed_{false};
+  mutable spinlock splk_producers_{}, splk_consumers_{};
+  wait_queue waiting_producers_{}, waiting_consumers_{}; char pad_[cacheline_length];
+  bool is_empty_() const noexcept { return cidx_==pidx_; }
+  bool try_push_(slot* own_slot); slot* try_pop_();
+public: using value_type = std::remove_reference_t<T>;
+  ctor()=default; ~dtor(); // no copy
+  bool is_closed() const noexcept; void close() noexcept;
+  channel_op_status push(value_type {const&|&&} value);
+  channel_op_status push_wait_for<Rep,Period>(value_type {const&|&&} value, duration<Rep,Period> const& timeout_duration);
+  channel_op_status push_wait_until<Clock,Duration>(value_type {const&|&&} value, time_point<Clock,Duration> const& timeout_time);
+  channel_op_status pop(value_type& value); value_type value_pop();
+  channel_op_status pop_wait_for<Rep,Period>(value_type& value, duration<Rep,Period> const& timeout_duration);
+  channel_op_status pop_wait_until<Clock,Duration>(value_type& value, time_point<Clock,Duration> const& timeout_time);
+  class iterator {
+    using storage_type = std::aligned_storage<sizeof(value_type), alignof(value_type)>::type;
+    unbuffered_channel* chan_{nullptr}; storage_type storage_;
+    void increment_(bool initial=false);
+  public: using iterator_category = std::input_iterator_tag;
+    using difference_type = std::ptrdiff_t; using pointer = value_type*; using reference = value_type&;
+    ctor()=default; ctor(self const&) noexcept; self& operator=(self const&) noexcept;
+    explicit ctor(unbuffered_channel<T>* chan) noexcept;
+    bool operator==(self const&) const noexcept // and !=
+    self& operator++(); const self operator++(int)=delete;
+    reference operator*() noexcept; pointer operator->() noexcept;
+  };
+  friend iterator begin(self& chan); friend iterator end(self&);
+};
+```
+
+##### Futures, Promises, Tasks
+
+```c++
+class detail::shared_state_base {
+  std::atomic<size_t> use_count_{0}; mutable condition_variable waiters_{};
+protected:
+  mutable mutex mtx_{}; bool ready_{false}; std::exception_ptr except_{};
+  void mark_ready_and_notify_(std::unique_lock<mutex>& lk) noexcept;
+  void owner_destroyed_(std::unique_lock<mutex>& lk);
+  void set_exception_(std::exception_ptr except, std::unique_lock<mutex>& lk);
+  std::exception_ptr get_exception_ptr_(std::unique_lock<mutex>& lk);
+  void wait_(std::unique_lock<mutex>& lk) const;
+  future_state wait_for_<Rep,Period>(std::unique_lock<mutex>& lk, duration<Rep,Period> const& timeout_duration) const;
+  future_state wait_until_<Clock,Duration>(std::unique_lock<mutex>& lk, time_point<Clock,Duration> const& timeout_time) const;
+  virtual void deallocate_future() noexcept =0;
+public: ctor()=default; virtual ~dtor()=default; // no copy
+  void owner_destroyed();
+  void set_exception(std::exception_ptr except);
+  std::exception_ptr get_exception_ptr_();
+  void wait_() const;
+  future_state wait_for<Rep,Period>(duration<Rep,Period> const& timeout_duration) const;
+  future_state wait_until<Clock,Duration>(time_point<Clock,Duration> const& timeout_time) const;
+  friend void intrusive_ptr_add_ref(self*) noexcept;
+  friend void intrusive_ptr_release(self*) noexcept;
+};
+class detail::shared_state<R> : public shared_state_base {
+  alignas(alignof(R)) unsigned char storage_[sizeof(R)]{};
+  void set_value_(R {const&|&&} value, std::unique_lock<mutex>& lk);
+  R& get_(std::unique_lock<mutex>& lk);
+public: using ptr_type = intrusive_ptr<shared_state>;
+  void set_value(R {const&|&&} value); R& get();
+};
+class detail::shared_state<R&> : public shared_state_base {
+  R* value_{nullptr};
+  void set_value_(R& value, std::unique_lock<mutex>& lk);
+  R& get_(std::unique_lock<mutex>& lk);
+public: using ptr_type = intrusive_ptr<shared_state>;
+  void set_value(R& value); R& get();
+};
+class detail::shared_state<void> : public shared_state_base {
+  void set_value_(std::unique_lock<mutex>& lk);
+  R& get_(std::unique_lock<mutex>& lk);
+public: using ptr_type = intrusive_ptr<shared_state>;
+  void set_value(); void get();
+};
+
+class detail::shared_state_object<R,Allocator> : public shared_state<R> {
+public: using allocator_type = std::allocator_traits<Allocator>::rebind_alloc<self>;
+  ctor(allocator_type const& alloc);
+protected: void deallocate_future() noexcept override final;
+private: allocator_type alloc_;
+  static void destroy_(allocator_type const& alloc, shared_state_object* p) noexcept;
+};
+
+enum class future_status { ready=1, timeout, deferred };
+struct detail::future_base<R> {
+  using ptr_type = shared_state<R>::ptr_type;
+  ptr_type state_{};
+  ctor()=default; ~dtor()=default; explicit ctor(ptr_type p);
+  ctor(self const&); ctor(self&&) noexcept; self& operator=(self const&) noexcept; self& operator=(self&&) noexcept;
+  bool valid() const noexcept;
+  std::exception_ptr get_exception_ptr();
+  void wait() const;
+  future_status wait_for<Rep,Period>(duration<Rep,Peroid> const& timeout_duration) const;
+  future_status wait_until<Clock,Duration>(time_point<Clock,Duration> const& timeout_time) const;
+};
+
+class future<R> : future_base<R> {
+  explicit ctor(base::ptr_type const& p) noexcept;
+public: ctor()=default; ctor(self&&) noexcept; self& operator=(self&&) noexcept; // no copy
+  shared_future<R> share(); R get();
+};
+class future<R&> : future_base<R&> {}; // same members as future<R>
+class future<void> : future_base<void> {}; // same members as future<R>
+
+class shared_future<R> : future_base<R> {
+  explicit ctor(base::ptr_type const& p) noexcept;
+public: ctor()=default; ~dtor()=default;
+  ctor(self {const&|&&}) noexcept; self& operator=(self {const&|&&}) noexcept;
+  ctor(future<R>&&) noexcept; self& operator=(future<R>&&) noexcept;
+  R get();
+};
+class shared_future<R&> : future_base<R&> {}; // same members as shared_future<R>
+class shared_future<void> : future_base<void> {}; // same members as shared_future<R>
+
+struct detail::promise_base<R> {
+  using ptr_type = shared_state<R>::ptr_type;
+  bool obtained_{false}; ptr_type future_{};
+  ctor(); ctor<Alloc>(std::allocator_arg_t, Alloc alloc); ~dtor();
+  ctor(self&&) noexcept; self& operator=(self&&) noexcept; // no copy
+  future<R> get_future();
+  void swap(promise_base& other) noexcept;
+  void set_exception(std::exception_ptr p);
+};
+struct promise<R> : promise_base<R> {
+  ctor()=default; ctor<Alloc>(std::allocator_arg_t, Alloc alloc); // no copy, move=default
+  void set_value(R {const&|&&} value);
+  void swap(self& other) noexcept;
+};
+struct promise<R&> : promise_base<R&> {}; // same members as promise<R>
+struct promise<void> : promise_base<void> {}; // same members as promise<R>
+void swap<R>(promise<R>& l, promise<R>& r) noexcept;
+
+struct detail::task_base<R,...Args> : shared_state<R> {
+  using ptr_type = intrusive_ptr<task_base>;
+  virtual ~dtor(){}
+  virtual void run(Args&&...args)=0;
+  virtual ptr_type reset()=0;
+};
+class detail::task_object<Fn,Alloc,R,...Args> : public task_base<R,Args...> {
+  Fn fn_; allocator_type alloc_;
+  static void destroy_(allocator_type const& alloc, task_object* p) noexcept;
+protected: void deallocate_future() noexcept override final;
+public: using allocator_type = std::allocator_traits<Alloc>::rebind_alloc<self>;
+  ctor(allocator_type const& alloc, Fn {const&|&&} fn);
+  void run(Args&&...args) override final;
+  ptr_type reset() override final;
+};
+class detail::task_object<Fn,Alloc,void,Args...> : public task_base<void,Args...> {}; // same members as primary
+
+class packaged_task<Signature>;
+class packaged_task<R(Args...)> {
+  using ptr_type = task_base<R,Args...>::ptr_type;
+  bool obtained_{false}; ptr_type task_{};
+public: ctor()=default; ~dtor(){} ctor(self&&) noexcept; self& operator=(self&&) noexcept; // no copy
+  explicit ctor<Fn>(Fn&& fn) requires(...);
+  explicit ctor<Fn>(std::allocator_arg_t, Alloc const& alloc, Fn&& fn);
+  void swap(self& other) noexcept;
+  bool valid() const noexcept;
+  future<R> get_future();
+  void operator()(Args...args);
+  void reset();
+};
+void swap<Signature>(packaged_task<Signature>& l, packaged_task<Signature>& r) noexcept;
+
+auto async<[Policy],Fn,...Args>(<Policy policy>, Fn&& fn, Args...args)
+  -> future<result_of_t<decay_t<Fn>(decay_t<Args>...)>>;
+auto async<Policy,StackAlloc,[Alloc],Fn,...Args>(Policy policy, std::allocator_arg_t, StackAlloc salloc, <Alloc alloc>, Fn&& fn, Args...args)
+  -> future<result_of_t<decay_t<Fn>(decay_t<Args>...)>>;
 ```
 
 ##### Common Bits
@@ -321,6 +622,86 @@ public: ctor()=default; ctor(bool suspend); // no copy/move, implement: awkened,
 ```
 
 ------
+### NUMA
+
+```c++
+namespace boost::fibers::numa;
+void pin_thread(uint32_t, std::thread::native_handle_type);
+void pin_thread(uint32_t cpuid);
+
+struct node { uint32_t id; std::set<uint32_t> logical_cpus; std::vector<uint32_t> distance; };
+bool operator<(node const& lhs, node const& rhs) noexcept;
+std::vector<node> topology();
+
+class algo::work_stealing : public algorithm {
+  static std::vector<intrusive_ptr<work_stealing>> schedulers_;
+  uint32_t cpu_id_; std::vector<uint32_t> local_cpus_, remote_cpus_;
+  context_spinlock_queue rqueue_{};
+  std::mutex mtx_{}; std::condition_variable cnd_{};
+  bool flag_{false}, suspend_;
+  static void init_(std::vector<node> const&, std::vector<intrusive_ptr<work_stealing>>&);
+public: ctor(uint32_t, uint32_t, std::vector<node> const&, bool=false); // no copy/move
+  virtual void awakened(context*) noexcept;
+  virtual context* pick_next() noexcept;
+  virtual context* steal() noexcept;
+  virtual bool has_ready_fibers() const noexcept;
+  virtual bool suspend_until(steady_clock::time_point const&) noexcept;
+  virtual void notify() noexcept;
+};
+```
+
+------
+### GPU
+
+##### CUDA
+
+```c++
+namespace boost::fibers::cuda;
+static void detail::trampoline<Rendezvous>(cudaStream_t st, cudaError_t status, void* vp);
+class detail::single_stream_rendezvous {
+  mutex mtx_{}; condition_variable cv_{};
+  cudaStream_t st_{}; cudaError_t status_{cudaErrorUnknown}; bool done_{false};
+public: ctor(cudaStream_t st);
+  void notify(cudaStream_t st, cudaError_t status) noexcept;
+  std::tuple<cudaStream_t, cudaError_t> wait();
+};
+class detail::many_streams_rendezvous {
+  mutex mtx_{}; condition_variable cv_{};
+  std::set<cudaStream_t> stx_; std::vector<std::tuple<cudaStream_t,cudaError_t>> results_;
+public: ctor(std::initializer_list<cudaStream_t> l);
+  void notify(cudaStream_t st, cudaError_t status) noexcept;
+  std::vector<std::tuple<cudaStream_t, cudaError_t>> wait();
+};
+void waitfor_all();
+std::tuple<cudaStream_t, cudaError_t> waitfor_all(cudaStream_t st);
+std::vector<std::tuple<cudaStream_t, cudaError_t>> waitfor_all<...STP>(cudaStream_t st, STP...stx);
+```
+
+##### ROCm/HIP
+
+```c++
+namespace boost::fibers::cuda;
+static void detail::trampoline<Rendezvous>(hipStream_t st, hipError_t status, void* vp);
+class detail::single_stream_rendezvous {
+  mutex mtx_{}; condition_variable cv_{};
+  hipStream_t st_{}; hipError_t status_{hipErrorUnknown}; bool done_{false};
+public: ctor(hipStream_t st);
+  void notify(hipStream_t st, hipError_t status) noexcept;
+  std::tuple<hipStream_t, hipError_t> wait();
+};
+class detail::many_streams_rendezvous {
+  mutex mtx_{}; condition_variable cv_{};
+  std::set<hipStream_t> stx_; std::vector<std::tuple<hipStream_t,hipError_t>> results_;
+public: ctor(std::initializer_list<hipStream_t> l);
+  void notify(hipStream_t st, hipError_t status) noexcept;
+  std::vector<std::tuple<hipStream_t, hipError_t>> wait();
+};
+void waitfor_all();
+std::tuple<hipStream_t, hipError_t> waitfor_all(hipStream_t st);
+std::vector<std::tuple<hipStream_t, hipError_t>> waitfor_all<...STP>(hipStream_t st, STP...stx);
+```
+
+------
 ### Implementation Details
 
 ##### Spinlock
@@ -374,6 +755,30 @@ using detail::spinlock = ...;
 using detail::spinlock_lock = std::unique_lock<spinlock>;
 ```
 
+##### Thread barrier
+
+```c++
+class detail::thread_barrier {
+  size_t initial_, current_; bool cycle_{true};
+  std::mutex mtx_{}; std::condition_variable cond_{};
+public: explicit ctor(size_t initial); // no copy
+  bool wait();
+};
+```
+
+##### RTM
+
+```c++
+struct detail::rtm_status {
+  enum {none=0, explicit_abort=1, may_retry=2, memory_conflict=4, buffer_overflow=8, debug_hit=16, nested_abort=32};
+  static constexpr uint32_t success = ~uint32_t{0};
+};
+static uint32_t detail::rtm_begin() noexcept;
+static void detail::rtm_end() noexcept;
+static void detail::rtm_abort_lock_not_free() noexcept;
+static bool detail::rtm_test() noexcept;
+```
+
 ##### Misc
 
 ```c++
@@ -385,16 +790,12 @@ struct detail::data_t {
   explicit ctor(context* ctx_, context* from_) noexcept;
 };
 
+struct detail::is_all_same<X,...Y>; // reduce by std::is_same
+
 std::decay_t<T> detail::decay_copy<T>(T&& t) { return std::forward<T>(t); }
 
-class detail::fss_cleanup_function {
-  std::atomic<size_t> use_count_{0};
-public: using ptr_t = intrusive_ptr<self>;
-  ctor()=default; virtual ~dtor()=default;
-  virtual void operator()(void* data) =0;
-  friend void intrusive_ptr_add_ref(self* p) noexcept;
-  friend void intrusive_ptr_release(self* p) noexcept;
-};
+std::chrono::steady_clock::time_point convert(std::chrono::steady_clock::time_point const& timeout_time) noexcept;
+std::chrono::steady_clock::time_point convert<Clock,Duration>(std::chrono::time_point<Clock,Duration> const& timeout_time) noexcept;
 ```
 
 ------

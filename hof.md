@@ -602,12 +602,38 @@ constexpr auto const& indirect = make<indirect_adaptor>();
 // assert( indirect(f)(xs...) == (*f)(xs...) );
 ```
 
-##### `infix`
+##### `infix` - make function work as binary-operator
 
 ```c++
+struct detail::postfix_adaptor<T,F> : F {
+    T x;
+    constexpr ctor<X,XF>(X&& xp, XF&& fp) noexcept(...);
+    constexpr const F& base_function<...Ts>(Ts&&...xs) const noexcept { return always_ref(*this)(xs...); }
+    constexpr auto operator()<...Ts>(Ts&&...xs) const noexcept(...)->result_of<const F&, id_<T&&>, id_<Ts>...> requires(...)
+    { base_function(xs...)((T&&)x, fwd<Ts>(xs)...); }
+    constexpr auto operator> <A> (A&& a) const noexcept(...) ->result_of<const F&, id_<T&&>, id_<A>> requires(...)
+    { base_function(a)((T&&)x, fwd<A>(a)); }
+};
+constexpr postfix_adaptor<T,F> detail::make_postfix_adaptor<T,F>(T&& x, F f) noexcept(...) { return {fwd<T>(x), (F&&)f}; }
+
+struct infix_adaptor<F> : callable_base<F> {
+    using fit_rewritable1_tag = self;
+    constexpr const callable_base<F>& <infix>_base_function<...Ts>(Ts&&...xs) const noexcept { return always_ref(*this)(xs...); }
+    constexpr auto operator()<...Ts>(Ts&&...xs) const noexcept(...)->decltype(...) { return base_function(xs...)(fwd<Ts>(xs)...); }
+};
+constexpr auto operator< <T,F> (T&& x, const infix_adaptor<F>& i) noexcept(...) ->decltype(...)
+{ return make_postfix_adaptor(fwd<T>(x), move(i.base_function(x))); }
+
+auto detail::operator< <T,F>(T&& x, const static_function_wrapper<F>& f) noexcept(...) ->decltype(...)
+{ return make_postfix_adaptor(fwd<T>(x), move(f.base_function().infix_base_function())); }
+auto detail::operator< <T,F>(T&& x, const static_default_function<F>& f) noexcept(...) ->decltype(...)
+{ return make_postfix_adaptor(fwd<T>(x), f.infix_base_function()); }
+
+constexpr auto const& infix = make<infix_adaptor>{};
+// assert( x <infix(f)> y == f(x,y) );
 ```
 
-##### `lazy`
+##### `lazy` - constexpr simple wrapper
 
 ```c++
 struct detail::placeholder_transformer; // std::is_placeholder -> make_args_f
@@ -646,19 +672,37 @@ struct lazy_adaptor<F> : callable_base<F> {
         { return make_lazy_nullary_invoker((callable_base<F>&&)base_function(Unused{})); }
 };
 constexpr auto const& lazy = make<lazy_adaptor>{};
+// assert( lazy(f)(xs...) == std::bind(f, xs...) );
+// assert( lazy(f)(xs...)() == f(xs...) );
+// assert( lazy(f)(_1)(x) == f(x) );
 
 struct std::is_bind_expression<lazy_invoker<F,Pack>> : std::true_type {};
 struct std::is_bind_expression<lazy_nullary_invoker<F>> : std::true_type {};
 ```
 
-##### `match`
+##### `match` - overload resolution
 
 ```c++
+struct match_adaptor<...Fs>;
+struct match_adaptor<F,Fs...> : callable_base<F>, match_adaptor<Fs...> {
+    using fit_rewritable_tag = self;
+    struct failure : failure_for<callable_base<F>, Fs...>{};
+    constexpr ctor<X,...Xs>(X&& f1, Xs&&...fs) requires(...) {}
+};
+struct match_adaptor<F> : callable_base<F> {};
+
+constexpr auto const& match = make<match_adaptor>{};
 ```
 
-##### `mutable`
+##### `mutable` - wrap const function object
 
 ```c++
+struct mutable_adaptor {
+    mutable F f;
+    auto operator()<...Ts>(Ts&&...xs) const noexcept(...)->result_of<F, id_<Ts>...> { return f(fwd<Ts>(xs)...); }
+};
+
+constexpr auto const& mutable_ = make<mutable_adaptor>{};
 ```
 
 ##### `partial`
