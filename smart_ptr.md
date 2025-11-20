@@ -40,13 +40,301 @@ void swap<T>(scoped_array<T>& a, scoped_array<T>& b) noexcept { a.swap(b); }
 ```
 
 ------
-### Shared Ownership
+### Shared Ownership (`shared_ptr`, `weak_ptr`, `local_shared_ptr`)
 
 ```c++
 class bad_weak_ptr : public std::exception { char const* what() const noexcept override; };
 
+struct owner_equal_to<T=void>{ using result_type = bool; using first_argument_type = T; using second_argument_type = T;
+    bool operator()<U,V>(U const& u, V const& v) const noexcept { return u.owner_equals(v); }
+};
+struct owner_less<T=void>{ using result_type = bool; using first_argument_type = T; using second_argument_type = T;
+    bool operator()<U,V>(U const& u, V const& v) const noexcept { return u.owner_before(v); }
+};
+struct owner_hash<T>{ using result_type = size_t; using argument_type = T;
+    size_t operator()(T const& t) const noexcept { return t.owner_hash_value(); }
+};
 
+struct detail::sp_element<T> { using type = T; };
+struct detail::sp_element<T[<n>]> { using type = T; };
+struct detail::sp_dereference<T> { using type = T&; };
+struct detail::sp_dereference<void [const][volatile]> { using type = void; };
+struct detail::sp_dereference<T[<n>]> { using type = void; };
+struct detail::sp_member_access<T> { using type = T*; };
+struct detail::sp_member_access<T[<n>]> { using type = void; };
+struct detail::sp_array_access<T> { using type = void; };
+struct detail::sp_array_access<T[<n>]> { using type = T&; };
+struct detail::sp_extent<T> { enum{value=0}; };
+struct detail::sp_extent<T[n]> { enum{value=n}; };
+
+void detail::sp_enable_shared_from_this<X,Y,T>(shared_ptr<X> const* ppx, Y const* py, enable_shared_from_this<T> const* pe)
+{ if (pe) pe->_internal_accept_owner(ppx, const_cast<Y*>(py)); }
+void detail::sp_enable_shared_from_this(...){}
+void detail::sp_assert_convertible() noexcept;
+void detail::sp_pointer_construct<T,Y>(shared_ptr<T>* ppx, Y* p, shared_count& pn)
+{ shared_count{p}.swap(pn); sp_enable_shared_from_this(ppx, p, p); }
+void detail::sp_pointer_construct<T,[n],Y>(shared_ptr<T[<n>]>*, Y* p, shared_count& pn)
+{ sp_assert_convertible<Y[<n>], T[<n>]>(); shared_count{p, checked_array_deleter<T>{}}.swap(pn); }
+void detail::sp_deleter_construct<T,Y>(shared_ptr<T>* ppx, Y* p) { sp_enable_shared_from_this(ppx,p,p); }
+void detail::sp_deleter_construct<T,[n],Y>(shared_ptr<T[n]>*, Y* p) { sp_assert_convertible<Y[<n>], T[<n>]>(); }
+
+struct detail::sp_internal_cosntructor_tag{};
+
+class shared_ptr<T> {
+    element_type* px{nullptr}; shared_count pn;
+public: using element_type = sp_element<T>::type;
+    constexpr ctor(<nullptr_t>) noexcept{}
+    constexpr ctor(sp_internal_cosntructor_tag, element_type* px_, shared_count {const&|&&} pn_) noexcept: px{px_}, pn(<std::move>(pn_)) {}
+    explicit ctor<Y>(Y* p): px{p} { sp_pointer_construct(this, p, pn); }
+    ctor<Y,D,[A]>(Y* p, D d): px{p}, pn{p, (D&&)d, <a>} { sp_deleter_construct(this, p); }
+    ctor<D,[A]>(nullptr_t p, D d): px{p}, pn{p, (D&&)d, <a>} {}
+    ctor(self const&) noexcept: px{r.px}, pn{r.pn}{}
+    explicit ctor<Y>(weak_ptr<Y> const& r) requires(...) : pn{r.pn} { sp_assert_convertible<Y,T>(); px = r.px; }
+    ctor<Y>(weak_ptr<Y> const& r, sp_nothrow_tag) noexcept: pn{r.pn, sp_nothrow_tag{}} { if (!pn.empty()) px=r.px; }
+    ctor<Y>(shared_ptr<Y> const& r) noexcept requires(...) : px{r.px}, pn{r.pn} { sp_assert_convertible<Y,T>(); }
+    ctor<Y>(shared_ptr<Y> const& r, element_type* p) noexcept: px{p}, pn{r.pn} {}
+    ctor<Y,D>(std::unique_ptr<Y,D>&& r) requires(...) : px{r.get()} { sp_assert_convertible<Y,T>(); // also movelib::unique_ptr
+        if (auto tmp = r.get()) { pn = shared_count{r}; sp_deleter_construct(this, tmp); } }
+    self& operator=<Y>(self<Y> const& r) noexcept { self{r}.swap(*this); return *this; }
+    self& operator=<Y,D>(std::unique_ptr<Y,D>&& r) { self{std::move(r)}.swap(*this); return *this; }
+    self& operator=<Y,D>(movelib::unique_ptr<Y,D> r) requires(...) { sp_assert_convertible<Y,T>();
+        self tmp{}; if (auto p = r.get()) { tmp.px=p; tmp.pn=shared_count{r}; sp_deleter_construct(&tmp, p); }
+        tmp.swap(*this); return *this;
+    }
+    ctor(self&& r) noexcept: px{r.px}, pn{std::move(r.pn)} { r.px = nullptr; }
+    ctor<Y>(shared_ptr<Y>&& r) noexcept requires(...) : px{r.px}, pn{std::move(r.pn)} { sp_assert_convertible<Y,T>(); r.px = nullptr; }
+    self& operator=<Y>(self<Y>&& r) noexcept { self{std::move(r)}.swap(*this); return *this; }
+    ctor<Y>(shared_ptr<Y>&& r, element_type* p) noexcept: px{p} { pn.swap(r.pn); r.px = nullptr; }
+    self& operator=(nullptr_t) noexcept { self{}.swap(*this); return *this; }
+    void reset() noexcept { self{}.swap(*this); }
+    void reset<Y,[D],[A]>(Y* p, <D d>, <A a>) { self{p, <(D&&)d>, <a>}.swap(*this); }
+    void reset(shared_ptr<Y> {const&|&&} r, element_type* p) noexcept { self{<std::move>(r),p}.swap(*this); }
+    sp_dereference<T>::type operator*() const noexcept { return *px; }
+    sp_member_access<T>::type operator->() const noexcept { return px; }
+    sp_array_access<T>::type operator[](ptrdiff_t i) const noexcept { return {px[i]}; }
+    element_type* get() const noexcept { return px; }
+    explicit operator bool() const noexcept { return px!=nullptr; }
+    bool unique() const noexcept { return pn.unique(); }
+    long use_count() const noexcept { return pn.use_count(); }
+    void swap(self& other) noexcept { std::swap(px, other.px); pn.swap(other.pn); }
+    bool owner_before<Y>({shared_ptr|weak_ptr}<Y> const& rhs) const noexcept { return pn < rhs.pn; }
+    bool owner_equals<Y>({shared_ptr|weak_ptr}<Y> const& rhs) const noexcept { return pn == rhs.pn; }
+    size_t owner_hash_value() const noexcept { return pn.hash_value(); }
+    void* _internal_get_deleter(sp_typeinfo_ const& ti) const noexcept { return pn.get_deleter(ti); }
+    void* _internal_get_local_deleter(sp_typeinfo_ const& ti) const noexcept { return pn.get_local_deleter(ti); }
+    void* _internal_get_untyped_deleter() const noexcept { return pn.get_untyped_deleter(); }
+    bool _internal_equiv(self const& r) const noexcept { return px==r.px && pn==r.pn; }
+    shared_count _internal_count() const noexcept { return pn; }
+
+    friend bool operator==(self const& a, self const& b) noexcept { return a.get() == b.get(); } // and !=, and comp with nullptr_t
+    friend bool operator<(self const& a, self const& b) noexcept { return a.owner_before(b); }
+    friend void swap(self& a, self& b) noexcept { a.swap(b); }
+    friend self static_pointer_cast<U>(self<U> {const&|&&} r) noexcept // all 4 casts
+    { auto p = (element_type*)r.get(); return {<std::move>(r),p}; }
+    friend element_type* get_pointer(self const& p) noexcept { return p.get(); }
+    friend std::basic_ostream<Ch,Tr>& operator<<(std::basic_ostream<Ch,Tr>& os, self const& p) { return os << p.get(); }
+};
+shared_ptr<T>(weak_ptr<T>) -> shared_ptr<T>;
+shared_ptr<T,D>(std::unique_ptr<T,D>) -> shared_ptr<T>;
+
+D* detail::basic_get_deleter<D,T>(shared_ptr<T> const& p) noexcept { return (D*)p._internal_get_deleter(typeid(D)); }
+D<const>* detail::basic_get_local_deleter<D,T>(D<const>*, shared_ptr<T> const& p) noexcept { return (D*)p._internal_get_local_deleter(typeid(D)); }
+class detail::esft2_deleter_wrapper {
+    shared_ptr<void const volatile> deleter_;
+public: ctor()noexcept{}
+    void set_deleter<T>(shared_ptr<T>const& deleter) noexcept { deleter_ = deleter; }
+    D* get_deleter<D>() const noexcept { return basic_get_deleter<D>(deleter_); }
+    void operator()<T>(T*) noexcept { deleter_.reset(); }
+};
+D* get_deleter<D,T>(shared_ptr<T> const& p) noexcept {
+    D* d = basic_get_deleter<D>(p); if (!d) d = basic_get_local_deleter(d, p);
+    if (!d) if (auto del_wrapper = basic_get_deleter<esft2_deleter_wrapper>(p)) d = del_wrapper->get_deleter<D>();
+    return d;
+}
+bool atomic_is_lock_free<T>(shared_ptr<T> const*) noexcept { return false; }
+shared_ptr<T> atomic_load(shared_ptr<T> const* p) noexcept { spinlock_pool<2>::scoped_lock lock{p}; return *p; }
+shared_ptr<T> atomic_load_explicit<T,M>(shared_ptr<T> const* p, M) noexcept { return atomic_load(p); }
+void atomic_store(shared_ptr<T>* p, shared_ptr<T> r) noexcept { spinlock_pool<2>::scoped_lock lock{p}; p->swap(r); }
+void atomic_store_explicit<T,M>(shared_ptr<T>* p, shared_ptr<T> r, M) noexcept { atomic_store(p, r); }
+shared_ptr<T> atomic_exchange(shared_ptr<T>* p, shared_ptr<T> r) noexcept {
+    auto& sp = spinlock_pool<2>::spinlock_for(p);
+    sp.lock(); p->swap(r); sp.unlock(); return r;
+}
+shared_ptr<T> atomic_exchange_explicit<T,M>(shared_ptr<T>* p, shared_ptr<T> r, M) noexcept { return atomic_exchange(p, r); }
+bool atomic_compare_exchange<T>(shared_ptr<T>* p, shared_ptr<T>* v, shared_ptr<T> w) noexcept {
+    auto& sp = spinlock_pool<2>::spinlock_for(p);
+    if (p->_internal_equiv(*v)) { p->swap(w); sp.unlock(); return true; }
+    else { shared_ptr<T> tmp{*p}; sp.unlock(); tmp.swap(*v); return false; }
+}
+bool atomic_compare_exchange_explicit<T,M>(shared_ptr<T>* p, shared_ptr<T>* v, shared_ptr<T> w, M, M) noexcept { return atomic_compare_exchange(p,v,w); }
+size_t hash_value<T>(shared_ptr<T> const& p) noexcept { return hash<shared_ptr<T>::element_type*>{}(p.get()); }
+struct std::hash<shared_ptr<T>> { size_t operator()(shared_ptr<T> const& p) const noexcept { return std::hash<shared_ptr<T>::element_type*>{}(p.get()); } };
+
+class shared_array<T> { using deleter = checked_array_deleter<T>;
+    T* px{nullptr}; shared_count pn;
+public: ctor(<nullptr_t>) noexcept{}
+    explicit ctor<Y>(Y* p) requires(...) : px{p}, pn{p, checked_array_deleter<Y>{}} { sp_assert_convertible<Y[],T[]>(); }
+    ctor<Y,D,[A]>(Y* p, D d, <A a>) requires(...) : px{p}, pn{p, d, <a>} { sp_assert_convertible<Y[],T[]>(); }
+    ctor(self const& r) noexcept: px{r.px}, pn{r.pn}{}
+    ctor(self && r) noexcept: px{r.px}, pn{r.pn}{ pn.swap(r.pn); r.px=nullptr; }
+    ctor<Y>(self<Y> const& r) noexcept requires(...) : px{r.px}, pn{r.pn} { sp_assert_convertible<Y[],T[]>(); }
+    ctor<Y>(self<Y> const& r, element_type* p) noexcept: px{p}, pn{r.pn} {}
+    self& operator=<Y>(self<Y> {const&|&&} r) noexcept { self{<std::move>(r)}.swap(*this); return *this; }
+    void reset() noexcept { self{}.swap(*this); }
+    void reset<Y,[D],[A]>(Y* p, <D d>, <A a>) { self{p,<d>,<a>}.swap(*this); }
+    void reset<Y>(self<Y> const& r, element_type* p) noexcept { self{r,p}.swap(*this); }
+    T& operator[] (ptrdiff_t i) const noexcept { return px[i]; }
+    T* get() const noexcept { return px; }
+    explicit operator bool() const noexcept { return px!=nullptr; }
+    bool unique() const noexcept { return pn.unique(); }
+    long use_count() const noexcept { return pn.use_count(); }
+    void swap(self& other) noexcept { std::swap(px, other.px); pn.swap(other.pn); }
+    void* _internal_get_deleter(sp_typeinfo_ const& ti) const noexcept { return pn.get_deleter(ti); }
+
+    friend bool operator==(self const& a, self const& b) noexcept { return a.get() == b.get(); } // and !=, and comp with nullptr_t
+    friend bool operator<(self const& a, self const& b) noexcept { return a.owner_before(b); }
+    friend void swap(self& a, self& b) noexcept { a.swap(b); }
+    friend D* get_deleter<D,T>(self const& p) noexcept { (D*)p._internal_get_deleter(typeid(D)); }
+};
+
+class weak_ptr<T> {
+    element_type* px{nullptr}; weak_count pn;
+public: using element_type = sp_element<T>::type;
+    constexpr ctor() noexcept{}
+    ctor(self const&) noexcept: px{r.px}, pn{r.pn}{}
+    ctor(self &&) noexcept: px{r.px}, pn{std::move(r.pn)}{ r.px = nullptr; }
+    self& operator=(self const& r) noexcept { px=r.px; pn=r.pn; return *this; }
+    self& operator=(self && r) noexcept { self{std::move(r)}.swap(*this); return *this; }
+    ctor<Y>(self<Y> const& r) noexcept requires(...) : px{r.lock().get()}, pn{r.pn} { sp_assert_convertible<Y,T>(); }
+    ctor<Y>(self<Y> && r) noexcept requires(...) : px{r.lock().get()}, pn{std::move(r.pn)} { sp_assert_convertible<Y,T>(); r.px=nullptr; }
+    ctor<Y>(shared_ptr<Y> const& r) requires(...) : px{r.px}, pn{r.pn} { sp_assert_convertible<Y,T>(); }
+    ctor<Y>({shared_ptr|weak_ptr}<Y> const& r, element_type* p) noexcept : px{p}, pn{r.pn} {}
+    ctor<Y>(self<Y> && r, element_type* p) noexcept : px{p}, pn{std::move(r.pn)} {}
+    self& operator=<Y>({shared_ptr|weak_ptr}<Y> const& r) noexcept requires(...) { sp_assert_convertible<Y,T>();
+        px = r.lock().get(); pn = r.pn; return *this;
+    }
+    self& operator=<Y>(self<Y> && r) noexcept { self{std::move(r)}.swap(*this); return *this; }
+    shared_ptr<T> lock() const noexcept { return {*this, sp_nothrow_tag{}}; }
+    long use_count() const noexcept { return pn.use_count(); }
+    bool expired() const noexcept { return pn.use_count() == 0; }
+    bool <_>empty() const noexcept { return pn.empty(); }
+    void reset() noexcept { self{}.swap(*this); }
+    void swap(self& other) noexcept { std::swap(px, other.px); pn.swap(other.pn); }
+    bool owner_before<Y>({shared_ptr|weak_ptr}<Y> const& rhs) const noexcept { return pn < rhs.pn; }
+    bool owner_equals<Y>({shared_ptr|weak_ptr}<Y> const& rhs) const noexcept { return pn == rhs.pn; }
+    size_t owner_hash_value() const noexcept { return pn.hash_value(); }
+
+    friend bool operator<(self const& a, self const& b) noexcept { return a.owner_before(b); }
+    friend void swap(self& a, self& b) noexcept { a.swap(b); }
+};
+weak_ptr<T>(shared_ptr<T>) -> weak_ptr<T>;
+size_t hash_value<T>(weak_ptr<T> const& p) noexcept { return p.owner_hash_value(); }
+struct std::hash<weak_ptr<T>> { size_t operator()(weak_ptr<T> const& p) const noexcept { return p.owner_hash_value(); } };
+struct std::equal_to<weak_ptr<T>> { bool operator()(weak_ptr<T> const& a, weak_ptr<T> const& b) const noexcept { return a.owner_equals(b); } };
+
+void detail::lsp_pointer_construct<E,Y>(local_shared_ptr<E>*, Y* p, local_counted_base*& pn) {
+    sp_assert_convertible<Y,E>(); using D = local_sp_deleter<checked_deleter<E>>;
+    shared_ptr<E> p2{p, D{}};  D* pd = (D*)p2._internal_get_untyped_deleter();
+    pd->pn_ = p2._internal_count(); pn = pd;
+}
+void detail::lsp_pointer_construct<E,[n],Y>(shared_ptr<T[<n>]>*, Y* p, local_counted_base*& pn) {
+    sp_assert_convertible<Y[<n>],E[<n>]>(); using D = local_sp_deleter<checked_array_deleter<E>>;
+    shared_ptr<E[<n>]> p2{p, D{}};  D* pd = (D*)p2._internal_get_untyped_deleter();
+    pd->pn_ = p2._internal_count(); pn = pd;
+}
+void detail::lsp_deleter_construct<E,P,D>(local_shared_ptr<E>*, P p, D const& d, local_counted_base*& pn) {
+    using D2 = local_sp_deleter<D>;
+    shared_ptr<E> p2{p, D2{d}};  D2* pd = (D2*)p2._internal_get_untyped_deleter();
+    pd->pn_ = p2._internal_count(); pn = pd;
+}
+void detail::lsp_allocator_construct<E,P,D,A>(local_shared_ptr<E>*, P p, D const& d, A const& a, local_counted_base*& pn) {
+    using D2 = local_sp_deleter<D>;
+    shared_ptr<E> p2{p, D2{d}, a};  D2* pd = (D2*)p2._internal_get_untyped_deleter();
+    pd->pn_ = p2._internal_count(); pn = pd;
+}
+struct detail::lsp_internal_constructor_tag{};
+
+class local_shared_ptr<T> {
+    element_type* px{nullptr}; local_counted_base* pn{nullptr};
+public: using element_type = sp_element<T>::type;
+    ~dtor() noexcept { if (pn) pn->release(); }
+    constexpr ctor(<nullptr_t>) noexcept{}
+    constexpr ctor(lsp_internal_cosntructor_tag, element_type* px_, local_counted_base* pn_) noexcept: px{px_}, pn{pn_} {}
+    explicit ctor<Y>(Y* p): px{p} { lsp_pointer_construct(this, p, pn); }
+    ctor<Y,D>(Y* p, D d): px{p} { lsp_deleter_construct(this, p, d, pn); }
+    ctor<D>(nullptr_t p, D d): px{p} { lsp_deleter_construct(this, p, d, pn); }
+    ctor<Y,D,A>(Y* p, D d, A a): px{p} { lsp_allocator_construct(this, p, d, a, pn); }
+    ctor<D,A>(nullptr_t p, D d, A a): px{p} { lsp_allocator_construct(this, p, d, a, pn); }
+    ctor<Y>(shared_ptr<Y> const& r) requires(...) : px{r.get()} { sp_assert_convertible<Y,T>();
+        if (r.use_count()!=0) pn = new local_counted_impl{r._internal_count()}; }
+    ctor<Y>(shared_ptr<Y> && r) requires(...) : px{r.get()} { sp_assert_convertible<Y,T>();
+        if (r.use_count()!=0) { pn = new local_counted_impl{r._internal_count()}; r.reset(); } }
+    ctor<Y,D>(std::unique_ptr<Y,D>&& r) requires(...) : px{r.get()} { sp_assert_convertible<Y,T>();
+        if (px) px = new local_counted_impl{shared_ptr<T>{std::move(r)}._internal_count()}; }
+    ctor(self const& r) noexcept: px{r.px}, pn{r.pn} { if (pn) pn->add_ref(); }
+    ctor(self && r) noexcept: px{r.px}, pn{r.pn} { r.px = nullptr; r.pn = nullptr; }
+    ctor<Y>(self<Y> const& r) noexcept requires(...) : px{r.px}, pn{r.pn} { sp_assert_convertible<Y,T>(); if (pn) pn->add_ref(); }
+    ctor<Y>(self<Y> && r) noexcept requires(...) : px{r.px}, pn{r.pn} { sp_assert_convertible<Y,T>(); r.px=nullptr; r.pn=nullptr; }
+    ctor<Y>(self<Y> const& r, element_type* p) noexcept: px{p}, pn{r.pn} { if (pn) pn->add_ref(); }
+    ctor<Y>(self<Y> && r, element_type* p) noexcept: px{p}, pn{r.pn} { r.px = nullptr; r.pn = nullptr; }
+    self& operator=<Y>(self<Y> const& r) noexcept { self{r}.swap(*this); return *this; }
+    self& operator=<Y>(self<Y>&& r) noexcept { self{std::move(r)}.swap(*this); return *this; }
+    self& operator=(nullptr_t) noexcept { self{}.swap(*this); return *this; }
+    self& operator=<Y,D>(std::unique_ptr<Y,D>&& r) { self{std::move(r)}.swap(*this); return *this; }
+    void reset() noexcept { self{}.swap(*this); }
+    void reset<Y,[D],[A]>(Y* p, <D d>, <A a>) { self{p, <d>, <a>}.swap(*this); }
+    void reset(self<Y> {const&|&&} r, element_type* p) noexcept { self{<std::move>(r),p}.swap(*this); }
+    sp_dereference<T>::type operator*() const noexcept { return *px; }
+    sp_member_access<T>::type operator->() const noexcept { return px; }
+    sp_array_access<T>::type operator[](ptrdiff_t i) const noexcept { return {px[i]}; }
+    element_type* get() const noexcept { return px; }
+    explicit operator bool() const noexcept { return px!=nullptr; }
+    long local_use_count() const noexcept { return pn ? pn->local_use_count() : 0; }
+    operator {shared_ptr|weak_ptr}<Y>() const noexcept requires(...) { sp_assert_convertible<T,Y>();
+        if (pn) return {sp_internal_cosntructor_tag{}, px, pn->local_cb_get_shared_count()}; else return {};
+    }
+    void swap(self& other) noexcept { std::swap(px, r.px); std::swap(pn, r.pn); }
+    bool owner_before<Y>(self<Y> const& r) const noexcept { return std::less<local_counted_base*>{}(pn, r.pn); }
+    bool owner_equals<Y>(self<Y> const& r) const noexcept { return pn == r.pn; }
+
+    friend bool operator==(self const& a, self const& b) noexcept { return a.get() == b.get(); } // and !=, and comp with nullptr_t, shared_ptr
+    friend bool operator<(self const& a, self const& b) noexcept { return a.owner_before(b); }
+    friend void swap(self& a, self& b) noexcept { a.swap(b); }
+    friend self static_pointer_cast<U>(self<U> {const&|&&} r) noexcept // all 4 casts
+    { auto p = (element_type*)r.get(); return {<std::move>(r),p}; }
+    friend element_type* get_pointer(self const& p) noexcept { return p.get(); }
+    friend std::basic_ostream<Ch,Tr>& operator<<(std::basic_ostream<Ch,Tr>& os, self const& p) { return os << p.get(); }
+    friend D* get_deleter<D>(self const& p) noexcept { return get_deleter<D>(shared_ptr<T>{p}); }
+};
+size_t hash_value<T>(local_shared_ptr<T> const& p) noexcept { return hash<local_shared_ptr<T>::element_type*>{}(p.get()); }
+struct std::hash<local_shared_ptr<T>> { size_t operator()(local_shared_ptr<T> const& p) const noexcept { return std::hash<local_shared_ptr<T>::element_type*>{}(p.get()); } };
 ```
+------
+### Atomic `shared_ptr`
+
+```c++
+class atomic_shared_ptr { // no copy
+    shared_ptr<T> p_; mutable spinlock l_;
+    bool compare_exchange(shared_ptr<T>& v, shared_ptr<T> w) noexcept {
+        l_.lock();
+        if (p_._internal_equiv(v)) { p_.swap(w); l_.unlock(); return true; }
+        else { shared_ptr<T> tmp{p_}; l_.unlock(); tmp.swap(v); return false; }
+    }
+public: constexpr ctor() noexcept : l_{ATOMIC_FLAG_INIT} {}
+    ctor(shared_ptr<T> p) noexcept : p_{std::move(p)}, l_{ATOMIC_FLAG_INIT} {}
+    self& operator=(shared_ptr<T> r) noexcept { spinlock::scoped_lock lock{l_}; p_.swap(r); return *this; }
+    constexpr bool is_lock_free() const noexcept { return false; }
+    shared_ptr<T> load<[M]>(<M>) const noexcept { spinlock::scoped_lock lock{l_}; return p_; }
+    operator shared_ptr<T>() const noexcept { spinlock::scoped_lock lock{l_}; return p_; }
+    void stored<[M]>(shared_ptr<T> r, <M>) noexcept { spinlock::scoped_lock lock{l_}; p_.swap(r); }
+    shared_ptr<T> exchange<[M]>(shared_ptr<T> r, <M>) noexcept { store(r); return std::move(r); }
+    bool compare_exchange_{weak|strong}<[M]>(shared_ptr<T>& v, shared_ptr<T> const& w, <M>, <M>) noexcept { return compare_exchange(v, w); }
+    bool compare_exchange_{weak|strong}<[M]>(shared_ptr<T>& v, shared_ptr<T> && w, <M>, <M>) noexcept { return compare_exchange(v, std::move(w)); }
+};
+```
+
+  allocate_<local>_shared_array, allocate_unique, enable_shared_from_XXX,
+  intrusive_ptr, intrusive_ref_counter, make_<local>_shared_XXX, make_unique
 
 ------
 ### Pointer Cast & Traits
