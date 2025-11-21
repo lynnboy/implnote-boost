@@ -40,7 +40,7 @@ void swap<T>(scoped_array<T>& a, scoped_array<T>& b) noexcept { a.swap(b); }
 ```
 
 ------
-### Shared Ownership (`shared_ptr`, `weak_ptr`, `local_shared_ptr`)
+### Shared Ownership Pointers (`shared_ptr`, `weak_ptr`)
 
 ```c++
 class bad_weak_ptr : public std::exception { char const* what() const noexcept override; };
@@ -78,13 +78,13 @@ void detail::sp_pointer_construct<T,[n],Y>(shared_ptr<T[<n>]>*, Y* p, shared_cou
 void detail::sp_deleter_construct<T,Y>(shared_ptr<T>* ppx, Y* p) { sp_enable_shared_from_this(ppx,p,p); }
 void detail::sp_deleter_construct<T,[n],Y>(shared_ptr<T[n]>*, Y* p) { sp_assert_convertible<Y[<n>], T[<n>]>(); }
 
-struct detail::sp_internal_cosntructor_tag{};
+struct detail::sp_internal_constructor_tag{};
 
 class shared_ptr<T> {
     element_type* px{nullptr}; shared_count pn;
 public: using element_type = sp_element<T>::type;
     constexpr ctor(<nullptr_t>) noexcept{}
-    constexpr ctor(sp_internal_cosntructor_tag, element_type* px_, shared_count {const&|&&} pn_) noexcept: px{px_}, pn(<std::move>(pn_)) {}
+    constexpr ctor(sp_internal_constructor_tag, element_type* px_, shared_count {const&|&&} pn_) noexcept: px{px_}, pn(<std::move>(pn_)) {}
     explicit ctor<Y>(Y* p): px{p} { sp_pointer_construct(this, p, pn); }
     ctor<Y,D,[A]>(Y* p, D d): px{p}, pn{p, (D&&)d, <a>} { sp_deleter_construct(this, p); }
     ctor<D,[A]>(nullptr_t p, D d): px{p}, pn{p, (D&&)d, <a>} {}
@@ -231,7 +231,12 @@ weak_ptr<T>(shared_ptr<T>) -> weak_ptr<T>;
 size_t hash_value<T>(weak_ptr<T> const& p) noexcept { return p.owner_hash_value(); }
 struct std::hash<weak_ptr<T>> { size_t operator()(weak_ptr<T> const& p) const noexcept { return p.owner_hash_value(); } };
 struct std::equal_to<weak_ptr<T>> { bool operator()(weak_ptr<T> const& a, weak_ptr<T> const& b) const noexcept { return a.owner_equals(b); } };
+```
 
+------
+### Thread-Local Shared Ownership Pointer (`local_shared_ptr`)
+
+```c++
 void detail::lsp_pointer_construct<E,Y>(local_shared_ptr<E>*, Y* p, local_counted_base*& pn) {
     sp_assert_convertible<Y,E>(); using D = local_sp_deleter<checked_deleter<E>>;
     shared_ptr<E> p2{p, D{}};  D* pd = (D*)p2._internal_get_untyped_deleter();
@@ -259,7 +264,7 @@ class local_shared_ptr<T> {
 public: using element_type = sp_element<T>::type;
     ~dtor() noexcept { if (pn) pn->release(); }
     constexpr ctor(<nullptr_t>) noexcept{}
-    constexpr ctor(lsp_internal_cosntructor_tag, element_type* px_, local_counted_base* pn_) noexcept: px{px_}, pn{pn_} {}
+    constexpr ctor(lsp_internal_constructor_tag, element_type* px_, local_counted_base* pn_) noexcept: px{px_}, pn{pn_} {}
     explicit ctor<Y>(Y* p): px{p} { lsp_pointer_construct(this, p, pn); }
     ctor<Y,D>(Y* p, D d): px{p} { lsp_deleter_construct(this, p, d, pn); }
     ctor<D>(nullptr_t p, D d): px{p} { lsp_deleter_construct(this, p, d, pn); }
@@ -291,7 +296,7 @@ public: using element_type = sp_element<T>::type;
     explicit operator bool() const noexcept { return px!=nullptr; }
     long local_use_count() const noexcept { return pn ? pn->local_use_count() : 0; }
     operator {shared_ptr|weak_ptr}<Y>() const noexcept requires(...) { sp_assert_convertible<T,Y>();
-        if (pn) return {sp_internal_cosntructor_tag{}, px, pn->local_cb_get_shared_count()}; else return {};
+        if (pn) return {sp_internal_constructor_tag{}, px, pn->local_cb_get_shared_count()}; else return {};
     }
     void swap(self& other) noexcept { std::swap(px, r.px); std::swap(pn, r.pn); }
     bool owner_before<Y>(self<Y> const& r) const noexcept { return std::less<local_counted_base*>{}(pn, r.pn); }
@@ -335,7 +340,7 @@ public: constexpr ctor() noexcept : l_{ATOMIC_FLAG_INIT} {}
 ```
 
 ------
-### Intrusive RefCounted Pointer
+### Intrusive RefCounted Pointer (`intrusive_ptr`)
 
 ```c++
 struct sp_adl_block::thread_unsafe_counter {
@@ -431,7 +436,7 @@ weak_ptr<T> weak_from_raw<T>(T* p) { return {p->weak_from_this(), p}; }
 ```
 
 ------
-### `make_unique`, `make_shared`, `make_local_shared`
+### `make_unique`, `allocate_unique`
 
 ```c++
 std::unique_ptr<T> make_unique<T,...Args>(Args&&...args) requires(!std::is_array_v<T>) { return {new T{std::forward<Args>(args)...}}; }
@@ -517,7 +522,12 @@ std::unique_ptr<T,alloc_deleter<T,A>> allocate_unique<T,A>(const A& alloc, size_
 std::unique_ptr<T,alloc_deleter<T,A>> allocate_unique<T,A>(const A& alloc, std::remove_extent_t<T> const& value) requires(sp_is_bounded_array<T>::value)
 { sp_alloc_make<T,A> c{alloc,std::extent_v<T>}; alloc_construct_n(c.state(), first_scalar(c.get()), std::extent_v<T>*sp_alloc_size<T>::value, first_scalar(&value), sp_alloc_size<std::remove_extent_t<T>>::value); return c.release(); }
 auto get_allocator_pointer<T,U,A>(const std::unique_ptr<T,alloc_deleter<U,A>>& p) noexcept -> allocator_pointer<allocator_rebind<A,sp_alloc_value<T>::type>::type>::type { return p.get().ptr(); }
+```
 
+------
+### `make_shared`, `allocate_shared`
+
+```c++
 struct detail::sp_aligned_storage<n,a> { union type { char data_[n]; sp_type_with_alignment<a>::type align_; }; };
 class detail::sp_ms_deleter {
     bool initialized_{false}; sp_aligned_storage<sizeof(T), alignof(T)>::type storage_;
@@ -566,6 +576,155 @@ sp_if_not_array<T>::type allocate_shared<T,A,...Args>(A const&a, Args&&...args) 
     auto pv = pd->address(); std::allocator_traits<A2>::construct(a2, (T*)pv, std::forward<Args>(args)...); pd->set_initialized(); T* pt2 = (T*)pv;
     sp_enable_shared_from_this(&pt, pt2, pt2); return {pt, pt2};
 }
+
+struct detail::sp_array_element<T> { using type = std::remove_cv_t<std::remove_extent_t<T>>; };
+struct detail::sp_array_count<T> { enum{ value = 1 }; };
+struct detail::sp_array_count<T[n]> { enum{ value = n * sp_array_count<T>::value }; };
+struct detail::sp_max_size<n,m> { enum{ value = n<m ? m : n }; };
+struct detail::sp_align_up<n,m> { enum{ value = (n+m-1) & ~(m-1) }; };
+constexpr size_t detail::sp_objects<T>(size_t size) noexcept { return (size + sizeof(T)-1) / sizeof(T); }
+class detail::sp_array_state<A> { A allocator_; size_t size_;
+public: using type = A;
+    ctor<U>(const U& _allocator, size_t _size) noexcept :allocator_{_allocator}, size_{_size}{}
+    A& allocator() noexcept { return allocator_; } size_t size() const noexcept { return size_; }
+};
+class detail::sp_size_array_state<A,n> { A allocator_;
+public: using type = A;
+    ctor<U>(const U& _allocator, size_t) noexcept :allocator_{_allocator}{}
+    A& allocator() noexcept { return allocator_; } constexpr size_t size() const noexcept { return n; }
+};
+struct detail::sp_array_alignment<T,U> { enum{ value = sp_max_size<alignof(T), alignof(U)>::value }; };
+struct detail::sp_array_offset<T,U> { enum{ value = sp_align_up<sizeof(T), sp_array_alignment<T,U>::value>::value}; };
+U* detail::sp_array_start<U,T>(T* base) noexcept { return (U*)((char*)base + sp_array_offset<T,U>::value); }
+class detail::sp_array_creator<A,T> {
+    using element = A::value_type; using type = sp_type_with_alignment<sp_array_alignment<T,element>::value>::type;
+    allocator_rebind<A,type>::type other_; size_t size_;
+public: ctor<U>(const U& other, size_t size) noexcept : other_{other}, size_{sp_objects<type>(sp_array_offset<T,element>::value + sizeof(element)*size)}{}
+    T* create() { return (T*)other_.allocate(size_); }
+    void destroy(T* base) { other_.deallocate((type*)base, size_); }
+};
+class detail::sp_array_base<T> : public sp_counted_base { using allocator = T::type; T state_;
+public: using type = allocator::value_type;
+    ctor<A>(const A& other, type* start, size_t size) : state_{other, size}
+    { alloc_construct_n(state_.allocator(), first_scalar(start), state_.size() * sp_array_count<type>::value); }
+    ctor<A,U>(const A& other, type* start, size_t size, const U& list) : state_{other, size}
+    { alloc_construct_n(state_.allocator(), first_scalar(start), state_.size() * count, first_scalar(&list), count); }
+    T& state() noexcept { return state_; }
+    void dispose() noexcept override { alloc_destroy_n(state_.allocator(), first_scalar(sp_array_start<type>(this)), state_.size() * sp_array_count<type>::value); }
+    void destroy() noexcept override { sp_array_creator<allocator, sp_array_base> other{state_.allocator(), state_.size()}; this->~dtor(); other.destroy(this); }
+    void* get_deleter(const sp_typeinfo_&) noexcept override { return nullptr; } // and get_local_deleter, get_untyped_deleter
+};
+class detail::sp_array_result<A,T> { // no copy
+    sp_array_creator<A,T> creator_; T* result;
+public: ctor<U>(const U& other, size_t size) : creator_{other, size}, result_{creator_.create()}{}
+    ~dtor() { if (result_) creator_.destroy(result_); }
+    T* get() const noexcept { return result_; }
+    void release() noexcept { result_ = nullptr; }
+};
+
+shared_ptr<T> allocate_shared<T,A>(const A& a, size_t count, <const std::remove_extent_t<T>& value>) requires sp_is_unbounded_array<T>::value {
+    using element = sp_array_element<T>::type; using other = allocator_rebind<A,element>::type; using state = sp_array_state<other>; using base = sp_array_base<state>;
+    sp_array_result<other,base> result{a, count}; base* node = result.get(); element* start = sp_array_start<element>(node);
+    ::new((void*)node) base{a, start, count, <value>}; result.release();
+    return {sp_internal_constructor_tag{}, start, shared_count{(sp_counted_base*)node}};
+}
+shared_ptr<T> allocate_shared<T,A>(const A& a, <const std::remove_extent_t<T>& value>) requires sp_is_bounded_array<T>::value { enum{count = std::extent_v<T>};
+    using element = sp_array_element<T>::type; using other = allocator_rebind<A,element>::type; using state = sp_size_array_state<other, count>; using base = sp_array_base<state>;
+    sp_array_result<other,base> result{a, count}; base* node = result.get(); element* start = sp_array_start<element>(node);
+    ::new((void*)node) base{a, start, count, <value>}; result.release();
+    return {sp_internal_constructor_tag{}, start, shared_count{(sp_counted_base*)node}};
+}
+shared_ptr<T> allocate_shared_noinit<T,A>(const A& a, size_t count) requires sp_is_unbounded_array<T>::value
+{ return allocate_shared<T>(noinit_adapt(a), count); }
+shared_ptr<T> allocate_shared_noinit<T,A>(const A& a) requires sp_is_bounded_array<T>::value
+{ return allocate_shared<T>(noinit_adapt(a)); }
+
+shared_ptr<T> make_shared<T>(<const std::remove_extent_t<T>& value>) requires sp_is_bounded_array<T>::value
+{ return allocate_shared<T>(default_allocator<sp_array_element<T>::type>{}, <value>); }
+shared_ptr<T> make_shared<T>(size_t size, <const std::remove_extent_t<T>& value>) requires sp_is_unbounded_array<T>::value
+{ return allocate_shared<T>(default_allocator<sp_array_element<T>::type>{}, size, <value>); }
+shared_ptr<T> make_shared_noinit<T>() requires sp_is_bounded_array<T>::value
+{ return allocate_shared_noinit<T>(default_allocator<sp_array_element<T>::type>{}); }
+shared_ptr<T> make_shared_noinit<T>(size_t size) requires sp_is_unbounded_array<T>::value
+{ return allocate_shared_noinit<T>(default_allocator<sp_array_element<T>::type>{}, size); }
+```
+
+------
+### `make_local_shared`, `allocate_local_shared`
+
+```c++
+struct detail::lsp_if_not_array<T> { using type = local_shared_ptr<T>; };
+struct detail::lsp_if_not_array<T[<n>]>{};
+class detail::lsp_ms_deleter<T,A> : public local_counted_impl_em {
+    bool initialized_{false}; sp_aligned_storage<sizeof(T), alignof(T)>::type storage_; A a_;
+    void destroy() noexcept { if (initialized) std::allocator_traits<A>::destroy((T*)storage_.data_); initialized = false; }
+public: explicit ctor(A const&) noexcept{}  ctor(self const& r): a_{r.a_}{}
+    ~dtor() noexcept { destroy(); }     void operator()(T*) noexcept { destroy(); }
+    static void operator_fn(T*) noexcept {}
+    void* address() noexcept { return storage_.data_; }
+    void set_initialized() noexcept { initialized_ = true; }
+};
+
+lsp_if_not_array<T>::type allocate_local_shared<T,A,...Args>(A const&a, Args&&...args) {
+    using A2 = std::allocator_traits<A>::rebind_alloc<T>;  A2 a2{a};
+    using D = lsp_ms_deleter<T,A2>; shared_ptr<T> pt{nullptr, sp_inplace_tag<D>{}, a2};
+    auto pd = (D*)pt._internal_get_untyped_deleter();
+    auto pv = pd->address(); std::allocator_traits<A2>::construct(a2, (T*)pv, std::forward<Args>(args)...); pd->set_initialized();
+    T* pt2 = (T*)pv; sp_enable_shared_from_this(&pt, pt2, pt2); pd->pn_ = pt._internal_count();
+    return {lsp_internal_constructor_tag{}, pt2, pd};
+}
+lsp_if_not_array<T>::type allocate_local_shared_noinit<T,A>(A const& a) {
+    using A2 = std::allocator_traits<A>::rebind_alloc<T>;  A2 a2{a};
+    using D = lsp_ms_deleter<T,A2>; shared_ptr<T> pt{nullptr, sp_inplace_tag<D>{}, a2};
+    auto pd = (D*)pt._internal_get_untyped_deleter();
+    auto pv = pd->address(); ::new(pv) T; pd->set_initialized();
+    T* pt2 = (T*)pv; sp_enable_shared_from_this(&pt, pt2, pt2); pd->pn_ = pt._internal_count();
+    return {lsp_internal_constructor_tag{}, pt2, pd};
+}
+lsp_if_not_array<T>::type make_local_shared<T,...Args>(Args&&...args)
+{ using T2 = std::remove_const_t<T>; return allocate_local_shared<T2>(std::allocator<T2>{}, std::forward<Args>(args)...); }
+lsp_if_not_array<T>::type make_local_shared_noinit<T>()
+{ using T2 = std::remove_const_t<T>; return allocate_local_shared_noinit<T2>(std::allocator<T2>{}); }
+
+class detail::lsp_array_base : public local_counted_base { shared_count count_;
+public: void set(sp_counted_base* base) noexcept { count_ = shared_count{base}; }
+    void local_cb_destroy() noexcept override { shared_count{}.swap(count_); }
+    shared_count local_cb_get_shared_count() const noexcept override { return count_; }
+};
+class detail::lsp_array_state<A> : public sp_array_state<A> { lsp_array_base base_;
+public: ctor<U>(const U& other, size_t size) noexcept : base{other, size}{}
+    lsp_array_base& base() noexcept { return base_; }
+};
+class detail::lsp_size_array_state<A,n> : public sp_size_array_state<A,n> { lsp_array_base base_;
+public: ctor<U>(const U& other, size_t size) noexcept : base{other, size}{}
+    lsp_array_base& base() noexcept { return base_; }
+};
+
+local_shared_ptr<T> allocate_local_shared<T,A>(const A& a, size_t count, <const std::remove_extent_t<T>& value>) requires sp_is_unbounded_array<T>::value {
+    using element = sp_array_element<T>::type; using other = allocator_rebind<A,element>::type; using state = lsp_array_state<other>; using base = sp_array_base<state>;
+    sp_array_result<other,base> result{a, count}; base* node = result.get(); element* start = sp_array_start<element>(node);
+    ::new((void*)node) base{a, start, count, <value>}; lsp_array_base& local = node->state().base(); local.set(node); result.release();
+    return {lsp_internal_constructor_tag{}, start, &local};
+}
+local_shared_ptr<T> allocate_local_shared<T,A>(const A& a, <const std::remove_extent_t<T>& value>) requires sp_is_bounded_array<T>::value { enum{count = std::extent_v<T>};
+    using element = sp_array_element<T>::type; using other = allocator_rebind<A,element>::type; using state = lsp_size_array_state<other, count>; using base = sp_array_base<state>;
+    sp_array_result<other,base> result{a, count}; base* node = result.get(); element* start = sp_array_start<element>(node);
+    ::new((void*)node) base{a, start, count, <value>}; lsp_array_base& local = node->state().base(); local.set(node); result.release();
+    return {lsp_internal_constructor_tag{}, start, &local};
+}
+local_shared_ptr<T> allocate_local_shared_noinit<T,A>(const A& a, size_t count) requires sp_is_unbounded_array<T>::value
+{ return allocate_local_shared<T>(noinit_adapt(a), count); }
+local_shared_ptr<T> allocate_local_shared_noinit<T,A>(const A& a) requires sp_is_bounded_array<T>::value
+{ return allocate_local_shared<T>(noinit_adapt(a)); }
+
+local_shared_ptr<T> make_local_shared<T>(<const std::remove_extent_t<T>& value>) requires sp_is_bounded_array<T>::value
+{ return allocate_local_shared<T>(default_allocator<sp_array_element<T>::type>{}, <value>); }
+local_shared_ptr<T> make_local_shared<T>(size_t size, <const std::remove_extent_t<T>& value>) requires sp_is_unbounded_array<T>::value
+{ return allocate_local_shared<T>(default_allocator<sp_array_element<T>::type>{}, size, <value>); }
+local_shared_ptr<T> make_local_shared_noinit<T>() requires sp_is_bounded_array<T>::value
+{ return allocate_local_shared_noinit<T>(default_allocator<sp_array_element<T>::type>{}); }
+local_shared_ptr<T> make_local_shared_noinit<T>(size_t size) requires sp_is_unbounded_array<T>::value
+{ return allocate_local_shared_noinit<T>(default_allocator<sp_array_element<T>::type>{}, size); }
 ```
 
 ------
