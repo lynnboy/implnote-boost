@@ -309,6 +309,7 @@ public: using element_type = sp_element<T>::type;
 size_t hash_value<T>(local_shared_ptr<T> const& p) noexcept { return hash<local_shared_ptr<T>::element_type*>{}(p.get()); }
 struct std::hash<local_shared_ptr<T>> { size_t operator()(local_shared_ptr<T> const& p) const noexcept { return std::hash<local_shared_ptr<T>::element_type*>{}(p.get()); } };
 ```
+
 ------
 ### Atomic `shared_ptr`
 
@@ -333,8 +334,239 @@ public: constexpr ctor() noexcept : l_{ATOMIC_FLAG_INIT} {}
 };
 ```
 
-  allocate_<local>_shared_array, allocate_unique, enable_shared_from_XXX,
-  intrusive_ptr, intrusive_ref_counter, make_<local>_shared_XXX, make_unique
+------
+### Intrusive RefCounted Pointer
+
+```c++
+struct sp_adl_block::thread_unsafe_counter {
+    using type = unsigned int;
+    static unsigned load(unsigned const& counter) noexcept { return counter; }
+    static void increment(unsigned& counter) noexcept { ++counter; }
+    static unsigned decrement(unsigned& counter) noexcept {return --counter; }
+};
+struct sp_adl_block::thread_safe_counter {
+    using type = atomic_count;
+    static unsigned load(atomic_count const& counter) noexcept { return (unsigned)(long)counter; }
+    static void increment(unsigned& counter) noexcept { ++counter; }
+    static unsigned decrement(unsigned& counter) noexcept {return (unsigned)--counter; }
+};
+
+class sp_adl_block::intrusive_ref_counter<T,Pol> {
+    mutable Pol::type m_ref_counter{0};
+protected: ~dtor()=default;
+public: ctor() noexcept{} ctor(self const&) noexcept{} self& operator=(self const&) noexcept { return *this; }
+    unsigned use_count() const noexcept { return Pol::load(m_ref_counter); }
+
+    friend void intrusive_ptr_add_ref(const self* p) noexcept { Pol::increment(p->m_ref_counter); }
+    friend void intrusive_ptr_release(const self* p) noexcept { if (Pol::decrement(p->m_ref_counter) == 0) delete (const T*)p; }
+};
+
+class intrusive_ptr<T> { // all constexpr
+    T* px{nullptr};
+public: using element_type = T;
+    ctor() noexcept{}
+    ctor(T* p, bool add_ref=true): px{p} { if (px && add_ref) intrusive_ptr_add_ref(px); }
+    ctor<U>(self<U> const& rhs) : px{rhs.get()} { if (px) intrusive_ptr_add_ref(px); }
+    ~dtor() { if (px) intrusive_ptr_release(px); }
+    self& operator=<U>(self<U> const& rhs) { self{rhs}.swap(*this); return *this; }
+    ctor<U>(self<U> && rhs) noexcept : px{rhs.px} { rhs.px = nullptr; }
+    self& operator=<U>(self<U> && rhs) { self{std::move(rhs)}.swap(*this); return *this; }
+    self& operator=(T* rhs) { self{rhs}.swap(*this); return *this; }
+    void reset() { self{}.swap(*this); }
+    void reset(T* rhs, <bool add_ref>) { self{rhs, <add_ref>}.swap(*this); }
+    T* get() const noexcept { return px; }
+    T* detach() noexcept { T* ret = px; px=nullptr; return ret; }
+    T& operator*() const noexcept { return *px; }
+    T* operator->() const noexcept { return px; }
+    explicit operator bool() const noexcept { return px != nullptr; }
+    void swap(self& rhs) noexcept { T* tmp=px; px=rhs.px; rhs.px=tmp; }
+
+    friend bool operator==<T,U>(self<T> const& a, self<U> const& b) noexcept { return a.get()==b.get(); } // and !=, and compare with U*, nullptr_t
+    friend bool operator<(self const& a, self const& b) noexcept { return std::less<T*>{}(a.get(), b.get()); }
+    friend void swap(self& a, self& b) { a.swap(b); }
+    friend T* get_pointer(self const& p) noexcept { return p.get(); }
+    friend self static_pointer_cast<U>(self<U> const& r) { return static_cast<T*>(p.get()); } // and const_cast, dynamic_cast
+    friend self static_pointer_cast<U>(self<U> && r) noexcept { return {(T*)p.detach(), false}; } // and const_cast
+    friend self dynamic_pointer_cast<U>(self<U> && r) noexcept
+    { T* p2 = dynamic_cast<T*>(p.get()); self r{p2, false}; if (p2) p.detach(); return r; }
+    friend std::basic_ostream<Ch,Tr>& operator<<(std::basic_ostream<Ch,Tr>& os, self const& p) { return os << p.get(); }
+};
+size_t hash_value<T>(intrusive_ptr<T> const& p) noexcept { return hash<T*>{}(p.get()); }
+struct std::hash<intrusive_ptr<T>> { size_t operator()(intrusive_ptr<T> const& p) const noexcept { return std::hash<T*>{}(p.get()); } };
+```
+
+------
+### `enable_shared_from_this`
+
+```c++
+class enable_shared_from_this<T> {
+    mutable weak_ptr<T> weak_this_;
+    void _internal_accept_owner<X,Y>(shared_ptr<X> const* ppx, Y* py) const noexcept
+    { if (weak_this_.expired()) weak_this_ = shared_ptr<T>{*ppx, py}; }
+protected: // defaulted ctor, copy ctor, copy assign, dtor
+public: shared_ptr<T [const]> shared_from_this() <const> { return {weak_this_}; }
+    weak_ptr<T[const]> weak_from_this() <const> noexcept { return weak_this_; }
+};
+class enable_shared_from: public enable_shared_from_this<self> {};
+shared_ptr<T> shared_from<T>(T* p) { return {p->shared_from_this(), p}; }
+weak_ptr<T> weak_from<T>(T* p) { return {p->weak_from_this(), p}; }
+
+class enable_shared_from_raw {
+    mutable weak_ptr<void const volatile> weak_this_; mutable shared_ptr<void const volatile> shared_this_;
+    void _internal_accept_owner<X,Y>(shared_ptr<X> const* ppx, Y* py) const noexcept {
+        if (weak_this_.expired()) weak_this_ = *ppx;
+        else if (shared_this_.use_count() != 0) {
+            auto pd = get_deleter<esft2_deleter_wrapper>(shared_this_);
+            pd->set_deleter(*ppx); ppx->reset(shared_this_, ppx->get()); shared_this_.reset();
+        }
+    }
+    void init_if_expired() const { if (weak_this_.expired()) { shared_this_.reset(nullptr, esft2_deleter_wrapper{}); weak_this_ = shared_this_; } }
+    void init_if_empty() const { if (weak_this_.empty()) { shared_this_.reset(nullptr, esft2_deleter_wrapper{}); weak_this_ = shared_this_; } }
+    shared_ptr<void const volatile> shared_from_this() const <volatile> { init_if_expired(); return {weak_this_}; }
+    weak_ptr<void const volatile> weak_from_this() const <volatile> { init_if_empty(); return weak_this_; }
+protected: // defaulted ctor, copy ctor, copy assign, dtor
+};
+shared_ptr<T> shared_from_raw<T>(T* p) { return {p->shared_from_this(), p}; }
+weak_ptr<T> weak_from_raw<T>(T* p) { return {p->weak_from_this(), p}; }
+```
+
+------
+### `make_unique`, `make_shared`, `make_local_shared`
+
+```c++
+std::unique_ptr<T> make_unique<T,...Args>(Args&&...args) requires(!std::is_array_v<T>) { return {new T{std::forward<Args>(args)...}}; }
+std::unique_ptr<T> make_unique<T>(std::remove_reference_t<T>&& value) requires(!std::is_array_v<T>) { return {new T{std::move(value)}}; }
+std::unique_ptr<T> make_unique_noinit<T>() requires(!std::is_array_v<T>) { return {new T}; }
+std::unique_ptr<T> make_unique<T>(size_t size) requires(sp_is_unbounded_array<T>::value) { return {new std::remove_extent_t<T>[size]{}}; }
+std::unique_ptr<T> make_unique_noinit<T>(size_t size) requires(sp_is_unbounded_array<T>::value) { return {new std::remove_extent_t<T>[size]}; }
+
+struct detail::sp_alloc_size<T> { static constexpr size_t value = 1; };
+struct detail::sp_alloc_size<T[]> { static constexpr size_t value = sp_alloc_size<T>::value; };
+struct detail::sp_alloc_size<T[n]> { static constexpr size_t value = n*sp_alloc_size<T>::value; };
+struct detail::sp_alloc_result<T> { using type = T; };
+struct detail::sp_alloc_result<T[n]> { using type = T[]; };
+struct detail::sp_alloc_value<T> { using type = std::remove_cv_t<std::remove_extent_t<T>>; };
+class detail::sp_alloc_ptr<T,P> {
+    P p_{};
+public: using element_type = T;
+    ctor(<nullptr_t>) noexcept{}    ctor(size_t, P p) noexcept :p_{p}{}
+    T& operator*() const{ return *p_; } T* operator->() const noexcept{ return to_address(p_); }
+    explicit operator bool() const noexcept { return !!p_; } bool operator!() const noexcept { return !p_; }
+    P ptr() const noexcept { return p_; }
+    static constexpr size_t size() noexcept { return 1; }
+};
+class detail::sp_alloc_ptr<T[],P> {
+    P p_{}; size_t n_;
+public: using element_type = T;
+    ctor(<nullptr_t>) noexcept{}    ctor(size_t n, P p) noexcept :p_{p}, n_{n}{}
+    T& operator[](size_t i) const { return p_[i]; }
+    explicit operator bool() const noexcept { return !!p_; } bool operator!() const noexcept { return !p_; }
+    P ptr() const noexcept { return p_; }
+    size_t size() noexcept { return n_; }
+};
+class detail::sp_alloc_ptr<T[n],P> {
+    P p_{};
+public: using element_type = T;
+    ctor(<nullptr_t>) noexcept{}    ctor(size_t, P p) noexcept :p_{p}{}
+    T& operator[](size_t i) const { return p_[i]; }
+    explicit operator bool() const noexcept { return !!p_; } bool operator!() const noexcept { return !p_; }
+    P ptr() const noexcept { return p_; }
+    static constexpr size_t size() noexcept { return n; }
+};
+bool detail::operator==<T,P>(const sp_alloc_ptr<T,P>& lhs, const sp_alloc_ptr<T,P>& rhs) { return lhs.ptr() == rhs.ptr(); } // and !=, and compare with nullptr_t
+
+class alloc_deleter<T,A> : empty_value<allocator_rebind_t<A,sp_alloc_value<T>::type>> {
+    using allocator = base::type;
+public: using pointer = sp_alloc_ptr<allocator_pointer<allocator>::type>;
+    explicit ctor(const allocator& a) noexcept : base{empty_init_t{}, a} {}
+    void operator()(pointer p) {
+        if constexpr (std::is_array_v<T>) alloc_destroy(a, boost::to_address(p));
+        else alloc_destroy_n(a, boost::first_scalar(boost::to_address(p)), n*sp_alloc_size<A::value_type>::value);
+    }
+};
+using alloc_noinit_deleter<T,A> = alloc_deleter<T,noinit_adaptor<A>>;
+
+class detail::sp_alloc_make<T,A> {
+    using pointer = allocator_pointer<allocator>::type;
+    allocator a_; size_t n_; pointer p_;
+public: using allocator = allocator_rebind<A,sp_alloc_value<T>:::type>::type;
+    using type = unique_ptr<sp_alloc_result<T>::type, deleter>;
+    ctor(const A& a, size_t n) : a_{a}, n_{n}, p_{a_.allocate(n)} {}
+    ~dtor() { if (p_) a_.deallocate(p_, n_); }
+    allocator::value_type* get() const noexcept { return boost::to_address(p_); }
+    allocator& state() noexcept { return a_; }
+    type release() noexcept { pointer p = p_; p = {}; return type{deleter::pointer{n_,p}, deleter{a_}}; }
+};
+
+std::unique_ptr<T,alloc_deleter<T,A>> allocate_unique<T,A,...Args>(const A& alloc, Args&&...args) requires(!std::is_array_v<T>)
+{ sp_alloc_make<T,A> c{alloc,1}; alloc_construct(c.state(), c.get(), std::forward<Args>(args)...); return c.release(); }
+std::unique_ptr<T,alloc_deleter<T,A>> allocate_unique<T,A>(const A& alloc, sp_type_identity<T>::type&& value) requires(!std::is_array_v<T>)
+{ sp_alloc_make<T,A> c{alloc,1}; alloc_construct(c.state(), c.get(), std::move(value)); return c.release(); }
+std::unique_ptr<T,alloc_deleter<T,A>> allocate_unique_noinit<T>(const A& alloc) requires(!std::is_array_v<T>)
+{ return allocate_unique<T,noinit_adaptor<A>>(alloc); }
+std::unique_ptr<T,alloc_deleter<T,A>> allocate_unique<T,A>(const A& alloc, size_t size) requires(sp_is_unbounded_array<T>::value)
+{ sp_alloc_make<T,A> c{alloc,size}; alloc_construct_n(c.state(), first_scalar(c.get()), size*sp_alloc_size<T>::value); return c.release(); }
+std::unique_ptr<T,alloc_deleter<T,A>> allocate_unique<T,A>(const A& alloc) requires(sp_is_bounded_array<T>::value)
+{ sp_alloc_make<T,A> c{alloc,std::extent_v<T>}; alloc_construct_n(c.state(), first_scalar(c.get()), std::extent_v<T>*sp_alloc_size<T>::value); return c.release(); }
+std::unique_ptr<T,alloc_deleter<T,A>> allocate_unique_noinit<T,A>(const A& alloc, size_t size) requires(sp_is_unbounded_array<T>::value)
+{ return allocate_unique<T,noinit_adaptor<A>>(alloc, size); }
+std::unique_ptr<T,alloc_deleter<T,A>> allocate_unique_noinit<T,A>(const A& alloc) requires(sp_is_bounded_array<T>::value)
+{ return allocate_unique<T,noinit_adaptor<A>>(alloc); }
+std::unique_ptr<T,alloc_deleter<T,A>> allocate_unique<T,A>(const A& alloc, size_t size, std::remove_extent_t<T> const& value) requires(sp_is_unbounded_array<T>::value)
+{ sp_alloc_make<T,A> c{alloc,size}; alloc_construct_n(c.state(), first_scalar(c.get()), size*sp_alloc_size<T>::value, first_scalar(&value), sp_alloc_size<std::remove_extent_t<T>>::value); return c.release(); }
+std::unique_ptr<T,alloc_deleter<T,A>> allocate_unique<T,A>(const A& alloc, std::remove_extent_t<T> const& value) requires(sp_is_bounded_array<T>::value)
+{ sp_alloc_make<T,A> c{alloc,std::extent_v<T>}; alloc_construct_n(c.state(), first_scalar(c.get()), std::extent_v<T>*sp_alloc_size<T>::value, first_scalar(&value), sp_alloc_size<std::remove_extent_t<T>>::value); return c.release(); }
+auto get_allocator_pointer<T,U,A>(const std::unique_ptr<T,alloc_deleter<U,A>>& p) noexcept -> allocator_pointer<allocator_rebind<A,sp_alloc_value<T>::type>::type>::type { return p.get().ptr(); }
+
+struct detail::sp_aligned_storage<n,a> { union type { char data_[n]; sp_type_with_alignment<a>::type align_; }; };
+class detail::sp_ms_deleter {
+    bool initialized_{false}; sp_aligned_storage<sizeof(T), alignof(T)>::type storage_;
+    void destroy() noexcept { if (initialized) ((T*)storage_.data_)->~T(); initialized = false; }
+public: ctor() noexcept{}  explicit ctor<A>(A {const&|&&}) noexcept{}
+    ~dtor() noexcept { destroy(); }     void operator()(T*) noexcept { destroy(); }
+    static void operator_fn(T*) noexcept {}
+    void* address() noexcept { return storage_.data_; }
+    void set_initialized() noexcept { initialized_ = true; }
+};
+class detail::sp_as_deleter<T,A> {
+    bool initialized_{false}; sp_aligned_storage<sizeof(T), alignof(T)>::type storage_; A a_;
+    void destroy() noexcept { if (initialized) ((T*)storage_.data_)->~T(); std::allocator_traits<A>::destroy(a_,p); initialized = false; }
+public: ctor(A const& a) noexcept : a_{a}{}     ctor(self const& r) noexcept : a_{r.a_}{}
+    ~dtor() noexcept { destroy(); }     void operator()(T*) noexcept { destroy(); }
+    static void operator_fn(T*) noexcept {}
+    void* address() noexcept { return storage_.data_; }
+    void set_initialized() noexcept { initialized_ = true; }
+};
+struct detail::sp_if_not_array<T> { using type = shared_ptr<T>; };
+struct detail::sp_if_not_array<T[<n>]>{};
+
+constexpr detail::SP_MSD = sp_inplace_tag<sp_ms_deleter<T>>{};
+sp_if_not_array<T>::type make_shared_noinit<T>() {
+    shared_ptr<T> pt{nullptr, SP_MSD};
+    auto pd = (sp_ms_deleter<T>*)pt._internal_get_untyped_deleter();
+    auto pv = pd->address(); ::new(pv) T; pd->set_initialized(); T* pt2 = (T*)pv;
+    sp_enable_shared_from_this(&pt, pt2, pt2); return {pt, pt2};
+}
+sp_if_not_array<T>::type allocate_shared_noinit<T,A>(A const& a) {
+    shared_ptr<T> pt{nullptr, SP_MSD, a};
+    auto pd = (sp_ms_deleter<T>*)pt._internal_get_untyped_deleter();
+    auto pv = pd->address(); ::new(pv) T; pd->set_initialized(); T* pt2 = (T*)pv;
+    sp_enable_shared_from_this(&pt, pt2, pt2); return {pt, pt2};
+}
+sp_if_not_array<T>::type make_shared<T,...Args>(Args&&...args) {
+    shared_ptr<T> pt{nullptr, SP_MSD};
+    auto pd = (sp_ms_deleter<T>*)pt._internal_get_untyped_deleter();
+    auto pv = pd->address(); ::new(pv) T{std::forward<Args>(args)...}; pd->set_initialized(); T* pt2 = (T*)pv;
+    sp_enable_shared_from_this(&pt, pt2, pt2); return {pt, pt2};
+}
+sp_if_not_array<T>::type allocate_shared<T,A,...Args>(A const&a, Args&&...args) {
+    using A2 = std::allocator_traits<A>::rebind_alloc<T>;  A2 a2{a};
+    using D = sp_as_deleter<T,A2>; shared_ptr<T> pt{nullptr, sp_inplace_tag<D>{}, a2};
+    auto pd = (sp_ms_deleter<T>*)pt._internal_get_untyped_deleter();
+    auto pv = pd->address(); std::allocator_traits<A2>::construct(a2, (T*)pv, std::forward<Args>(args)...); pd->set_initialized(); T* pt2 = (T*)pv;
+    sp_enable_shared_from_this(&pt, pt2, pt2); return {pt, pt2};
+}
+```
 
 ------
 ### Pointer Cast & Traits
