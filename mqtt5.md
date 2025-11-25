@@ -194,11 +194,29 @@ public: explicit ctor(LoggerType logger={});
 concept StreamType<S> = beast::AsyncStream<S> && requires (S s) {
     typename S::lowest_layer_type;
     requires(std::derived_from<S::lowest_layer_type, boost::asio::ip::tcp::socket>);
-    {s.lowest_layer()}->convertible_to<S::lowest_layer_type&>;
+    {s.lowest_layer()}->std::convertible_to<S::lowest_layer_type&>;
     async_shutdown(s);
 };
 
-concept TlsContext<Ctx> = 
+concept TlsContext<Ctx>; // opaque to MQTT5
+
+concept Authenticator<Auth> = requires(Auth a, auth_step_e step, std::string data,
+  asio::any_completion_handler<void(boost::mqtt5::error_code ec, std::string client_data)> h) {
+    a.async_auth(step, data, h);
+    {a.method()} -> std::same_as<std::string_view>;
+};
+
+concept LoggerType<Logger> = requires(Logger l, error_code ec, std::string_view sv,
+  const asio::ip::tcp::resolver::results_type& eps, asio::ip::tcp::endpoint ep,
+  reason_code rc, bool b, const connack_props& ca_props, const disconnect_props& dc_props) {
+    // all members are optional
+    l.at_resolve(ec, sv, sv, eps);
+    l.at_tcp_connect(ec, ep);
+    l.at_tls_handshake(ec, ep);
+    l.at_ws_handshake(ec, ep);
+    l.at_connack(rc, b, ca_props);
+    l.at_disconnect(rc, dc_props);
+};
 ```
 
 ------
@@ -263,6 +281,69 @@ public: using executor_type = stream_type::executor_type;
     decltype(auto) async_disconnect<Token=asio::default_completion_token<executor_type>::type>(Token&& token={})
     { return async_disconnect(normal_disconnection, {}, std::forward<Token>(token)); }
 };
+```
+
+------
+### Implementation Details
+
+##### Authenticator Wrapper
+
+```c++
+constexpr bool detail::is_authenticator<T> = requires Authenticator<T>;
+class detail::auth_fun_base { // function pointer wrapper
+  using auth_func = void(*)(auth_step_e, std::string, auth_handler_type, self*);
+  auth_func _auth_func;
+public: ctor(auth_func f);
+  void async_auth(auth_step_e, std::string, auth_handler_type, self*); // forward to _auth_func;
+};
+class detail::auth_fun<Auth> requires is_authenticator<Auth> : public auth_fun_base {
+  Auth _authenticator;
+public: ctor(Auth authenticator) : base{&async_auth}, _authenticator{authenticator}{}
+  static void async_auth(auth_step_e, std::string, auth_handler_type, base* ptr); // forward to ptr->_authenticator.async_auth(...);
+};
+class detail::any_authenticator {
+  std::string _method; std::shared_ptr<auth_fun_base> _auth_fun;
+public: ctor(); ctor<Auth>(Auth&& a) : _methd{a.method()}, _auth_fun{new auth_fun<Auth>{std::forward<Auth>(a)}} {}
+  std::string_view method() const { return _method; }
+  decltype(auto) async_auth<Token>(auth_step_e step, std::string data, Token&& token) {
+    auto initiation = [](auto h, auto& self, auth step, auto data){ self._auth_fun->async_auth(step, std::move(data), std::move(h)); };
+    return asio::async_initiate<Token,void(error_code,std::string)>(initiation, token, std::ref(*this), std::move(data));
+  }
+}
+```
+
+##### Async
+
+```c++
+struct tls_handshake<StreamType>{};
+void assign_tls_sni<TlsContext, TlsStream>(const authority_path& ap, TlsContext& ctx, TlsStream& s);
+
+struct ws_handshake_traits<Stream>{};
+
+auto tracking_executor<Handler, DfltExecutor>(const Handler& handler, const DfltExecutor& ex)
+{ return asio::prefer(asio::get_associated_executor(handler, ex), asio::execution::outstanding_work.tracked); }
+
+constexpr auto detail::handshake_handler_t = [](error_code){};
+using detail::tls_handshake_t<T> = T::handshake_type;
+using detail::tls_handshake_type_of<T> = boost::detected_or_t<void, tls_handshake_t, T>;
+constexpr bool detail::has_tls_handshake<T> = ...; // detect T::async_handshake(handshake_type,handshake_handler_t)
+constexpr bool detail::has_ws_handshake<T> = ...; // detect T::async_handshake(string_view,string_view,handshake_handler_t)
+constexpr bool detail::has_next_layer<T> = ...; // detect T::next_layer()
+
+using detail::next_layer_type<T> = ...; // T::next_layer_type;
+next_layer_type<T>& detail::next_layer<T>(T&& a)
+{ if constexpr (has_next_layer<T>) return a.next_layer(); else return std::forward<T>(a); }
+using detail::lowest_layer_type<T> = ...; // T::next_layer_type::...::next_layer_type;
+lowest_layer_type<T>& detail::lowest_layer<T>(T&& a)
+{ if constexpr (has_next_layer<T>) return lowest_layer(a.next_layer()); else return std::forward<T>(a); }
+
+constexpr bool detail::has_tls_layer<T> = ...; // has_tls_handshake on any layer of T
+constexpr bool detail::has_tls_context<T> = ...; // T::tls_context()
+void detail::setup_tls_sni<TlsContext, Stream>(const authority_path& ap, TlsContext& ctx, Stream& s); // assign_tls_sni on first TLS layer
+
+constexpr bool detail::has_async_write<T,B> = ...; // T::async_write(B, write_handler_t);
+
+decltype(auto) detail::async_write<Stream,ConstBufSeq,Token>(Stream& stream, const ConstBufSeq& buff, Token&& token); // T::async_write or asio::async_write
 ```
 
 ------
