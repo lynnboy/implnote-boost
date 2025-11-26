@@ -519,10 +519,124 @@ public: explicit ctor(std::shared_ptr<ClientService> svc_ptr);
     executor_type get_executor() const noexcept { return _svc_ptr->get_executor(); }
     void operator()<Handler>(Handler&& handler, std::string topic, std::string payload, retain_e retain, const publish_props& props);
 };
+
+class detail::re_auth_op<ClientService> {
+    using client_service = ClientService;
+    struct on_auth_data{};
+    std::shared_ptr<client_service> _svc_ptr; any_authenticator _auth;
+    void on_auth_fail(std::string message, disconnect_rc_e reason)
+public: ctor<Handler>(std::shared_ptr<client_service> svc_ptr); // allow move, no copy
+    using allocator_type = asio::recycling_allocator<void>;
+    allocator_type get_allocator() const noexcept { return {}; }
+    using executor_type = client_service::executor_type;
+    executor_type get_executor() const noexcept { return _svc_ptr->get_executor(); }
+    void perform();
+    void perform(decoders::auth_message auth_message);
+    void operator()(on_auth_data, auth_step_e auth_step,, error_code ec, std::string data);
+};
+
+class detail::read_message_op<ClientService,Handler> {
+    using client_service = ClientService; using handler_type = Handler;
+    struct on_message{}; struct on_disconnect{};
+    std::shared_ptr<client_service> _svc_ptr; handler_type _handler;
+    void dispatch(uint8_t control_byte, byte_citer first, byte_citer last);
+    void on_malformed_packet(disconnect_rc_e rc, const std::string& reason);
+    void complete();
+public: ctor(std::shared_ptr<client_service> svc_ptr, Handler&& handler); // allow move, no copy
+    using allocator_type = asio::associated_allocator_t<Handler>;
+    allocator_type get_allocator() const noexcept { return asio::get_associated_allocator(_handler); }
+    using executor_type = ClientService::executor_type;
+    executor_type get_executor() const noexcept { return _svc_ptr->get_executor(); }
+    void perform();
+    void operator()(on_message, error_code ec, uint8_t control_code, byte_citer first, byte_citer last);
+    void operator()(on_disconnect, error_code ec);
+};
+
+class detail::read_op<Owner,Handler> {
+    using handler_type = Handler;
+    struct on_read{}; struct on_reconnect{};
+    Owner& _owner; handler_type _handler;
+    void complete(error_code ec, size_t bytes_read);
+    static bool should_reconnect(error_code ec);
+public: ctor(Owner& owner, Handler&& handler); // allow move, no copy
+    using allocator_type = asio::associated_allocator_t<Handler>;
+    allocator_type get_allocator() const noexcept { return asio::get_associated_allocator(_handler); }
+    using executor_type = asio::associated_executor_t<handler_type>;
+    executor_type get_executor() const noexcept { return asio::get_associated_executor(_handler); }
+    void perform<BufferType>(const BufferType& buffer, duration wait_for);
+    void operator()(on_read, Owner::stream_ptr stream_ptr, std::array<size_t,2> ord, error_code read_ec, size_t bytes_read, error_code);
+    void operator()(on_reconnect, error_code ec);
+};
+
+class detail::exponential_backoff {
+    int _curr_exp{0};
+    static constexpr int _base_multiplier=1000, _max_exp=4;
+    boost::random::rand48 _generator{std::time(0)}; boost::random::uniform_smallint<> _distribution{-500,500};
+public: ctor();
+    duration generate();
+};
+class detail::reconnect_op<Owner> {
+    using handler_type = asio::any_completion_handler<void(error_code)>;
+    struct on_locked{}; struct on_next_endpoint{}; struct on_connect{}; struct on_backoff{};
+    Owner& _owner; handler_type _handler; std::unique_ptr<std::string> _buffer_ptr; exponential_backoff _generator;
+    using endpoint = asio::ip::tcp::endpoint; using epoints = asio::ip::tjcp::resolver::result_type;
+    void complete(error_code ec);
+public: ctor<Handler>(Owner& owner, Handler&& handler); // allow move, no copy
+    using allocator_type = asio::associated_allocator_t<Handler>;
+    allocator_type get_allocator() const noexcept { return asio::get_associated_allocator(_handler); }
+    using cancellation_slot_type = asio::associated_cancellation_slot_t<Handler>;
+    cancellation_slot_type get_cancellation_slot() const noexcept { return asio::get_associated_cancellation_slot(_handler); }
+    using executor_type = asio::associated_executor_t<handler_type>;
+    executor_type get_executor() const noexcept { return asio::get_associated_executor(_handler); }
+    void perform(Owner::stream_ptr s);
+    void operator()(on_locked, Owner::stream_ptr stream_ptr, error_code ec);
+    void do_reconnect();
+    void backoff_and_reconnect();
+    void operator()(on_backoff, error_code ec);
+    void operator()(on_next_endpoint, error_code ec, epoints eps, authority_path ap);
+    void connect(epoints::const_iterator eps, authority_path ap);
+    void operator()(on_connect, Owner::stream_ptr sptr, epoints::const_iterator eps, authority_path ap, std::array<size_t,2> ord, error_code connect_ec, error_code timer_ec);
+};
+
+class detail::run_op<ClientService,Handler> {
+    using client_service = ClientService; using handler_type = Handler;
+    std::shared_ptr<client_service> _svc_ptr; handler_type _handler;
+public: ctor(std::shared_ptr<client_service> svc_ptr, Handler&& handler); // allow move, no copy
+    using allocator_type = asio::associated_allocator_t<Handler>;
+    allocator_type get_allocator() const noexcept { return asio::get_associated_allocator(_handler); }
+    using executor_type = ClientService::executor_type;
+    executor_type get_executor() const noexcept { return _svc_ptr->get_executor(); }
+    void perform();
+    void operator()(std::array<size_t,3>);
+};
+class detail::initiate_async_run<ClientService> {
+    std::shared_ptr<ClientService> _svc_ptr;
+public: explicit ctor(std::shared_ptr<ClientService> svc_ptr);
+    using executor_type = ClientService::executor_type;
+    executor_type get_executor() const noexcept { return _svc_ptr->get_executor(); }
+    void operator()<Handler>(Handler&& handler);
+};
+
+class detail::sentry_op<ClientService,Handler> {
+    using client_service = ClientService; using handler_type = Handler;
+    struct on_timer{}; struct on_disconnect{};
+    static constexpr auto check_interval = std::chrono::seconds{3};
+    std::shared_ptr<client_service> _svc_ptr; handler_type _handler;
+    void complete();
+public: ctor(std::shared_ptr<client_service> svc_ptr, Handler&& handler); // allow move, no copy
+    using allocator_type = asio::associated_allocator_t<Handler>;
+    allocator_type get_allocator() const noexcept { return asio::get_associated_allocator(_handler); }
+    using executor_type = ClientService::executor_type;
+    executor_type get_executor() const noexcept { return _svc_ptr->get_executor(); }
+    void perform();
+    void operator()(on_timer, error_code ec);
+    void operator()(on_disconnect, error_code ec);
+};
+
 ```
 
 codecs/: base_decoders, base_encoders, message_decoders, message_encoders
-async_sender, autoconnect_stream, client_service, endpoints, re_auth_op, read_message_op, read_op, reconnect_op, replies, run_op, sentry_op, shutdown_op, subscribe_op, unsubscribe_op, write_op
+async_sender, autoconnect_stream, client_service, endpoints, replies, shutdown_op, subscribe_op, unsubscribe_op, write_op
 
 
 ##### Authenticator Wrapper
