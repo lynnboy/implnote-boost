@@ -178,7 +178,7 @@ struct detail::mqtt_ctx {
 };
 using detail::serial_num_t = uint32_t;
 constexpr serial_num_t detail::no_serial = 0;
-enum class detail::send_flag { none=0, throtted=1, prioritized=2, terminal=4 };
+enum class detail::send_flag { none=0, throttled=1, prioritized=2, terminal=4 };
 ```
 
 ##### Control Packet
@@ -633,11 +633,512 @@ public: ctor(std::shared_ptr<client_service> svc_ptr, Handler&& handler); // all
     void operator()(on_disconnect, error_code ec);
 };
 
+constexpr bool detail::is_basic_socket<T> = ...; // asio::basic_stream_socket<>;
+class detail::shutdown_op<Owner> {
+    using handler_type = asio::any_completion_handler<void(error_code)>;
+    struct on_locked{}; struct on_shutdown{};
+    Owner& _owner; handler_type _handler;
+    void complete(Owner::stream_ptr sptr, error_code ec);
+public: ctor<Handler>(Owner& owner, Handler&& handler); // allow move, no copy
+    using allocator_type = asio::associated_allocator_t<Handler>;
+    allocator_type get_allocator() const noexcept { return asio::get_associated_allocator(_handler); }
+    using cancellation_slot_type = asio::associated_cancellation_slot_t<Handler>;
+    cancellation_slot_type get_cancellation_slot() const noexcept { return asio::get_associated_cancellation_slot(_handler); }
+    using executor_type = Owner::executor_type;
+    executor_type get_executor() const noexcept { return _owner.get_executor()_; }
+    void perform();
+    void operator()(on_locked, Owner::stream_ptr stream_ptr, error_code ec);
+    void operator()(on_shutdown, Owner::stream_ptr sptr, std::array<size_t,2>, error_code, error_code);
+};
+
+class detail::subscribe_op<ClientService,Handler> {
+    using client_service = ClientService; using handler_type = cancellable_handler<Handler, ClientService::executor_type>;
+    struct on_subscribe{}; struct on_suback{};
+    std::shared_ptr<client_service> _svc_ptr; handler_type _handler; size_t _num_topics{0};
+    error_code validate_subscribe(const std::vector<subscribe_topic>& topics, const subscribe_props& props) const;
+    error_code validate_topic(const subscribe_topic& topic) const;
+    error_code validate_props(const subscribe_props& props) const;
+    static std::vector<reason_code> to_reason_codes(std::vector<uint8_t> codes);
+    void on_malformed_packet(const std::string& reason);
+    void complete_immediate(error_code ec, uint16_t packet_id);
+    void complete(error_code ec, uint16_t packet_id, std::vector<reason_code> reason_codes={}, suback_props props={});
+public: ctor(std::shared_ptr<client_service> svc_ptr, Handler&& handler); // allow move, no copy
+    using allocator_type = asio::associated_allocator_t<Handler>;
+    allocator_type get_allocator() const noexcept { return asio::get_associated_allocator(_handler); }
+    using executor_type = ClientService::executor_type;
+    executor_type get_executor() const noexcept { return _svc_ptr->get_executor(); }
+    void perform(const std::vector<subscribe_topic>& topics, const subscribe_props& props);
+    void send_subscribe(control_packet<allocator_type> subscribe);
+    void resend_subscribe(control_packet<allocator_type> subscribe);
+    void operator()(on_subscribe, control_packet<allocator_type> packet, error_code ec);
+    void operator()(on_suback, control_packet<allocator_type> packet, error_code ec, byte_citer first, byte_citer last);
+};
+class detail::initiate_async_subscribe<ClientService> {
+    std::shared_ptr<ClientService> _svc_ptr;
+public: explicit ctor(std::shared_ptr<ClientService> svc_ptr);
+    using executor_type = ClientService::executor_type;
+    executor_type get_executor() const noexcept { return _svc_ptr->get_executor(); }
+    void operator()<Handler>(Handler&& handler, const std::vector<subscribe_topic>& topics, const subscribe_props& props);
+};
+
+class detail::unsubscribe_op<ClientService,Handler> {
+    using client_service = ClientService; using handler_type = cancellable_handler<Handler, ClientService::executor_type>;
+    struct on_unsubscribe{}; struct on_unsuback{};
+    std::shared_ptr<client_service> _svc_ptr; handler_type _handler; size_t _num_topics{0};
+    error_code validate_unsubscribe(const std::vector<std::string>& topics, const unsubscribe_props& props) const;
+    static std::vector<reason_code> to_reason_codes(std::vector<uint8_t> codes);
+    void on_malformed_packet(const std::string& reason);
+    void complete_immediate(error_code ec, uint16_t packet_id);
+    void complete(error_code ec, uint16_t packet_id, std::vector<reason_code> reason_codes={}, unsuback_props props={});
+public: ctor(std::shared_ptr<client_service> svc_ptr, Handler&& handler); // allow move, no copy
+    using allocator_type = asio::associated_allocator_t<Handler>;
+    allocator_type get_allocator() const noexcept { return asio::get_associated_allocator(_handler); }
+    using executor_type = ClientService::executor_type;
+    executor_type get_executor() const noexcept { return _svc_ptr->get_executor(); }
+    void perform(const std::vector<std::string>& topics, const unsubscribe_props& props);
+    void send_unsubscribe(control_packet<allocator_type> unsubscribe);
+    void resend_unsubscribe(control_packet<allocator_type> unsubscribe);
+    void operator()(on_unsubscribe, control_packet<allocator_type> packet, error_code ec);
+    void operator()(on_unsuback, control_packet<allocator_type> packet, error_code ec, byte_citer first, byte_citer last);
+};
+class detail::initiate_async_unsubscribe<ClientService> {
+    std::shared_ptr<ClientService> _svc_ptr;
+public: explicit ctor(std::shared_ptr<ClientService> svc_ptr);
+    using executor_type = ClientService::executor_type;
+    executor_type get_executor() const noexcept { return _svc_ptr->get_executor(); }
+    void operator()<Handler>(Handler&& handler, const std::vector<std::string>& topics, const unsubscribe_props& props);
+};
+
+class detail::write_op<Owner,Handler> {
+    using handler_type = Handler;
+    struct on_write{}; struct on_reconnect{};
+    Owner& _owner; handler_type _handler;
+    void complete(error_code ec, size_t bytes_written);
+    static bool should_reconnect(error_code ec);
+public: ctor(Owner& owner, Handler&& handler); // allow move, no copy
+    using allocator_type = asio::associated_allocator_t<Handler>;
+    allocator_type get_allocator() const noexcept { return asio::get_associated_allocator(_handler); }
+    using executor_type = asio::associated_executor_t<handler_type>;
+    executor_type get_executor() const noexcept { return asio::get_associated_executor(_handler); }
+    void perform<BufferType>(BufferType& buffer);
+    void operator()(on_write, Owner::stream_ptr stream_ptr, error_code ec, size_t bytes_written);
+    void operator()(on_reconnect, error_code ec);
+};
+
 ```
 
-codecs/: base_decoders, base_encoders, message_decoders, message_encoders
-async_sender, autoconnect_stream, client_service, endpoints, replies, shutdown_op, subscribe_op, unsubscribe_op, write_op
+##### Messages
 
+```c++
+auto decoders::type_parse<It,Parser>(It& first, const It last, const Parser& p);
+struct decoders::basic::int_parser<Attr> { using attribute_type = Attr;
+    bool parse<It>(It& first, const It last, Attr& attr) const; };
+constexpr int_parser<uint8_t> decoders::basic::byte_;
+constexpr int_parser<uint16_t> decoders::basic::word_;
+constexpr int_parser<uint32_t> decoders::basic::dword_;
+
+namespace boost::mqtt5::decoders::basic {
+struct varint_parser { using attribute_type = int32_t; bool parse<It>(It& first, const It last, int32_t& attr) const; };
+constexpr varint_parser varint_;
+
+struct len_prefix_parser { using attribute_type = std::string; bool parse<It>(It& first, const It last, std::string& attr) const; };
+constexpr len_prefix_parser utf8_;
+constexpr len_prefix_parser binary_;
+
+struct conditional_parser<Subject> {
+    using subject_attr_type = Subject::attribute_type;
+    using attribute_type = std::optional<subject_attr_type>;
+    Subject p; bool condition;
+    bool parse<It>(It& first, const It last, attribute_type& attr) const;
+};
+struct conditional_gen { bool _condition; conditional_parser<Subject> operator[]<Subject>(const Subject& p) const { return {p,_condition}; } };
+constexpr conditional_gen if_(bool condition) { return {condition}; }
+
+struct verbatim_parser { using attribute_type = std::string; bool parse<It>(It& first, const It last, std::string& attr) const; };
+constexpr verbatim_parser verbatim_;
+
+struct seq_parser<...Ps> {
+    using attribute_type = std::tuple<Ps::attribute_type...>;
+    std::tuple<Ps...> parsers;
+    bool parse<It>(It& first, const It last, attribute_type& attr) const;
+};
+constexpr seq_parser<Ps...,P2> operator>> <...Ps,P2> (const seq_parser<Ps...>& p1, const P2& p2);
+constexpr seq_parser<P1,P2> operator>> <P1,P2> (const P1& p1, const P2& p2);
+
+struct attr_parser<Attr> { using attribute_type = Attr; Attr attr; bool parse<It>(It& first, const It last, Attr& attr) const; };
+constexpr attr_parser<Attr> attr(const Attr& val);
+
+struct plus_parser<Subject> {
+    using subject_attr_type = Subject::attribute_type;
+    using attribute_type = std::optional<subject_attr_type>;
+    Subject p;
+    bool parse<It,Attr>(It& first, const It last, Attr& attr) const;
+};
+constexpr plus_parser<P> operator+<P>(const P& p);
+}
+
+namespace boost::mqtt5::decoders::prop {
+bool detail::parse_to_prop<It,Prop>(It& iter, const It last, Prop& prop);
+
+struct prop_parser<Props> { using attribute_type = Props; bool parse<It>(It& first, const It last, Props& attr) const; };
+constexpr auto props_<Props> = prop_parser<Props>{};
+}
+
+namespace boost::mqtt5::decoders {
+using fixed_header = std::tuple<uint8_t, uint32_t>;
+std::optional<fixed_header> decode_fixed_header(byte_citer& it, const byte_citer last);
+using packet_id = uint16_t;
+std::optional<packet_id> decode_packet_id(byte_citer& it);
+using connect_message = std::tuple<std::string, std::optional<std::string>, std::optional<std::string>, uint16_t, bool, connect_props, std::optional<will>>;
+std::optional<connect_message> decode_connect(uint32_t remain_length, byte_citer& it);
+using connack_message = std::tuple<uint8_t, uint8_t, connack_props>;
+std::optional<connack_message> decode_connack(uint32_t remain_length, byte_citer& it);
+using publish_message = std::tuple<std::string, std::optional<uint16_t>, uint8_t, publish_props, std::string>;
+std::optional<publish_message> decode_publish(uint8_t control_byte, uint32_t remain_length, byte_citer& it);
+using puback_message = std::tuple<uint8_t, puback_props>;
+std::optional<puback_message> decode_puback(uint32_t remain_length, byte_citer& it);
+using pubrec_message = std::tuple<uint8_t, pubrec_props>;
+std::optional<pubrec_message> decode_pubrec(uint32_t remain_length, byte_citer& it);
+using pubrel_message = std::tuple<uint8_t, pubrel_props>;
+std::optional<pubrel_message> decode_pubrel(uint32_t remain_length, byte_citer& it);
+using pubcomp_message = std::tuple<uint8_t, pubcomp_props>;
+std::optional<pubcomp_message> decode_pubcomp(uint32_t remain_length, byte_citer& it);
+using subscribe_message = std::tuple<subscribe_props, std::vector<std::tuple<std::string, uint8_t>>>;
+std::optional<subscribe_message> decode_subscribe(uint32_t remain_length, byte_citer& it);
+using suback_message = std::tuple<suback_props, std::vector<uint8_t>>;
+std::optional<suback_message> decode_suback(uint32_t remain_length, byte_citer& it);
+using unsubscribe_message = std::tuple<unsubscribe_props, std::vector<std::string>>;
+std::optional<unsubscribe_message> decode_unsubscribe(uint32_t remain_length, byte_citer& it);
+using unsuback_message = std::tuple<unsuback_props, std::vector<uint8_t>>;
+std::optional<unsuback_message> decode_unsuback(uint32_t remain_length, byte_citer& it);
+using disconnect_message = std::tuple<uint8_t, disconnect_props>;
+std::optional<disconnect_message> decode_disconnect(uint32_t remain_length, byte_citer& it);
+using auth_message = std::tuple<uint8_t, auth_props>;
+std::optional<auth_message> decode_auth(uint32_t remain_length, byte_citer& it);
+}
+
+namespace boost::mqtt5::encoders::basic {
+using varint_t = int*;
+void to_variable_bytes(std::string& s, int32_t val);
+size_t variable_length(int32_t val);
+
+struct encoder{};
+
+class flag_def<bits,Repr=uint8_t> : public encoder {
+    using least_type<num_bits> = ...; // choose by bit-width: uint8_t/uint16_t/uint32_t/uint64_t/void
+    Repr _val{0};
+public: ctor(Repr val); ctor()=default;
+    auto operator()<T,projection=identity> (T&& value, projection proj={}) const; // T is or not optional<>
+    size_t byte_size() const { return sizeof(Repr); }
+    auto operator|<rhs_bits,rhs_repr>(const self<rhs_bits,rhs_repr>& rhs) const;
+    std::string& encode(std::string& s) const;
+};
+constexpr auto flag<bits,Repr=uint8_t> = flag_def<bits,Repr>{};
+
+class int_val<T,Repr> : public encoder { T _val; // T maybe optional
+public: ctor(T val);
+    size_t byte_size() const;
+    std::string& encode(std::string& s) const;
+};
+struct int_def<Repr=uint8_t> {
+    auto operator()<T> (T&& value) const { return int_val<T,Repr>{std::forward<T>(val)}; }
+    auto operator()<T,projection> (T&& value, projection proj) const; // T is or not optional<>
+};
+constexpr auto byte_ = int_def<uint8_t>{};
+constexpr auto int16_ = int_def<uint16_t>{};
+constexpr auto int32_ = int_def<uint32_t>{};
+constexpr auto varlen_ = int_def<varint_t>{};
+
+class array_val<T> : public encoder { T _val; bool _with_length; // T maybe optional
+public: ctor(T val, bool with_length);
+    size_t byte_size() const;
+    std::string& encode(std::string& s) const;
+};
+struct array_def<with_length=true> {
+    auto operator()<T> (T&& value) const { return array_val<T,Repr>{std::forward<T>(val), with_length}; }
+    auto operator()<T,projection> (T&& value, projection proj) const; // T is or not optional<>
+};
+using utf8_def = array_def<true>;
+constexpr auto utf8_ = utf8_def{};
+constexpr auto binary_ = array_def<true>{};
+constexpr auto verbatim_ = array_def<false>{};
+
+class composed_val<T,U> : public encoder { T _lhs; U _rhs;
+public: ctor(T lhs, U rhs);
+    size_t byte_size() const;
+    std::string& encode(std::string& s) const;
+};
+auto operator&<T,U>(T&& t, U&& u) requires (...); // T and U are both encoder
+std::string& operator<< <T> (std::string& s, T&& t) requires(...); // T is encoder
+}
+
+namespace boost::mqtt5::encoders::prop {
+auto encoder_for_prop_value<T>(const T& val);
+class prop_val<T,property_type p> : public encoder { // T is std::optional<>, std::vector<> or small_vector<>
+    T _val; static inline std::remove_cv_rev_t<T> nulltype;
+public: ctor(T val):_val{val}{} ctor():_val{nulltype}{}
+    size_t byte_size() const;
+    std::string& encode(std::string& s) const;
+};
+class props_val<Props> : public encoder {
+    static inline std::decay_t<Props> nulltype;
+    static auto to_prop_val<p,T>(const T& val) { return prop_val<const T&,p>{val}; }
+    static auto to_prop_vals<...ps,T>(const properties<ps...>& props) { return make_tuple(to_prop_val<ps>(props[ps{}])...); }
+    decltype(to_prop_vals(std::declval<Props>())) _prop_vals;
+    bool _may_omit;
+public: ctor(Props val, bool may_omit); ctor(bool may_omit);
+    size_t byte_size() const;
+    std::string& encode(std::string& s) const;
+};
+struct props_def<may_omit> { auto operator()<T>(T&& prop_container) const; };
+constexpr auto props_ = props_def<false>{};
+constexpr auto props_may_omit_ = props_def<true>{};
+}
+
+namespace boost::mqtt5::encoders {
+std::string encode<Encoder>(const Encoder& e);
+std::string encode_connect(std::string_view client_id, std::optional<std::string_view> user_name, std::optional<std::string_view> password,
+    uint16_t keep_alive, bool clean_start, const connect_props& props, const std::optional<will>& w);
+std::string encode_connack(bool session_present, uint8_t reason_code, const connack_props props);
+std::string encode_publish(uint16_t packet_id, std::string_view topic_name, std::string_view payload,
+    qos_e qos, retain_e retain, dup_e dup, const publish_props& props);
+std::string encode_puback(uint16_t packet_id, uint8_t reason_code, const puback_props& props);
+std::string encode_pubrec(uint16_t packet_id, uint8_t reason_code, const pubrec_props& props);
+std::string encode_pubrel(uint16_t packet_id, uint8_t reason_code, const pubrel_props& props);
+std::string encode_pubcomp(uint16_t packet_id, uint8_t reason_code, const pubcomp_props& props);
+std::string encode_subscribe(uint16_t packet_id, const std::vector<subscribe_topic>& topics, const subscribe_props& props);
+std::string encode_suback(uint16_t packet_id, const std::vector<uint8_t>& reason_codes, const suback_props& props);
+std::string encode_unsubscribe(uint16_t packet_id, const std::vector<std::string>& topics, const unsubscribe_props& props);
+std::string encode_unsuback(uint16_t packet_id, const std::vector<uint8_t>& reason_codes, const unsuback_props& props);
+std::string encode_pingreq();
+std::string encode_pingresp();
+std::string encode_disconnect(uint8_t reason_code, const disconnect_props& props);
+std::string encode_auth(uint8_t reason_code, const auth_props& props);
+}
+```
+
+##### Client Service Implementation
+
+```c++
+class detail::stream_context<StreamType,TlsContext,std::enable_if_t<has_tls_layer<StreamType>>> {
+    using tls_context_type = TlsContext;
+    mqtt_ctx _mqtt_context; std::shared_ptr<tls_context_type> _tls_context_ptr;
+public: explicit ctor(TlsContext tls_context); ctor(cosnt self& other);
+    <const> auto& mqtt_context() <const> { return _mqtt_context; }
+    auto& tls_context() { return *_tls_context_ptr; }
+    <const> auto& session_state() <const> { return _mqtt_context.state; }
+    void will(will will) { _mqtt_context.will_msg = std::move(will); }
+    const auto& connack_property<property_type p>(<p> prop) const { return _mqtt_context.ca_props[prop]; }
+    const auto& connack_properties() const { return _mqtt_context.ca_props; }
+    <const> auto& connect_property<property_type p>(<p> prop) <const> { return _mqtt_context.co_props[prop]; }
+    void connect_properties(connect_props props) { _mqtt_context.co_props = std::move(props); }
+    void credentials(std::string client_id, std::string username="", std::string password="")
+    { _mqtt_context.creds = {std::move(client_id), std::move(username), std::move(password)}; }
+    void authenticator<Auth>(Auth&& authenticator) { _mqtt_context.authenticator = any_authenticator{std::forward<Auth>(authenticator)}; }
+};
+class detail::stream_context<StreamType,TlsContext,std::enable_if_t<!has_tls_layer<StreamType>>> {
+    mqtt_ctx _mqtt_context;
+public: // same as above: ctor, mqtt_context, session_state, will, connack_property, connack_properties, connect_property, connect_properties, credentials, authenticator
+};
+
+class detail::client_service<StreamType,TlsContext=std::monostate,LoggerType=noop_logger> {
+    using stream_context_type = stream_context<StreamType,TlsContext>;
+    using stream_type = autoconnect_stream<StreamType, stream_context_type, LoggerType>;
+    using tls_context_type = TlsContext; using logger_type = LoggerType;
+    using receive_channel = asio::experimental::basic_channel<executor_type, channel_traits<>, void(error_code, std::string, std::string, publish_props)>;
+    executor_type _executor; log_invoke<logger_type> _log; stream_context_type _stream_context; stream_type _stream;
+    packet_id_allocator _pid_allocator; replies _replies; async_sender<self> _async_sender;
+    std::string _read_buff; data_span _active_span; receive_channel _rec_channel; asio::steady_timer _ping_timer, _sentry_timer;
+    ctor(const self& other);
+public: using executor_type = stream_type::executor_type;
+    explicit ctor(const executor_type& ex, tls_context_type tls_context={}, logger_type logger={});
+    executor_type get_executor() const noexcept { return _executor; }
+    auto dup() const { return std::shared_ptr<self>(new self{*this}); }
+    decltype(auto) tls_context<Ctx=TlsContext>() requires !std::is_same_v<Ctx,std::monostate> { return _stream_context.tls_context(); }
+    void will(will will) { if (!is_open()) _stream_context.will(std::move(will)); }
+    void credential(std::string client_id, std::string username="", std::string password=""); // forward to _stream_context
+    void brokers(std::string hosts, uint16_t default_port); // forward to _stream
+    void authenticator<Auth>(Auth&& authenticator) requires is_authenticator<Auth>::value; // forward to _stream_context
+    uint16_t negotiated_keep_alive() const { return connack_property(server_keep_alive).value_or(_stream_context.mqtt_context().keep_alive); }
+    void keep_alive(uint16_t seconds) { if (!is_open()) _stream_context.mqtt_context().keep_alive = seconds; }
+    const auto& connect_property<p>(<p> prop) const; // forward to _stream_context
+    void connect_property<p>(<p> prop, value_type_t<p> value) const; // forward to _stream_context
+    void connect_properties(connect_props props); // forward to _stream_context
+    const auto& connack_property<p>(<p> prop) const; // forward to _stream_context
+    const auto& connack_properties(); // forward to _stream_context
+    void open_stream() { _stream.open(); }
+    bool is_open() const { return _stream.is_open(); }
+    decltype(auto) async_shutdown<Token>(Token&& token) { return _stream.async_shutdown(std::forward<Token>(token)); }
+    void cancel() { if (!_stream.is_open()) return;
+        _ping_timer.cancel(); _sentry_timer.cancel();
+        _rec_channel.close(); _replies.cancel_unanswered(); _async_sender.cancel(); _stream.cancel(); stream.close(); }
+    log_invoke<LoggerType>& log() { return _log; }
+    uint16_t allocate_pid() { return _pid_allocator.allocate(); }
+    void free_pid(uint16_t pid, bool was_throttled=false) { _pid_allocator.free(pid); if (was_throttled) _async_sender.throttled_op_done(); }
+    serial_num_t next_serial_num() { return _async_sender.next_serial_num(); }
+    bool subscriptions_present() const; // forward to _stream_context.session_state()
+    void subscriptions_present(bool present); // forward to _stream_context.session_state()
+    void update_session_state() { auto& st = _stream_context.session_state();
+        if (!st.session_present()) { _replies.clear_pending_pubrels(); st.session_present(true);
+            if (st.subscriptions_present()) { channel_store_error(session_expired); st.subscriptions_present(false); } }
+        _ping_timer.cancel();
+    }
+    bool channel_store(decoders::publish_message message) { auto& [topic, packet_id, flags, props, payload] = message;
+        return _rec_channel.try_send(error_code{}, std::move(topic), std::move(payload), std::move(props)); }
+    bool channel_store_error(error_code ec) { return _rec_channel.try_send(ec, {}, {}, {}); }
+    decltype(auto) async_send<BufferType,Token>(const BufferType& buffer, serial_num_t serial_num, unsigned flags, Token&& token)
+    { return _async_sender.async_send(buffer, serial_num, flags, std::forward<Token>(token)); }
+    decltype(auto) async_assemble<Token>(Token&& token)
+    { return asio::async_initiate<Token,void(error_code, uint8_t, byte_citer, byte_citer)>(
+        [](auto h, self& self, std::string& read_buff, data_span& active_span)
+        { assemble_op{self, std::move(h), read_buff, active_span}.perform(asio::transfer_at_least(0)); },
+        token, std::ref(*this), std::ref(_read_buff), std::ref(_active_span)); }
+    decltype(auto) async_wait_reply<Token>(control_code_e code, uint16_t packet_id, Token&& token)
+    { return _replies.async_wait_reply(code, packet_id, std::forward<Token>(token)); }
+    decltype(auto) async_channel_receive<Token>(Token&& token) { return _rec_channel.async_receive(std::forward<Token>(token)); }
+};
+```
+
+##### Async Sender & Replies
+
+```c++
+class detail::write_req {
+    using handler_type = asio::any_completion_handler<void(error_code)>;
+    static constexpr unsigned SERIAL_BITS = sizeof(serial_num_t)*8;
+    asio::const_buffer _buffer; serial_num_t _serial_num; unsigned _flags; handler_type _handler;
+    bool prioritized() const { return _falgs & prioritized; }
+public: ctor(asio::const_buffer buffer, serial_num_t serial_num, unsigned flags, handler_type handler); // allow move, no copy
+    static serial_num_t next_serial_num(serial_num_t last) { return last+1; }
+    asio::const_buffer buffer() const { return _buffer; }
+    void complete(error_code ec) { std::move(_handler)(ec); }
+    void complete_post(const asio::any_io_executor& ex, error_code ec) { asio::post(ex, asio::prepend(std::move(_handler), ec)); }
+    bool empty() const { return !_handler; }
+    bool throttled() const { return _falgs & throttled; }
+    bool terminal() const { return _falgs & terminal; }
+    bool operator< (const self& other) const;
+};
+
+class detail::async_sender<ClientService> {
+    using client_service = ClientService;
+    using queue_allocator_type = asio::recycling_allocator<write_req>;
+    using write_queue_t = std::vector<write_req, queue_allocator_type>;
+    ClientService& _svc; write_queue_t _write_queue; bool _write_in_progress {false};
+    static constexpr uint16_t MAX_LIMIT = 65535;
+    uint16_t _limit{MAX_LIMIT}, _quota{MAX_LIMIT}; serial_num_t _last_serial_num{0};
+    void do_write();
+public: explicit ctor(ClientService& svc) : _svc{svc}{} // allow move, no copy
+    using allocator_type = queue_allocator_type;
+    allocator_type get_allocator() const noexcept { return {}; }
+    using executor_type = client_service::executor_type;
+    executor_type get_executor() const noexcept { return _svc.get_executor(); }
+    serial_num_t next_serial_num() { return _last_serial_num = write_req::next_serial_num(_last_serial_num); }
+    decltype(auto) async_send<Token,BufferType>(const BufferType& buffer, serial_num_t serial_num, unsigned flags, Token&& token);
+    void cancel();
+    void resend();
+    void operator(write_queue_t write_queue, error_code ec, size_t);
+    void throttled_op_done();
+};
+
+class detail::replies {
+    using Sig = void(error_code, byte_citer, byte_citer);
+    static constexpr auto max_reply_time = std::chrono::seconds(20);
+    class reply_handler {
+        asio::any_completion_handler<Sig> _handler; control_code_e _code; uint16_t _packet_id; 
+        std::chrono::time_point<std::chrono::system_clock> _ts;
+    public: ctor<H>(control_code_e code, uint16_t pid, H&& handler); // allow move, no copy
+        void complete(error_code ec, byte_citer first={}, byte_citer last={}) { std::move(_handler)(ec, first, last); }
+        void complete_post(const executor_type& ex, error_code ec) { asio::post(ex, asio::prepend(std::move(_handler), ec, {}, {})); }
+        uint16_t packet_id() const noexcept { return _packet_id; }
+        control_code_e code() const noexcept { return _code; }
+        auto time() const noexcept { return _ts; }
+    };
+    struct fast_reply { control_code_e code; uint16_t packet_id; std::unique_ptr<std::string> packet; };
+    using handlers = std::vector<reply_handler>; using fast_replies = std::vector<fast_reply>;
+    executor_type _ex; handlers _handlers; fast_replies _fast_replies;
+    handlers::iterator find_handler(control_code_e code, uint16_t packet_id);
+    fast_replies::iterator find_fast_reply(control_code_e code, uint16_t packet_id);
+public: using executor_type = asio::any_io_executor;
+    explicit ctor<Executor>(Executor ex); // allow move, no copy
+    decltype(auto) async_wait_reply<Token>(control_code_e code, uint16_t packet_id, Token&& token);
+    void dispatch(error_code ec, control_code_e code, uint16_t packet_id, byte_citer first, byte_citer last);
+    void resend_unanswered();
+    void cancel_unanswered();
+    bool any_expired();
+    void clear_fast_repies();
+    void clear_pending_pubrels();
+};
+```
+
+##### Auto Connect Stream
+
+```c++
+using epoints = asio::ip::tcp::resolver::results_type;
+class detail::resolve_op<Owner,Handler> {
+    using handler_type = Handler;
+    struct on_resolve{};
+    Owner& _owner; handler_type _handler;
+    void complete(error_code ec, epoints eps, authority_path ap);
+    void complete_post(error_code ec, epoints eps, authority_path ap);
+public: ctor(Owner& owner, Handler&& handler); // allow move, no copy
+    using allocator_type = asio::associated_allocator_t<Handler>;
+    allocator_type get_allocator() const noexcept { return asio::get_associated_allocator(_handler); }
+    using cancellation_slot_type = asio::associated_cancellation_slot_t<Handler>;
+    cancellation_slot_type get_cancellation_slot() const noexcept { return asio::get_associated_cancellation_slot(_handler); }
+    using executor_type = asio::associated_executor_t<handler_type>;
+    executor_type get_executor() const noexcept { return asio::get_associated_executor(_handler); }
+    void perform();
+    void operator()(on_resolve, std::array<size_t,2> ord, error_code resolve_ec, epoints epts, error_code timer_ec, authority_path ap);
+};
+
+class detail::endpoints<LoggerType> {
+    using logger_type = LoggerType;
+    asio::ip::tcp::resolver _resolver; asio::steady_timer& _connect_timer;
+    std::vector<authority_path> _servers; int _current_host{-1}; log_invoke<logger_type>& _log;
+public: ctor<Executor>(Executor ex, asio::steady_timer& timer, log_invoke<logger_type>& log); // no copy
+    void clone_servers(const self& other) { _servers = other.servers; }
+    using executor_type = asio::ip::tcp::resolver::executor_type;
+    executor_type get_executor() noexcept { return _resolver.get_executor(); }
+    decltype(auto) async_next_endpoint<Token>(Token&& token)
+    { return asio::async_initiate<Token,void(error_code, epoints, authority_path)>(
+        [](auto h, self& self){ resolve_op{self, std::move(h)}.perform(); }, token, std::ref(*this)); }
+    void brokers(std::string hosts, uint16_t default_port);
+};
+
+class detail::autoconnect_stream<StreamType,StreamContext=std::monostate,LoggerType=noop_logger> {
+    using stream_ptr = std::shared_ptr<stream_type>;
+    executor_type _stream_executor; async_mutex _conn_mtx;
+    asio::steady_timer _read_timer, _connect_timer; endpoints<logger_type> _endpoints;
+    stream_ptr _stream_ptr; stream_context_type& _stream_context; log_invoke<logger_type>& _log;
+    log_invoke<logger_type>& log() { return _log; }
+    static void open_lowest_layer(const stream_ptr& sptr, asio::ip::tcp protocol);
+    stream_ptr construct_next_layer() const;
+    stream_ptr construct_and_open_next_layer(asio::ip::tcp protocol) const;
+    void replace_next_layer(stream_ptr sptr);
+    decltype(auto) async_reconnect<Token>(stream_ptr s, Token&& token)
+    { return asio::async_initiate<Token,void(error_code)>([](auto h, self& self, stream_ptr s){ reconnect_op{self, std::move(h) }.perform(std::move(s)); },
+        token, std::ref(*this), std::move(s)); }
+public: using stream_type = StreamType; using stream_context_type = StreamContext;
+    using logger_type = LoggerType; using executor_type = stream_type::executor_type;
+    ctor(const executor_type& ex, stream_context_type& context, log_invoke<logger_type>& log); // disable copy
+    using next_layer_type = stream_type;
+    <const> next_layer_type& next_layer() <const> { return *_stream_ptr; }
+    void brokers(std::string hosts, uint16_t default_port) { _endpoints.brokers(std::move(hosts), default_port); }
+    void clone_endpoints(const self& other) { _endpoints.clone_servers(other._endpoints); }
+    bool is_open() const noexcept { return lowest_layer(*_stream_ptr).is_open(); }
+    void open() { open_lowest_layer(_stream_ptr, asio::io::tcp::v4()); }
+    void cancel() { _conn_mtx.cancel(); _connect_timer.cancel(); }
+    void close() { error_code ec; lowest_layer(*_stream_ptr).close(ec); }
+    void async_shutdown<Token>(Token&& token)
+    { return asio::async_initiate<Token,void(error_code)>([](auto h, self& self){ shutdown_op{self, std::move(h) }.perform(); }, token, std::ref(*this)); }
+    bool was_connected() const { error_code ec, lowest_layer(*_stream_ptr).remote_endpoint(ec); return ec == success; }
+    decltype(auto) async_read_some<BufferType,Token>(const BufferType& buffer, duration wait_for, Token&& token)
+    { return asio::async_initiate<Token,void(error_code,size_t)>([](auto h, self& self, auto buf, auto wait_for){ read_op{self, std::move(h)}.perform(buf, wait_for); },
+        token, std::ref(*this), buffer, wait_for); }
+    decltype(auto) async_write<BufferType,Token>(const BufferType& buffer, Token&& token)
+    { return asio::async_initiate<Token,void(error_code,size_t)>([](auto h, self& self, auto buf){ write_op{self, std::move(h)}.perform(buf); },
+        token, std::ref(*this), buffer); }
+};
+```
 
 ##### Authenticator Wrapper
 
