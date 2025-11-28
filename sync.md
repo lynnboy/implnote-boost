@@ -7,9 +7,12 @@
 ------
 ### Common Part
 
-detail/: atomic, auto_handle, config, footer, futex, header, link_config, lockable_wrapper,
-    pause, pthread.hpp, pthread_mutex_locks, system_error, throw_exception,
-    time_traits, time_units, tss, waitable_timer, weak_linkage
+```c++
+void detail::throw_exception<Ex,...T>(source_location const& loc, T&&...args) { boost::throw_exception(Ex{(T&&)args...}, loc); }
+void detail::pause() noexcept; // _mm_pause() on MSVC, __asm__ pause for x86/x64 on GCC
+```
+
+detail/: system_error, time_traits, time_units, tss, waitable_timer, weak_linkage
 
 #### Exceptions
 
@@ -17,6 +20,15 @@ exceptions/: lock_error, overflow_error, resource_error, runtime_exception, wait
 
 ------
 ### Mutexes
+
+```c++
+class detail::posix::pthread_mutex_lock_guard { pthread_mutex_t* const m_mutex; // no copy
+public: explicit ctor(pthread_mutex_t& m) noexcept : m_mutex{&m}{pthread_mutex_lock(m_mutex);}
+    ~dtor() { pthread_mutex_unlock(m_mutex); } };
+class detail::posix::pthread_mutex_unlock_guard { pthread_mutex_t* const m_mutex;  // no copy
+public: explicit ctor(pthread_mutex_t& m) noexcept : m_mutex{&m}{pthread_mutex_unlock(m_mutex);}
+    ~dtor() { pthread_mutex_lock(m_mutex); } };
+```
 
 mutexes/: mutex, shared_spin_mutex, spin_mutex, timed_mutex
 detail/mutexes/: <timed>_mutex_{posix|windows}, <shared>_spin_mutex, basic_mutex_windows
@@ -31,7 +43,6 @@ locks/: lock_options, <un>lock_guard_<fwd>, shared_lock_guard_<fwd>, {unique|sha
 
 condition_variables/: condition_variable, condition_variable_any, cv_status, notify_all_at_thread_exit
 detail/condition_variables/: basic_condition_variable_windows, condition_variable_any_{generic|windows}, condition_variable_{posix|windows}
-thread_specific/: at_thread_exit, thread_specific_ptr
 traits/is_condition_variable_compatible
 
 ------
@@ -41,13 +52,36 @@ semaphore
 detail/semaphore_config
 detail/semaphore/: semaphore_{windows|dispatch|posix|emulation|mach}, basic_semaphore_mach
 
+#### Futex
+
+```c++
+int detail::linux_::futex_invoke(int* addr1, int op, int val1, const struct ::timespec* timeout=NULL, int* addr2=NULL, int val3=0) noexcept
+{ return ::syscall(SYS_futex, addr1, op, val1, timeout, addr2, val3); }
+int detail::linux_::futex_wait(int* pval, int expected) noexcept { return futex_invoke(pval, FUTEX_WAIT, expected); }
+int detail::linux_::futex_timedwait(int* pval, int expected, uint64_t timeout_nsec) noexcept
+{ struct ::timespec timeout{timeout_nsec}; return futex_invoke(pval, FUTEX_WAIT, expected, &timeout); }
+int detail::linux_::futex_broadcast(int* pval) noexcept { return futex_invoke(pval, FUTEX_WAKE, INT_MAX); }
+int detail::linux_::futex_signal(int* pval, int count=1) noexcept { return futex_invoke(pval, FUTEX_WAKE, count); }
+```
+
 events/: {auto|manual}_reset_event
 detail/events/: auto_reset_event{wnidows|futex|semaphore|emulation}, manual_reset_event{wnidows|futex|emulation}, basic_event_windows
+
+------
+### Thread-Specific Storage
+
+thread_specific/: at_thread_exit, thread_specific_ptr
+src/: tss_manager, tss_windows_...
 
 ------
 ### Time Types Support
 
 support/: boost_chrono, boost_date_time, posix_time, std::chrono
+
+------
+### Configuration
+
+* `USE_PTHREAD` - force pthread
 
 ------
 ### Dependencies
@@ -57,14 +91,14 @@ support/: boost_chrono, boost_date_time, posix_time, std::chrono
 * `<boost/assert.hpp>`
 * `<boost/assert/source_location.hpp>`
 
-#### Boost.Atomic
+#### Boost.Atomic - when no STD `<atomic>`
 
 * `<boost/atomic/atomic.hpp>`
 * `<boost/memory_order.hpp>`
 
-#### Boost.Chrono
+#### Boost.Chrono - for `boost::chrono` support
 
-* `<boost/chrono/duration.hpp>`, `<boost/chrono/time_point.hpp>`, `<boost/chrono/system_clocks.hpp>` - for `boost::chrono` support
+* `<boost/chrono/duration.hpp>`, `<boost/chrono/time_point.hpp>`, `<boost/chrono/system_clocks.hpp>`
 
 #### Boost.Config
 
@@ -79,9 +113,14 @@ support/: boost_chrono, boost_date_time, posix_time, std::chrono
 * `<boost/core/explicit_operator_bool.hpp>`
 * `<boost/core/scoped_enum.hpp>`
 
-#### Boost.DateTime
+#### Boost.DateTime - for `boost::date_time` support
 
-* `<boost/date_time/posix_time/posix_time_types.hpp>` - for `boost::date_time` support
+* `<boost/date_time/posix_time/posix_time_types.hpp>`
+
+#### Boost.Intrusive
+
+* `<boost/intrusive/options.hpp>`
+* `<boost/intrusive/list.hpp>`, `<boost/intrusive/list_hook.hpp>`
 
 #### Boost.Move
 
