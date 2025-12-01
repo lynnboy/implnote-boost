@@ -498,67 +498,300 @@ struct storage_adaptor<T> : storage_adaptor_impl<T> {
 ```c++
 namespace accumulators;
 struct is_thread_safe<T>;
+
+class collector<Cont> {
+    container_type container_;
+public: using container_type = Cont; // and value_type, allocator_type, const_reference, const_pointer, <const>_iterator, size_type from Cont
+    explicit ctor<...Args>(Args&&...args) requires is_constructible_v<Cont,Args...>;
+    explicit ctor<T,...Args>(std::initializer_list<T> il, Args&&...args) requires is_constructible_v<Cont,...>;
+    void operator()(const_reference x) { container_.push_back(x); }
+    self& operator+=<C>(const self<C>& rhs);
+    bool operator{==|!=}<iterable C>(const C& rhs) const noexcept;
+    size_type size() const noexcept; size_type count() const noexcept;
+    const const_iterator {begin|end}() const noexcept;
+    const_reference operator[](size_type idx) const noexcept;
+    const_pointer data() const noexcept;
+    allocator_type get_allocator() const;
+    void serialize<Archive>(Archive& ar, unsigned); // "container" for container_
+};
+
+class count<T, thread_safe> {
+    using internal_type = conditional_t<thread_safe, atomic_number<T>, T>;
+    internal_type value_{};
+public: using value_type = T; using const_reference = const value_type&;
+    ctor() noexcept=default; ctor(const_reference value) noexcept;
+    ctor<T,b>(const self<T,b>& c) noexcept;
+    self& operator++() noexcept;
+    self& operator{+=|*=|/=}(const self& s) noexcept;
+    self& operator{+=|*=}(const_reference value) noexcept;
+    self operator{*|/}(const count& rhs) const noexcept;
+    bool operator{==|!=|<|>|<=|>=}(const self& rhs) const noexcept;
+    value_type value() const noexcept;
+    explicit operator value_type() const noexcept;
+    void serialize<Archive>(Archive& ar, unsigned); // "value" for value()
+    static constexpr bool thread_safe() noexcept;
+    friend bool operator{==|!=|<|>|<=|>=}(const_reference x, const self& rhs) noexcept;
+};
+struct std::common_type<count<T,b1>,count<U,b2>> { using type = count<common_type_t<T,U>, b1||b2>; };
+
+class fraction<T> {
+    value_type succ_{}, fail{};
+public: using value_type = T; using const_reference = const value_type&;
+    using real_type = std::conditional_t<is_floating_point_v<value_type>, value_type, double>;
+    using interval_type = wilson_interval<real_type>::interval_type;
+    ctor() noexcept=default; ctor(const_reference successes, const_reference failures) noexcept;
+    ctor<T>(const self<T>& c) noexcept;
+    void operator()(bool x) noexcept { if (x) ++succ_; else ++fail_; }
+    self& operator+=(const self& s) noexcept;
+    const_reference successes() const noexcept; const_reference failures() const noexcept;
+    value_type count() const noexcept { return succ_ + fail_; }
+    real_type value() const noexcept { return (real_type)succ_ / count(); }
+    real_type variance() const noexcept { const real_type p = value(); return p*(1-p)/count(); }
+    interval_type confidence_level() const noexcept { return wilson_interval<real_type>{}((real_type)successes(), (real_type)failures()); }
+    bool operator{==|!=}(const self& rhs) const noexcept;
+    void serialize<Archive>(Archive& ar, unsigned); // "value" for value()
+};
+struct std::common_type<fraction<T>,fraction<U>> { using type = fraction<common_type_t<T,U>>; };
+
+class mean<T> {
+    value_type sum_{}, mean_{}, sum_of_deltas_squared_{};
+public: using value_type = T; using const_reference = const value_type&;
+    ctor() noexcept=default; ctor(const_reference n, const_reference mean, const_reference variance) noexcept;
+    ctor<T>(const self<T>& c) noexcept;
+    void operator()(const_reference x) noexcept
+    { sum_+=1; const auto delta=x-mean_; mean_+=delta/sum_; sum_of_deltas_squared_+=delta*(x-mean_); }
+    void operator()(const weight_type<value_type>& w, const_reference x) noexcept
+    { sum_+=w.value; const auto delta=x-mean_; mean_+=w.value*delta/sum_; sum_of_deltas_squared_+=w.value*delta*(x-mean_); }
+    self& operator+=(const self& s) noexcept {
+        if (rhs.sum_==0) return *this;
+        const auto n1=sum_, mu1=mean_, n2=rhs.sum_, mu2=rhs.mean_;
+        sum_+=rhs.sum_; mean_ = (n1*mu1 + n2*mu2)/sum_; sum_of_deltas_squared += rhs.sum_of_deltas_squared + n1*square(mean_-mu1) + n2*square(mean_-mu2);
+        return *this;
+    }
+    self& operator*=(const_reference s) noexcept { mean_*=s; sum_of_deltas_squared_*=s*s; return *this; }
+    bool operator{==|!=}(const self& rhs) const noexcept;
+    const_reference count() const noexcept { return sum_; }
+    const_reference value() const noexcept { return mean_; }
+    value_type variance() const noexcept { return sum_of_deltas_squared_/(sum_-1); }
+    void serialize<Archive>(Archive& ar, unsigned); // "sum", "mean", "sum_of_deltas_squared"
+};
+struct std::common_type<mean<T>,mean<U>> { using type = mean<common_type_t<T,U>>; };
+
+class weighted_mean<T> {
+    value_type sum_of_weights_{}, sum_of_weights_squared_{}, weighted_mean_{}, sum_of_weighted_deltas_squared_{};
+public: using value_type = T; using const_reference = const value_type&;
+    ctor() noexcept=default; ctor(const_reference wsum, const_reference wsum2, const_reference mean, const_reference variance);
+    ctor<T>(const self<T>& c) noexcept;
+    void operator()(const_reference x)
+    void operator()(const weight_type<value_type>& w, const_reference x) noexcept
+    { sum_of_weights_+=w.value; sum_of_weights_squared_ += w.value*w.value; const auto delta=x-weighted_mean_;
+        weighted_mean_+=w.value*delta/sum_of_weights_; sum_of_weighted_deltas_squared_+=w.value*delta*(x-weighted_mean_); }
+    self& operator+=(const self& s) noexcept {
+        if (rhs.sum_of_weights_==0) return *this;
+        const auto n1=sum_of_weights_, mu1=weighted_mean_, n2=rhs.sum_of_weights_, mu2=rhs.weighted_mean_;
+        sum_of_weights_+=rhs.sum_of_weights_; weighted_mean_ = (n1*mu1 + n2*mu2)/sum_of_weights_;
+        sum_of_weighted_deltas_squared_ += rhs.sum_of_weighted_deltas_squared_ + n1*square(weighted_mean_-mu1) + n2*square(weighted_mean_-mu2);
+        return *this;
+    }
+    self& operator*=(const_reference s) noexcept { weighted_mean_*=s; sum_of_weighted_deltas_squared_*=s*s; return *this; }
+    bool operator{==|!=}(const self& rhs) const noexcept;
+    const_reference sum_of_weights() const noexcept; const_reference sum_of_weights_squared() const noexcept;
+    value_type count() const noexcept { return square(sum_of_weights_) / sum_of_weights_squared_; }
+    const_reference value() const noexcept { return weighted_mean_; }
+    value_type variance() const noexcept { return sum_of_weighted_deltas_squared_ / (sum_of_weights_ - sum_of_weights_squared_/sum_of_weights_); }
+    void serialize<Archive>(Archive& ar, unsigned); // "sum_of_weights", "sum_of_weights_squared", "weighted_mean", "sum_of_weighted_deltas_squared"
+};
+struct std::common_type<weighted_mean<T>,weighted_mean<U>> { using type = weighted_mean<common_type_t<T,U>>; };
+
+class sum<T> {
+    value_type large_{}, small_{};
+public: using value_type = T; using const_reference = const value_type&;
+    ctor() noexcept=default; ctor(const_reference large_part, const_reference small_part) noexcept;
+    ctor<T>(const self<T>& s) noexcept;
+    self& operator++() noexcept;
+    self& operator+=(const_reference s) noexcept { volatile value_type l; value_type s;
+        if (abs(large_)>=abs(value)) l=large_,s=value; else l=value,s=large_;
+        large_+=value; l-=large_; l+=s; small_+=l;
+        return *this;
+    }
+    self& operator*=(const_reference s) noexcept { large_*=s; small_*=s; return *this; }
+    self& operator{+=|*=|/=}(const self& s) noexcept;
+    self operator{*|/}(const self& rhs) const noexcept;
+    bool operator{==|!=|<|>|<=|>=}(const self& rhs) const noexcept;
+    const_reference value() const noexcept { return large_+small_; }
+    const_reference large_part() const noexcept; const_reference small_part() const noexcept;
+    explicit operator value_type() const noexcept { return value(); }
+    void serialize<Archive>(Archive& ar, unsigned); // "large", "small"
+};
+struct std::common_type<sum<T>,sum<U>> { using type = sum<common_type_t<T,U>>; };
+
+class weighted_sum<T> {
+    value_type sum_of_weights_{}, sum_of_weights_squared_{};
+public: using value_type = T; using const_reference = const value_type&;
+    ctor() noexcept=default; ctor(const_reference value, const_reference variance=value) noexcept;
+    ctor<T>(const self<T>& s) noexcept;
+    self& operator++();
+    self& operator+=(const weight_type<value_type>& w) noexcept { sum_of_weights_+=w.value; sum_of_weights_squared_+=square(w.value); return *this; }
+    self& operator{+=|/=}(const self& s);
+    bool operator{==|!=}(const self& rhs) const noexcept;
+    const_reference value() const noexcept;
+    const_reference variance() const noexcept;
+    explicit operator const_reference() const;
+    void serialize<Archive>(Archive& ar, unsigned); // "sum_of_weights", "sum_of_weights_squared"
+};
+struct std::common_type<weighted_sum<T>,weighted_sum<U>> { using type = weighted_sum<common_type_t<T,U>>; };
+struct std::common_type<weighted_sum<T>,U> { using type = weighted_sum<common_type_t<T,U>>; };
+struct std::common_type<T,weighted_sum<U>> { using type = weighted_sum<common_type_t<T,U>>; };
+
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U,b> (std::basic_ostream<Ch,Tr>& os, const count<U,b>& x); // just value
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, const sum<U>& x); // sum(<large_part> + <small_part>)
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, const weighted_sum<U>& x); // weighted_sum(<value>, <variance>)
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, const mean<U>& x); // mean(<count>, <value>, <variance>)
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, const weighted_mean<U>& x); // weighted_mean(<sum_of_weights>, <value>, <variance>)
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, const fraction<U>& x); // fraction(<successes>, <failures>)
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, const collector<U>& x); // collector{...}
 ```
 
-accumulators/: collector, count, fraction, mean, ostrem, sum, weighted_mean, weighted_sum
+algorithm, histogram, indexed, literals, make_histogram, make_profile, multi_index, ostream, sample, serialization, unsafe_access
 
-accumulators, algorithm, histogram, indexed, literals, make_histogram, make_profile, multi_index, ostream, sample, serialization, unsafe_access, weight
+------
+### Interval Utilities
+
+```c++
+struct binomial_proportion_interval<T> { // base class
+    using value_type = T; using interval_type = std::pair<value_type, value_type>;
+    virtual interval_type operator()(value_type successes, value_type failures) const noexcept=0;
+    interval_type operator()<T>(const fraction<T>& fraction) const noexcept { return operator()(fraction.successes(), fraction.failures()); }
+};
+class deviation { double d_;
+public: explicit ctor(double d) d_{d} { if (d<=0) throw_exception(std::invalid_argument{"..."}); }
+    explicit operator T() const noexcept requires floating_point<T>;
+    operator confidence_level() const noexcept { return {std::fma(2.0, normal_cdf(d_), -1.0)}; }
+    friend derivation operator*(derivation d, double z) noexcept;
+    friend derivation operator*(double z, derivation d) noexcept;
+    friend bool operator{==|!=}(derivation a, deviation b) noexcept;
+};
+class confidence_level { double cl_;
+public: explicit ctor(double cl) : cl_{cl} { if (cl<=0 || cl>=1) throw_exception(std::invalid_argument{""}); }
+    explicit operator T() const noexcept requires floating_point<T>;
+    operator deviation() const noexcept { return {normal_ppf(std::fma(0.5, cl_, 0.5))}; }
+    friend bool operator{==|!=}(derivation a, deviation b) noexcept;
+};
+
+class clopper_pearson_interval<T> : public binomial_proportion_interval<T> {
+    value_type alpha_half_;
+public: explicit ctor(confidence_level cl=deviation{1}) noexcept : alpha_half_{(value_type)(0.5 - 0.5*(double)cl)}{}
+    using base::operator();
+    interval_type operator()(value_type successes, value_type failures) const noexcept override {
+        const value_type one{1.0}, zero{0.0}, total{successes+failures};
+        if (successes==0) return {zero, one-std::pow(alpha_half_, one/total)};
+        if (failures==0) return {std::pow(alpha_half_, one/total), one};
+        math::beta_distrubution<value_type> beta_a{successes,failures+1}, beta_b{successes+1,failures};
+        return {math::quantile(beta_a, alpha_half_), math::quantile(beta_b, one-alpha_half_)};
+    }
+};
+
+class jeffreys_interval<T> : public binomial_proportion_interval<T> {
+    value_type alpha_half_;
+public: explicit ctor(confidence_level cl=deviation{1}) noexcept : alpha_half_{(value_type)(0.5 - 0.5*(double)cl)}{}
+    using base::operator();
+    interval_type operator()(value_type successes, value_type failures) const noexcept override {
+        const value_type half{0.5}, one{1.0}, zero{0.0}, total{successes+failures};
+        if (successes==0) return {zero, one-std::pow(alpha_half_, one/total)};
+        if (failures==0) return {std::pow(alpha_half_, one/total), one};
+        math::beta_distrubution<value_type> beta{successes+half, failures+half};
+        return {successes==1 ? zero : math::quantile(beta, alpha_half_), failures==1 ? one : math::quantile(beta, one-alpha_half_)};
+    }
+};
+
+class wald_interval<T> : public binomial_proportion_interval<T> {
+    value_type z_;
+public: explicit ctor(derivation d=deviation{1}) noexcept : z_{(value_type)d}{}
+    using base::operator();
+    interval_type operator()(value_type successes, value_type failures) const noexcept override {
+        const value_type total_inv=1/(successes+failures), a=successes*total_inv, b=(z_*total_inv)*std::sqrt(successes*failures*total_inv);
+        return {a-b, a+b};
+    }
+};
+
+class wilson_interval<T> : public binomial_proportion_interval<T> {
+    value_type z_;
+public: explicit ctor(derivation d=deviation{1}) noexcept : z_{(value_type)d}{}
+    using base::operator();
+    interval_type operator()(value_type successes, value_type failures) const noexcept override {
+        const value_type half{0.5}, quarter{0.25}, zsq{z_*z_}, total={successes+failures};
+        const value_type minv=1/(total+zsq), t1=(successes+half*zsq)*minv, t2=z_*minv*std::sqrt(successes*failures/total + quarter*zsq);
+        return {t1-t2, t1+t2};
+    }
+};
+```
+
+------
+### Common Parts
+
+```c++
+struct weight_type<T> { T value; operator self<U>() const; };
+auto weight<T>(T&& t) noexcept { return weight_type<T>{std::forward<T>(t)}; }
+
+```
 
 ------
 ### Implementation Details
 
 ```c++
-struct detail::priority<n> : priority<n-1>{}; struct detail::priority<0>{};
-struct detail::relaxed_equal { constexpr bool operator()<T,U>(const T& t, const U& u) const noexcept{...} };
-using detail::replace_type<T,From,To> = std::conditional_t<is_same_v<T,From>, To, T>;
-using detail::replace_default<T,Default> = replace_type<T,use_default,Default>;
-using detail::replace_cstring<T> = replace_type<T,const char*,std::string>;
+namespace detail;
+
+struct priority<n> : priority<n-1>{}; struct detail::priority<0>{};
+struct relaxed_equal { constexpr bool operator()<T,U>(const T& t, const U& u) const noexcept{...} };
+using replace_type<T,From,To> = std::conditional_t<is_same_v<T,From>, To, T>;
+using replace_default<T,Default> = replace_type<T,use_default,Default>;
+using replace_cstring<T> = replace_type<T,const char*,std::string>;
 
 // detect
-using detail::void_t<...> = void;
-struct detail::detect_base{ static T&& val<T>(); static T& ref<T>(); static T const& cref<T>(); };
-using detail::has_method_reset<T> = requires(T& t) {t.reset(0);};
-using detail::has_method_push_back<T> = requires(T& t) {&T::push_back;};
-using detail::is_indexable<T> = requires(T& t) {t[0];};
-using detail::is_transform<T,U=T> = requires(T& t, U& u) {t.inverse(t.forward(u));};
-using detail::is_indexable_container<T> = requires(T& t) {t[0]; t.size(), std::begin(t); std::end(t);};
-using detail::is_vector_like<T> = requires(T& t) {t[0]; t.size(); t.resize(0); std::begin(t); std::end(t);};
-using detail::is_array_like<T> = requires(T& t) {t[0]; t.size(); std::tuple_size<T>::value; std::begin(t); std::end(t);};
-using detail::is_map_like<T> = requires(T& t) {typename T::key_type; typename T::mapped_type; std::begin(t); std::end(t);};
-using detail::is_axis<T> = requires(T& t) {t.size(); &T::index;};
-using detail::is_iterable<T> = requires(T& t) {std::begin(t); std::end(t);};
-using detail::is_iterator<T> = requires(T& t) {typename std::iterator_traits<T>::iterator_category;};
-using detail::is_streamable<T> = requires(T& t, std::ostream& os) {os<<t;};
-using detail::is_allocator<T> = requires(T& t) {T::allocate; T::deallocate;};
-using detail::has_operator_preincrement<T> = requires(T& t) {++t;};
-using detail::has_operator_equal<T,U=T> = requires(const T& t, U& u) {t == u;};
-using detail::has_operator_radd<T,U=T> = requires(T& t, U& u) {t += u;};
-using detail::has_operator_rsub<T,U=T> = requires(T& t, U& u) {t -= u;};
-using detail::has_operator_rmul<T,U=T> = requires(T& t, U& u) {t *= u;};
-using detail::has_operator_rdiv<T,U=T> = requires(T& t, U& u) {t /= u;};
-using detail::has_method_eq<T,U=T> = requires(const T& t, U& u) {t.operator==(u);};
-using detail::has_threading_support<T> = requires(T& t) {T::has_threading_support;};
-using detail::is_explicitly_convertible<T,U=T> = requires(T& t, U& u) {static_cast<U>(t);};
-using detail::is_complete<T> = requires(T& t) {sizeof(T);};
-using detail::is_storage<T> = mp_and<is_indexable_container<T>, has_method_reset<T>, has_threading_support<T>>;
-using detail::is_adaptible<T> = mp_and<mp_not<is_storage<T>>, mp_or<is_vector_like<T>, is_array_like<T>, is_map_like<T>>>;
-using detail::is_tuple<T> = ...; using detail::is_variant<T> = ...;
-using detail::is_axis_variant<T> = ...;
-using detail::is_any_axis<T> = mp_or<is_axis<T>, is_axis_variant<T>>;
-using detail::is_sequence_of_axis<T> = mp_and<is_iterable<T>, is_axis<mp_first<T>>>;
-using detail::is_sequence_of_axis_variant = mp_and<is_iterable, is_axis_variant<mp_first<T>>>;
-using detail::is_sequence_of_any_axis = mp_and<is_iterable, is_any_axis<mp_first<T>>>;
-struct detail::requires_storage<T>{}; requires_storage_or_adaptible; requires_iterator; requires_iterable; requires_axis; requires_any_axis;
+using void_t<...> = void;
+struct detect_base{ static T&& val<T>(); static T& ref<T>(); static T const& cref<T>(); };
+using has_method_reset<T> = requires(T& t) {t.reset(0);};
+using has_method_push_back<T> = requires(T& t) {&T::push_back;};
+using is_indexable<T> = requires(T& t) {t[0];};
+using is_transform<T,U=T> = requires(T& t, U& u) {t.inverse(t.forward(u));};
+using is_indexable_container<T> = requires(T& t) {t[0]; t.size(), std::begin(t); std::end(t);};
+using is_vector_like<T> = requires(T& t) {t[0]; t.size(); t.resize(0); std::begin(t); std::end(t);};
+using is_array_like<T> = requires(T& t) {t[0]; t.size(); std::tuple_size<T>::value; std::begin(t); std::end(t);};
+using is_map_like<T> = requires(T& t) {typename T::key_type; typename T::mapped_type; std::begin(t); std::end(t);};
+using is_axis<T> = requires(T& t) {t.size(); &T::index;};
+using is_iterable<T> = requires(T& t) {std::begin(t); std::end(t);};
+using is_iterator<T> = requires(T& t) {typename std::iterator_traits<T>::iterator_category;};
+using is_streamable<T> = requires(T& t, std::ostream& os) {os<<t;};
+using is_allocator<T> = requires(T& t) {T::allocate; T::deallocate;};
+using has_operator_preincrement<T> = requires(T& t) {++t;};
+using has_operator_equal<T,U=T> = requires(const T& t, U& u) {t == u;};
+using has_operator_radd<T,U=T> = requires(T& t, U& u) {t += u;};
+using has_operator_rsub<T,U=T> = requires(T& t, U& u) {t -= u;};
+using has_operator_rmul<T,U=T> = requires(T& t, U& u) {t *= u;};
+using has_operator_rdiv<T,U=T> = requires(T& t, U& u) {t /= u;};
+using has_method_eq<T,U=T> = requires(const T& t, U& u) {t.operator==(u);};
+using has_threading_support<T> = requires(T& t) {T::has_threading_support;};
+using is_explicitly_convertible<T,U=T> = requires(T& t, U& u) {static_cast<U>(t);};
+using is_complete<T> = requires(T& t) {sizeof(T);};
+using is_storage<T> = mp_and<is_indexable_container<T>, has_method_reset<T>, has_threading_support<T>>;
+using is_adaptible<T> = mp_and<mp_not<is_storage<T>>, mp_or<is_vector_like<T>, is_array_like<T>, is_map_like<T>>>;
+using is_tuple<T> = ...; using detail::is_variant<T> = ...;
+using is_axis_variant<T> = ...;
+using is_any_axis<T> = mp_or<is_axis<T>, is_axis_variant<T>>;
+using is_sequence_of_axis<T> = mp_and<is_iterable<T>, is_axis<mp_first<T>>>;
+using is_sequence_of_axis_variant = mp_and<is_iterable, is_axis_variant<mp_first<T>>>;
+using is_sequence_of_any_axis = mp_and<is_iterable, is_any_axis<mp_first<T>>>;
+struct requires_storage<T>{}; requires_storage_or_adaptible; requires_iterator; requires_iterable; requires_axis; requires_any_axis;
     requires_sequence_of_axis; requires_sequence_of_axis_variant; requires_sequence_of_any_axis; requires_axes; requires_transform, requires_allocator
 
 // iterator_adaptor
-struct detail::operator_arrow_dispatch_t<Ref> {
+struct operator_arrow_dispatch_t<Ref> {
     struct pointer{ Ref m_ref; Ref* operator->() noexcept { return std::addressof(m_ref); } } using result_type = pointer;
     static result_type apply(Ref const& x) noexcept { return {x}; } };
-struct detail::operator_arrow_dispatch_t<T&> { using result_type = T*;
+struct operator_arrow_dispatch_t<T&> { using result_type = T*;
     static result_type apply(Ref const& x) noexcept { return std::addressof(x); } };
-struct detail::get_difference_type<T> = ...;
-class detail::iterator_adaptor<Derived,Base,Ref=std::remove_pointer_t<Base>&,Value=std::decay_t<Ref>> {
+struct get_difference_type<T> = ...;
+class iterator_adaptor<Derived,Base,Ref=std::remove_pointer_t<Base>&,Value=std::decay_t<Ref>> {
     <const> Derived& derived() <const> noexcept; 
     base_type iter_;
 public: using base_type = Base; using reference = Ref; using value_type = Value; using pointer = operator_arrow_dispatch_t::result_type;
@@ -576,64 +809,64 @@ public: using base_type = Base; using reference = Ref; using value_type = Value;
 protected: using iterator_adaptor_ = self;
 };
 
-constexpr decltype(auto) detail::static_if_c<b,...Ts>(Ts&&...ts) noexcept;
-constexpr decltype(auto) detail::static_if<Bool,...Ts>(Ts&&...ts) noexcept;
+constexpr decltype(auto) static_if_c<b,...Ts>(Ts&&...ts) noexcept;
+constexpr decltype(auto) static_if<Bool,...Ts>(Ts&&...ts) noexcept;
 
-constexpr T* detail::ptr_cast<T,U>(U*);
-T detail::try_cast<T,E,U>(U&& u) noexcept(...);
+constexpr T* ptr_cast<T,U>(U*);
+T try_cast<T,E,U>(U&& u) noexcept(...);
 
-std::string detail::type_name<T>();
+std::string type_name<T>();
 
-using detail::args_type<FuncPtr> = std::tuple<...>; // tuple of parameter type list
-using detail::arg_type<T,size_t n=0> = std::tuple_element_t<n,args_type<T>>;
+using args_type<FuncPtr> = std::tuple<...>; // tuple of parameter type list
+using arg_type<T,size_t n=0> = std::tuple_element_t<n,args_type<T>>;
 
-using detail::convert_integer<T,U> = std::conditional_t<is_integral_v<decay_t<T>>, U,T>;
+using convert_integer<T,U> = std::conditional_t<is_integral_v<decay_t<T>>, U,T>;
 
-struct detail::counting_streambuf<Ch,Tr=std::char_traits<Ch>> : std::basic_streambuf<Ch,Tr> {
+struct counting_streambuf<Ch,Tr=std::char_traits<Ch>> : std::basic_streambuf<Ch,Tr> {
     std::streamsize* p_count;
     ctor(std::streamsize& c) : p_count{&c}{}
     std::streamsize xsputn(const char_type*, std::streamsize n) override { *p_count += n; return n; }
     int_type overflow(int_type ch) override { ++*p_count; return ch; }
 };
-struct detail::count_guard<Ch,Tr> {
+struct count_guard<Ch,Tr> {
     using bos = std::basic_ostream<Ch,Tr>; using bsb = std::basic_streambuf<Ch,Tr>;
     counting_streambuf<Ch,Tr> csb; bos* p_os; bsb* p_rdbuf;
     ctor(bos& os, std::streamsize& s) : csb{s}, p_os{&os}, p_rdbuf{os.rdbuf(&csb)} {}
     ctor(self&& o); self& operator=(self&& o); // move
     ~dtor() { if (p_os) p_os->rdbuf(p_rdbuf); }
 };
-count_guard<Ch,Tr> detail::make_count_guard<Ch,Tr>(std::basic_ostream<Ch,Tr>& os, std::streamsize& s) { return {os, s}; }
+count_guard<Ch,Tr> make_count_guard<Ch,Tr>(std::basic_ostream<Ch,Tr>& os, std::streamsize& s) { return {os, s}; }
 
-struct detail::variant_proxy<Variant> {
+struct variant_proxy<Variant> {
     Variant& variant;
     void serialize<Archive>(Archive& ar, unsigned) {...}; // "which", "value"
 };
 
-using detail::has_array_optimization<T>;
-struct detail::array_wrapper<T> { using pointer = T*;
+using has_array_optimization<T>;
+struct array_wrapper<T> { using pointer = T*;
     pointer ptr; size_t size;
     void serialize<Archive>(Archive ar, unsigned);
 };
-auto detail::make_array_wrapper<T>(T* t, size_t s) { return array_wrapper<T>{t, s}; }
+auto make_array_wrapper<T>(T* t, size_t s) { return array_wrapper<T>{t, s}; }
 
-struct detail::mirrored<T,U>{ friend bool operator<(const U& a, const T& b) noexcept{return b > a;} }; // all 6 comparasions, inversed impl
-struct detail::mirrored<T,void> { friend bool operator< <U> (const U& a, const T& b) noexcept requires !is_same_v<T,U> { return b > a;} }; // all 6 comparasions, inversed impl
-struct detail::mirrored<T,T> { friend bool operator>(const T& a, const T& b) noexcept { return b.operator<(a); } };
-struct detail::equality<T,U> { friend bool operator!=(const T& a, const U& b) noexcept { return !a.operator==(b); } };
-struct detail::equality<T,void> { friend bool operator!=(const T& a, const U& b) noexcept requires !is_same_v<T,U> { return !(a==b); } };
-using detail::totally_ordered<T,...Ts> = ...;
-using detail::partially_ordered<T,...Ts> = ...;
+struct mirrored<T,U>{ friend bool operator<(const U& a, const T& b) noexcept{return b > a;} }; // all 6 comparasions, inversed impl
+struct mirrored<T,void> { friend bool operator< <U> (const U& a, const T& b) noexcept requires !is_same_v<T,U> { return b > a;} }; // all 6 comparasions, inversed impl
+struct mirrored<T,T> { friend bool operator>(const T& a, const T& b) noexcept { return b.operator<(a); } };
+struct equality<T,U> { friend bool operator!=(const T& a, const U& b) noexcept { return !a.operator==(b); } };
+struct equality<T,void> { friend bool operator!=(const T& a, const U& b) noexcept requires !is_same_v<T,U> { return !(a==b); } };
+using totally_ordered<T,...Ts> = ...;
+using partially_ordered<T,...Ts> = ...;
 
-auto detail::make_unsigned<T>(const T& t) noexcept;
-using detail::number_category<T> = ...;
-struct detail::safe_equal { bool operator()<T,U>(const T& t, const U& u) const noexcept; };
-struct detail::safe_less { bool operator()<T,U>(const T& t, const U& u) const noexcept; };
-struct detail::safe_greater { bool operator()<T,U>(const T& t, const U& u) const noexcept; };
+auto make_unsigned<T>(const T& t) noexcept;
+using number_category<T> = ...;
+struct safe_equal { bool operator()<T,U>(const T& t, const U& u) const noexcept; };
+struct safe_less { bool operator()<T,U>(const T& t, const U& u) const noexcept; };
+struct safe_greater { bool operator()<T,U>(const T& t, const U& u) const noexcept; };
 
-using detail::is_unsigned_integral<T> = mp_bool<is_integral_v<T>, is_unsigned_v<T>>;
-bool detail::safe_increment<T>(T& t);
-bool detail::safe_radd<T,U>(T& t, const U& u);
-struct detail::large_int<Alloc> : totally_ordered<self,self>, partially_ordered<self,void> {
+using is_unsigned_integral<T> = mp_bool<is_integral_v<T>, is_unsigned_v<T>>;
+bool safe_increment<T>(T& t);
+bool safe_radd<T,U>(T& t, const U& u);
+struct large_int<Alloc> : totally_ordered<self,self>, partially_ordered<self,void> {
     std::vector<uint64_t, Alloc> data;
     explicit ctor(std::uint64_t v=0, const Alloc& a={}): data{1,v,a}{}
     ctor(self{const&|&&})=default; self& operator=(self{const&|&&})=default;
@@ -648,11 +881,24 @@ struct detail::large_int<Alloc> : totally_ordered<self,self>, partially_ordered<
     static void add_remainder(uint64_t& d, uint64_t o) noexcept;
     void serialize<Archive>(Archive& ar, unsigned);
 };
+
+struct atomic_number<T> : std::atomic<T> {
+    using base::ctor;
+    ctor() noexcept=default; ctor(const self& o) noexcept; self& operator=(const self& o) noexcept;
+    self& operator++() noexcept;
+    self& operator{+=|*=|/=}(const T& x) noexcept;
+};
+
+double normal_cdf(double x) noexcept { return std::fma(0.5, std::erf(x/std::sqrt(2)), 0.5); }
+double normal_ppf(double p) noexcept { return std::sqrt(2) * erf_inv(2 * (p-0.5)); }
+
+T square<T>(T t) { return t*t; }
 ```
 
 algorithm/: empty, project, reduce, sum
-detail/: accumulator_traits, argument_traits, atomic_number, axes, chunk_vector, common_type, debug, erf_inv, fill_n, fill, ignore_deprecation_warning_beginend, index_translator, large_int, limits, linearize, make_default, mutex_base, nonmember_container_access, normal, optional_index, reduce_command, relaxed_tuple_size, square, static_vector, term_info, tuple_slice
-utility/: binomial_proportion_interval, clopper_pearson_interval, jeffreys_interval, waid_interval, wilson_interval
+detail/: accumulator_traits, argument_traits, axes, chunk_vector, common_type, debug, erf_inv, fill_n, fill,
+    ignore_deprecation_warning_beginend, index_translator, large_int, limits, linearize, make_default, mutex_base,
+    nonmember_container_access, optional_index, reduce_command, relaxed_tuple_size, static_vector, term_info, tuple_slice
 
 ------
 ### Dependencies
