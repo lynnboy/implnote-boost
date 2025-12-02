@@ -78,3 +78,5 @@ auto operator ->* <A,B,enable_unary_lambda<A>> (A&& a, B&& b)
 
 ------
 ### Standard Facilities
+
+Language: lambda expression (C++11)
