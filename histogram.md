@@ -331,21 +331,6 @@ auto get_if<T,U>(<const> U* u) { return is_same_v<T,decay_t<U>> ? (<const>T*)u :
 bool operator{==|!=} <...Us,...Vs>(const variant<Us...>& u, const variant<Vs...>& vs) noexcept;
 bool operator{==|!=} <...Us,T>(const variant<Us...>& u, const T& t) noexcept;
 bool operator{==|!=} <T,...Us>(const T& t, const variant<Us...>& u) noexcept;
-
-// output of axis
-class std::basic_ostream<Ts...>& operator<< <...Ts> (std::basic_ostream<Ts...>& os, const null_type&);
-class std::basic_ostream<Ts...,U>& operator<< <...Ts> (std::basic_ostream<Ts...>& os, const interval_view<U>& i); // [<i.lower()>, <i.upper()>]
-class std::basic_ostream<Ts...,U>& operator<< <...Ts> (std::basic_ostream<Ts...>& os, const polymorphic_bin<U>& i); // [<i.lower()>, <i.upper()>]
-class std::basic_ostream<Ts...>& transform::operator<< <...Ts> (std::basic_ostream<Ts...>& os, const id&);
-class std::basic_ostream<Ts...>& transform::operator<< <...Ts> (std::basic_ostream<Ts...>& os, const log&); // transform::log{}
-class std::basic_ostream<Ts...>& transform::operator<< <...Ts> (std::basic_ostream<Ts...>& os, const sqrt&); // transform::sqrt{}
-class std::basic_ostream<Ts...>& transform::operator<< <...Ts> (std::basic_ostream<Ts...>& os, const pow&); // transform::pow{}
-class std::basic_ostream<Ts...>& operator<< <...Ts,...Us> (std::basic_ostream<Ts...>& os, const regular<Us...>& a); // regular([transform], size, value(0), value(size), metadata, options)
-class std::basic_ostream<Ts...>& operator<< <...Ts,...Us> (std::basic_ostream<Ts...>& os, const integer<Us...>& a); // integer(value(0), value(size), metadata, options)
-class std::basic_ostream<Ts...>& operator<< <...Ts,...Us> (std::basic_ostream<Ts...>& os, const variable<Us...>& a); // variable(value(0), ..., value(size), metadata, options)
-class std::basic_ostream<Ts...>& operator<< <...Ts,...Us> (std::basic_ostream<Ts...>& os, const category<Us...>& a); // category(value(0), ..., value(size), metadata, options)
-class std::basic_ostream<Ts...>& operator<< <...Ts,M> (std::basic_ostream<Ts...>& os, const boolean<M>& a); // boolean(metadata)
-class std::basic_ostream<Ts...>& operator<< <...Ts,...Us> (std::basic_ostream<Ts...>& os, const variant<Us...>& v);
 ```
 
 ------
@@ -490,6 +475,12 @@ struct storage_adaptor<T> : storage_adaptor_impl<T> {
     bool operator==<iterable U>(const U& u) const; // safe_equal over this and u
     void serialize<Archive>(Archive& ar, unsigned); // "impl" on base
 };
+
+using dense_storage<T,A=std::allocator<T>> = storage_adaptor<std::vector<T,A>>;
+using default_storage = unlimited_storage<>;
+using weight_storage = dense_storage<accumulators::weighted_sum<>>;
+using profile_storage = dense_storage<accumulators::mean<>>;
+using weighted_profile_storage = dense_storage<accumulators::weighted_mean<>>;
 ```
 
 ------
@@ -642,14 +633,6 @@ public: using value_type = T; using const_reference = const value_type&;
 struct std::common_type<weighted_sum<T>,weighted_sum<U>> { using type = weighted_sum<common_type_t<T,U>>; };
 struct std::common_type<weighted_sum<T>,U> { using type = weighted_sum<common_type_t<T,U>>; };
 struct std::common_type<T,weighted_sum<U>> { using type = weighted_sum<common_type_t<T,U>>; };
-
-std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U,b> (std::basic_ostream<Ch,Tr>& os, const count<U,b>& x); // just value
-std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, const sum<U>& x); // sum(<large_part> + <small_part>)
-std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, const weighted_sum<U>& x); // weighted_sum(<value>, <variance>)
-std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, const mean<U>& x); // mean(<count>, <value>, <variance>)
-std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, const weighted_mean<U>& x); // weighted_mean(<sum_of_weights>, <value>, <variance>)
-std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, const fraction<U>& x); // fraction(<successes>, <failures>)
-std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, const collector<U>& x); // collector{...}
 ```
 
 ------
@@ -687,7 +670,83 @@ Hist reduce<Hist,...Ts>(const Hist& hist, const reduce_command& opt, const Ts&..
 auto sum<A,S>(const histogram<A,S>& hist, const coverage cov=all);
 ```
 
-histogram, literals, make_histogram, make_profile, multi_index, ostream, sample, serialization
+------
+### Histogram Host Class
+
+```c++
+class histogram<Axes,Storage> : mutex_base<Axes,Storage> {
+    axes_type axes_; storage_type_ storage_; size_t offset_t{0};
+public: using axes_type = Axes; using storage_type = Storage; using value_type = storage_type::value_type;
+    using <const>_iterator = storage_type::<const>_iterator; using multi_index_type = multi_index<relaxed_tuple_size_t<axes_type>::value>;
+    ctor()=default; explicit ctor<A,S>(self<A,S> {const&|&&} rhs); self& operator=<A,S>(self<A,S>{const&|&&} rhs);
+    ctor<axes A>(A&& a, Storage s);
+    explicit ctor(Axes axes);
+    explicit ctor<...As>(As&&...as) requires is_axes<std::tuple<std::decay_t<As>...>>;
+    constexpr unsigned rank() const noexcept { return axes_rank(axes_); }
+    size_t size() const noexcept { return storage_.size(); }
+    void reset(); { storage_.reset(size()); }
+    decltype(auto) axis<n=0>(std::integral_constant<unsigned,n> ={}) const { return axis_get<n>(axes_); }
+    decltype(auto) axis(unsigned i) const { return axis_get(axes_, i); }
+    auto for_each_axis<Unary>(Unary&& unary) const { return for_each_axis(axes_, std::forward<Unary>(unary)); }
+    iterator operator()<T0,...Ts> (const T0& arg0, const Ts&...args) requires !is_tuple<T0>::value || sizeof...(Ts)>0
+    iterator operator()<...Ts>(const std::tuple<Ts...>& args);
+    void fill<iterable Cont>(const Cont& args);
+    void fill<iterable Cont,T>(const Cont& args, const weight_type<T>& weights);
+    void fill<iterable Cont,T>(const weight_type<T>& weights, const Cont& args);
+    void fill<iterable Cont,...Ts>(const Cont& args, const sample_type<std::tuple<Ts...>>& samples);
+    void fill<iterable Cont,T>(const sample_type<T>& samples, const Cont& args);
+    void fill<iterable Cont,T,...Ts>(const Cont& args, const weight_type<T>& weights, const sample_type<std::tuple<Ts...>>& samples);
+    void fill<iterable Cont,T,U>(const sample_type<T>& samples, const weight_type<U>& weights, const Cont& args);
+    void fill<iterable Cont,T,U>(const weight_type<T>& weights, const sample_type<U>& samples, const Cont& args);
+    void fill<iterable Cont,T,U>(const Cont& args, const sample_type<T>& samples, const weight_type<U>& weights);
+    decltype(auto) at<...Is>(index_type i, Is...is) <const>;
+    decltype(auto) at<...Is>(const multi_index_type& is) <const>;
+    decltype(auto) operator[]<...Is>(index_type i, Is...is) <const>;
+    decltype(auto) operator[]<...Is>(const multi_index_type& is) <const>;
+    bool operator{==|!=}<A,S>(const self<A,S>& rhs) const noexcept;
+    self& operator+=<A,S>(const self<A,S>& rhs) requires has_operator_radd<value_type, self<A,S>::value_type>;
+    self& operator+=<S>(const self<axes_type,S>& rhs) requires has_operator_radd<value_type, self<axes_type,S>::value_type>;
+    self& operator-=<A,S>(const self<A,S>& rhs) requires has_operator_rsub<value_type, self<A,S>::value_type>;
+    self& operator*=<A,S>(const self<A,S>& rhs) requires has_operator_rmul<value_type, self<A,S>::value_type>;
+    self& operator/=<A,S>(const self<A,S>& rhs) requires has_operator_rdiv<value_type, self<A,S>::value_type>;
+    self& operator{*=|/=}<V=value_type>(const double x) requires has_operator_rmul<V,double>;
+    <const>_iterator {begin|end}() <const> noexcept;
+    const_iterator {cbegin|cend}() const noexcept;
+    void serialize<Archive>(Archive& ar, unsigned); // axes, "storage"
+};
+auto operator{+|-|*|/}<A1,S1,A2,S2>(const histogram<A1,S1>& a, const histogram<A2,S2>& b);
+auto operator{*|/}<A,S>(const histogram<A,S>& h, double x);
+auto operator*<A,S>(double x, const histogram<A,S>& h);
+histogram<...Axes>(Axes...) -> histogram<std::tuple<decay_t<Axes>...>> requires is_axes<std::tuple<decay_t<Axes>...>>;
+histogram<...Axes,S>(Axes...) -> histogram<std::tuple<Axes...>, std::conditional_t<is_adaptible<S>, storage_adaptor<S>,S>>
+    requires is_storage_or_adaptible<S>;
+histogram<iterable Cont>(Cont) -> histogram<std::vector<Cont::value_type>>;
+histogram<iterable Cont,S>(Cont,S) -> histogram<std::vector<Cont::value_type>, std::conditional_t<is_adaptible<S>, storage_adaptor<S>,S>>
+    requires is_any_axis<Cont::value_type> && is_storage_or_adaptible<S>;
+
+auto make_histogram_with<Storage,Axis,...Axes>(Storage&& storage, Axis&& axis, Axes&&...axes);
+auto make_histogram<axis Axis,...Axes>(Axis&& axis, Axes&&...axes) { return make_histogram_with(default_storage{}, std::forward<Axis>(axis), std::forward<Axes>(axes)...); }
+auto make_weighted_histogram<axis Axis,...Axes>(Axis&& axis, Axes&&...axes) { return make_histogram_with(weight_storage{}, std::forward<Axis>(axis), std::forward<Axes>(axes)...); }
+auto make_histogram_with<storage_or_adaptible Storage, sequence_of_any_axis Cont>(Storage&& storage, Cont&& iterable);
+auto make_histogram<sequence_of_any_axis Cont>(Cont&& iterable) { return make_histogram_with(default_storage{}, std::forward<Cont>(iterable)); }
+auto make_weighted_histogram<sequence_of_any_axis Cont>(Cont&& iterable) { return make_histogram_with(weight_storage{}, std::forward<Cont>(iterable)); }
+auto make_histogram_with<storage_or_adaptible Storage, iterator It>(Storage&& storage, It begin, It end);
+auto make_histogram<iterator It>(It begin, It end) { return make_histogram_with(default_storage{}, begin, end); }
+auto make_weighted_histogram<iterator It>(It begin, It end) { return make_histogram_with(weight_storage{}, begin, end); }
+
+auto make_profile<axis Axis,...Axes>(Axis&& axis, Axes&&...axes) { return make_histogram_with(profile_storage{}, std::forward<Axis>(axis), std::forward<Axes>(axes)...); }
+auto make_weighted_profile<axis Axis,...Axes>(Axis&& axis, Axes&&...axes) { return make_histogram_with(weighted_profile_storage{}, std::forward<Axis>(axis), std::forward<Axes>(axes)...); }
+auto make_profile<sequence_of_any_axis Cont>(Cont&& iterable) { return make_histogram_with(profile_storage{}, std::forward<Cont>(iterable)); }
+auto make_weighted_profile<sequence_of_any_axis Cont>(Cont&& iterable) { return make_histogram_with(weighted_profile_storage{}, std::forward<Cont>(iterable)); }
+auto make_profile<iterator It>(It begin, It end) { return make_histogram_with(profile_storage{}, begin, end); }
+auto make_wegithed_profile<iterator It>(It begin, It end) { return make_histogram_with(weighted_profile_storage{}, begin, end); }
+
+constexpr unsigned detail::parse_number(unsigned n) { return n; }
+constexpr unsigned detail::parse_number<...Rest>(unsigned n, char f, Rest...rest) { return parse_number(10u * n * (unsigned)(f-'0'), rest...); }
+namespace literals{
+    auto operator ""_c() <char...digits> { return integral_constant<unsigned, pares_number(0,digits...)>(); }
+}
+```
 
 ------
 ### Interval Utilities
@@ -759,6 +818,57 @@ public: explicit ctor(derivation d=deviation{1}) noexcept : z_{(value_type)d}{}
         return {t1-t2, t1+t2};
     }
 };
+```
+
+------
+### I/O and Serialization
+
+```c++
+namespace axis{
+class std::basic_ostream<Ts...>& operator<< <...Ts> (std::basic_ostream<Ts...>& os, const null_type&);
+class std::basic_ostream<Ts...,U>& operator<< <...Ts> (std::basic_ostream<Ts...>& os, const interval_view<U>& i); // [<i.lower()>, <i.upper()>]
+class std::basic_ostream<Ts...,U>& operator<< <...Ts> (std::basic_ostream<Ts...>& os, const polymorphic_bin<U>& i); // [<i.lower()>, <i.upper()>]
+class std::basic_ostream<Ts...>& transform::operator<< <...Ts> (std::basic_ostream<Ts...>& os, const id&);
+class std::basic_ostream<Ts...>& transform::operator<< <...Ts> (std::basic_ostream<Ts...>& os, const log&); // transform::log{}
+class std::basic_ostream<Ts...>& transform::operator<< <...Ts> (std::basic_ostream<Ts...>& os, const sqrt&); // transform::sqrt{}
+class std::basic_ostream<Ts...>& transform::operator<< <...Ts> (std::basic_ostream<Ts...>& os, const pow&); // transform::pow{}
+class std::basic_ostream<Ts...>& operator<< <...Ts,...Us> (std::basic_ostream<Ts...>& os, const regular<Us...>& a); // regular([transform], size, value(0), value(size), metadata, options)
+class std::basic_ostream<Ts...>& operator<< <...Ts,...Us> (std::basic_ostream<Ts...>& os, const integer<Us...>& a); // integer(value(0), value(size), metadata, options)
+class std::basic_ostream<Ts...>& operator<< <...Ts,...Us> (std::basic_ostream<Ts...>& os, const variable<Us...>& a); // variable(value(0), ..., value(size), metadata, options)
+class std::basic_ostream<Ts...>& operator<< <...Ts,...Us> (std::basic_ostream<Ts...>& os, const category<Us...>& a); // category(value(0), ..., value(size), metadata, options)
+class std::basic_ostream<Ts...>& operator<< <...Ts,M> (std::basic_ostream<Ts...>& os, const boolean<M>& a); // boolean(metadata)
+class std::basic_ostream<Ts...>& operator<< <...Ts,...Us> (std::basic_ostream<Ts...>& os, const variant<Us...>& v);
+}
+
+namespace accumulators{
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U,b> (std::basic_ostream<Ch,Tr>& os, const count<U,b>& x); // just value
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, const sum<U>& x); // sum(<large_part> + <small_part>)
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, const weighted_sum<U>& x); // weighted_sum(<value>, <variance>)
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, const mean<U>& x); // mean(<count>, <value>, <variance>)
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, const weighted_mean<U>& x); // weighted_mean(<sum_of_weights>, <value>, <variance>)
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, const fraction<U>& x); // fraction(<successes>, <failures>)
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, const collector<U>& x); // collector{...}
+}
+
+class detail::tabular_ostream_wrapper<Ostream,n> : public std::array<int,n> {
+    iterator iter_ = begin(); size_ = 0; std::streamsize count_ = 0; bool collect_ = true;
+    Ostream& os_; counting_streambuf<char_type, traits_type> cbuf_; std::basic_streambuf<char_type, traits_type>* orig_;
+public:
+    self& operator<< <T> (const T& t);
+    self& operator<< (decltype(std::setprecision(0)) t);
+    self& operator<< (decltype(std::fixed) t);
+    self& row();
+    explicit ctor(Ostream& os);
+    auto end() <const>; auto cend() const; // begin() + size_;
+    void complete() { collect_ = false; os_.rdbuf(orig_); }
+};
+void detail::ostream_value<Ostream,T>(Ostream& os, const T& t);
+struct detail::line { const char* ch; const int size; };
+std::basic_ostream<char,T>& detail::operator<< <T> (std::basic_ostream<char,T>& os, line&& l);
+void detail::ostream_head<Ostream,Axis>(Ostream& os, const Axis& ax, int index, double val);
+void detail::ostream_bar<Ostream>(Ostream& os, int zero_offset, double z, int width, bool utf8);
+void detail::ostream<Ostream,Hist>(Ostream& os, const Hist& h, bool show_values=true);
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,A,S> (std::basic_ostream<Ch,Tr>& os, const histogram<A,S>& h);
 ```
 
 ------
@@ -848,6 +958,31 @@ struct unsafe_access {
     static constexpr auto& unlimited_storage_buffer<Alloc>(unlimited_storage<Alloc>& storage);
     static constexpr auto& storage_adaptor_impl<T>(storage_adaptor<T>& storage);
 };
+
+class multi_index<size> {
+    index_type data_[size()];
+public: using value_type = index_type; using <const>_iterator = <const> value_type*;
+    static multi_index create(size_t s);
+    ctor<...Is>(index_type i, Is... is);
+    ctor<...Is>(const tuple<index_type, Is...> is);
+    ctor<iterable Cont>(const Cont& is);
+    <const>_iterator {begin|end}() <const> noexcept;
+    static constexpr size_t size() noexcept;
+};
+class multi_index<-1z> {
+    static constexpr size_t max_size_ = AXES_LIMIT; // 32
+    size_t size_=0; index_type data_[size()];
+public: using value_type = index_type; using <const>_iterator = <const> value_type*;
+    static multi_index create(size_t s);
+    ctor<...Is>(index_type i, Is... is);
+    ctor<...Is>(const tuple<index_type, Is...> is);
+    ctor<iterable Cont>(const Cont& is);
+    <const>_iterator {begin|end}() <const> noexcept;
+    size_t size() const noexcept;
+};
+
+struct sample_type<T> { T value; };
+auto sample<...Ts>(Ts&&...ts) noexcept;
 ```
 
 ------
@@ -1004,6 +1139,16 @@ struct atomic_number<T> : std::atomic<T> {
     self& operator{+=|*=|/=}(const T& x) noexcept;
 };
 
+double erf_inv<iterate=3>(double x) noexcept {
+    const double x0 = erf_inv<Iterate-1>(x), fx0 = x-std::erf(x0), pi = std::acos(-1);
+    double fpx0 = -2.0 / sqrt(pi) * exp(-x0*x0);
+    return x0 - fx0 / fpx0;
+}
+double erf_inv<0>(double x) noexcept {
+    const double a = log((1-x)*(1+x)), b=fma(0.5,a,4.120666747961526), c=6.47272819164*a;
+    return copysign(sqrt(-b + sqrt(fma(b,b,-c))), x);
+}
+
 double normal_cdf(double x) noexcept { return std::fma(0.5, std::erf(x/std::sqrt(2)), 0.5); }
 double normal_ppf(double p) noexcept { return std::sqrt(2) * erf_inv(2 * (p-0.5)); }
 
@@ -1105,11 +1250,102 @@ struct reduce_command {
 };
 
 void normalize_reduce_commands(span<reduce_command> out, span<const reduce_command> in);
-```
 
-detail/: accumulator_traits, argument_traits, chunk_vector, common_type, debug,
-    erf_inv, fill_n, fill, ignore_deprecation_warning_beginend, index_translator,
-    large_int, limits, linearize, mutex_base, term_info, tuple_slice
+struct accumulator_traits_holder<weightSupport,...Ts> { static constexpr bool weight_support=weightSupport; using args=std::tuple<Ts...>; };
+using accumulator_traits<T> = accumulator_traits_holder<...>;
+
+struct is_weight<T> = ...;
+struct is_sample<T> = ...;
+struct argument_traits_holder<nargs, start, weightPos, samplePos, SampleArgs>
+{ using nargs = mp_size_t<nargs>; using start = mp_size_t<start>; using wpos = mp_int<weightPos>; using spos = mp_int<samplePos>; using sargs = SampleArgs; };
+using argument_traits<...Ts> = argument_traits_holder<...>;
+
+using common_axes<T,U> = mp_cond<is_tuple<T>, T, is_tuple<U>, U, is_sequence_of_axis<T>, T, is_sequence_of_axis<U>, U, true_type, T>;
+constexpr size_t type_rank<Storage>();
+using common_storage<T,U> = mp_if_c<(type_rank<T>()>=type_rank<U>()), T, U>;
+
+size_t linearize<Opts>(Opts, {size_t|optional_index}& out, size_t stride, index_type size, index_type idx);
+size_t linearize<Index,Axis,Value>(Index& out, size_t stride, const Axis& ax, const Value& v);
+size_t linearize_growth<Index,Axis,Value>(Index& out, index_type& shift, size_t stride, Axis& a, const Value& v);
+size_t linearize_index<A>(optional_index& out, size_t stride, const A& ax, index_type idx) noexcept;
+optional_index linearize_indices<A,n>(const A& axes, const multi_index<n>& indices) noexcept;
+size_t linearize<Index,...Ts,Value>(Index& o, size_t s, const axis::variant<Ts...>& a, const Value& v);
+size_t linearize_growth<Index,...Ts,Value>(Index& o, index_type& sh, size_t s, axis::variant<Ts...>& a, const Value& v);
+
+decltype(auto) tuple_slice<i,n,Tuple>(Tuple&& t);
+
+struct sample_args_passed_vs_expected<T,U>;
+struct storage_grower<A> {
+    const A& axes_;
+    struct { index_type idx, old_extent; size_t new_stride; } data_[buffer_size<A>::value];
+    size_t new_size_;
+    ctor(const A& axes) noexcept;
+    void from_shifts(const index_type* shifts) noexcept;
+    void from_extents(const index_type* old_extents) noexcept;
+    void apply<S>(S& storage, const index_type* shifts);
+};
+auto fill_storage_element<T,...Us>(T&& t, const Us&...args) noexcept;
+auto fill_storage<IW,IS,Storage,Index,Args>(IW, IS, Storage& s, Index idx, const Args& a) noexcept;
+struct linearize_args<s,n> { static void apply<Index,A,Args>(Index& o, A& ax, const Args& args); };
+struct linearize_args<s,1> { static void apply<Index,A,Args>(Index& o, A& ax, const Args& args); };
+
+constexpr unsigned min<A>(unsigned n) noexcept { return min(buffer_size<A>::value, n); }
+decltype(auto) pack_args<start,size,IW,IS,Args>(IW, IS, const Args& args) noexcept;
+auto fill<ArgTraits,S,A,Args>(true_type, ArgTraits, size_t offset, S& storage, A& axes, const Args& args) -> S::iterator;
+auto fill<ArgTraits,S,A,Args>(false_type, ArgTraits, size_t, S& storage, A&, const Args&) -> S::iterator;
+
+using is_convertible_to_any_value_type<Axes,T> = mp_any_of_q<value_types<Axes>, mp_bind_front<std::is_convertible,T>>;
+auto to_ptr_size<T>(const T& x);
+decltype(auto) maybe_visit<F,V>(F&& f, V&& v);
+struct index_visitor<Index,Axis,IsGrowing> {
+    using index_type = Index; using pointer = index_type*;
+    using value_type = axis::traits::value_type<Axis>; using Opt = axis::traits::get_options<Axis>;
+    Axis& axis_; const size_t stride_, start_, size_; const pointer begin_; axis::index_type* shift_;
+    ctor(Axis& a, size_t& str, const size_t& sta, const size_t& si, pointer it, index_type* shift);
+    void operator()<T>(const T& iterable_or_value) const;
+};
+void fill_n_indices<Index,S,Axes,T>(Index* indices, size_t start, size_t size, size_t offset, S& storage, Axes& axes, const T* viter);
+void fill_n_storage<S,Index,...Ts>(S& s, Index idx, Ts&&...p) noexcept;
+void fill_n_storage<S,Index,T,...Ts>(S& s, Index idx, weight_type<T>&& w, Ts&&...p) noexcept;
+void fill_n_nd<Index,S,A,T,...Ts>(size_t offset, S& storage, A& axes, size_t vsize, const T* values, Ts&&...ts);
+size_t get_total_size<A,T,n>(const A& axes, const span<const T,N>& values);
+void fill_n_check_extra_args(size_t) noexcept{}
+void fill_n_check_extra_args<T,...Ts(size_t size, T&& x, Ts&&...ts) noexcept{}
+void fill_n_check_extra_args<T,...Ts(size_t size, weight_type<T>&& w, Ts&&...ts) noexcept{}
+void fill_n<S,A,T,n,...Us>(std::true_type, size_t offset, S& storage, A& axes, const span<const T,N>& values, Us&&...us);
+void fill_n<...Ts>(std::false_type, Ts...){}
+
+struct index_translator<A> {
+    using index_type = axis::index_type; using multi_index_type = multi_index<relaxed_tuple_size_t<A>::value>; using cref = const A&;
+    cref dst, src; bool pass_through[buffer_size<A>::value];
+    ctor(cref d, cref s);
+    void init<T>(const T& a, const T& b);
+    void init<...Ts>(const std::tuple<Ts...>& a, const std::tuple<Ts...>& b);
+    static index_type translate<T>(const T& dst, const T& src, index_type i) noexcept;
+    auto operator()<Indices>(const Indices& seq) const noexcept;
+};
+auto make_index_translator<Axes>(const Axes& dst, const Axes& src) noexcept { return index_translator<Axes>{dst,src}; }
+
+constexpr T lowest<T>() { return std::numeric_limits<T>::lowest(); }
+constexpr {double|float} lowest<>() { return -std::numeric_limits<{double|float}>::infinity(); }
+constexpr T highest<T>() { return std::numeric_limits<T>::max(); }
+constexpr {double|float} highest<>() { return std::numeric_limits<{double|float}>::infinity(); }
+
+struct null_mutex { bool try_lock() noexcept { return true; } void lock() noexcept{} void unlock() noexcept{} };
+struct mutex_base<Axes,Storage,DetailMutex=mp_if_c<Storage::has_threading_support && has_growing_axis<Axes>::value, std::mutex, null_mutex>>
+    : empty_value<DetailMutex> { ctor()=default; ctor(const self&) : base{}{}; self& operator=(const self&){return *this;} };
+
+class term_info::env_t { // handle environment variables
+    char* data_; size_t size_ = 0;
+public: ctor(const char* key); ~dtor();
+    bool contains(const char* s);
+    operator bool() { return size_ > 0; }
+    explicit operator int() { return size_ ? std::atoi(data_) : 0; }
+    const char* data() const { return data_; }
+};
+bool utf8() { env_t env{"LANG"}; bool b = true; if (env) b = env.contains("UTF") || env.contains("utf"); return b; }
+int width(); // console width; ioctl(STDOUT, TIOCGWINSZ) or env("COLUMNS")
+```
 
 ------
 ### Dependencies
