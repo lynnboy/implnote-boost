@@ -652,7 +652,42 @@ std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, 
 std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,U> (std::basic_ostream<Ch,Tr>& os, const collector<U>& x); // collector{...}
 ```
 
-algorithm, histogram, indexed, literals, make_histogram, make_profile, multi_index, ostream, sample, serialization, unsafe_access
+------
+### Algorithms
+
+```c++
+namespace algorithm;
+
+auto empty<A,S>(const histogram<A,S>& h, coverage cov)
+
+auto project<A,S,n,...Ns>(const histogram<A,S>& h, std::integral_constant<unsigned,n>, Ns...);
+auto project<A,S,iterable Cont>(const histogram<A,S>& h, const Cont& c);
+
+reduce_command shrink(unsigned iaxis, double lower, double upper)
+{ return {.iaxis=iaxis, .range=values, .begin={lower}, .end={upper}, .merge=1, .crop=false}; }
+reduce_command shrink(double lower, double upper) { return shrink(unset, lower, upper); };
+reduce_command crop(unsigned iaxis, double lower, double upper) { auto r = shrink(iaxis, lower, upper); r.crop=true; return r; }
+reduce_command crop(double lower, double upper) { return crop(unset, lower, upper); };
+enum class slice_mode { shrink, crop };
+reduce_command slice(unsigned iaxis, index_type begin, index_type end, slice_mode mode=shrink)
+{ return {.iaxis=iaxis, .range=indices, .begin={lower}, .end={upper}, .merge=1, .crop=mode==crop}; }
+reduce_command slice(index_type begin, index_type end, slice_mode mode=shrink) { return slice(unset, begin, end mode); }
+reduce_command rebin(unsigned iaxis, unsigned merge)
+{ return {.iaxis=iaxis, .range=indices, .merge=merge, .crop=mode==crop}; }
+reduce_command rebin(unsigned merge) { return rebin(unset, merge); }
+reduce_command shrink_and_rebin(unsigned iaxis, double lower, double upper, unsigned merge) { auto r = shrink(iaxis, lower, upper); r.merge=rebin(merge).merge; return r; }
+reduce_command shrink_and_rebin(double lower, double upper, unsigned merge) { return shrink_and_rebin(unset, lower, upper, merge); }
+reduce_command crop_and_rebin(unsigned iaxis, double lower, double upper, unsigned merge) { auto r = crop(iaxis, lower, upper); r.merge=rebin(merge).merge; return r; }
+reduce_command crop_and_rebin(double lower, double upper, unsigned merge) { return crop_and_rebin(unset, lower, upper, merge); }
+reduce_command slice_and_rebin(unsigned iaxis, index_type begin, index_type end, unsigned merge, slice_mode mode=shrink)
+{ auto r = slice(iaxis, begin, end, mode); r.merge=rebin(merge).merge; return r; }
+reduce_command slice_and_rebin(index_type begin, index_type end, unsigned merge, slice_mode mode=shrink) { return slice_and_rebin(unset, begin, end, merge, mode); }
+Hist reduce<Hist,iterable Cont>(const Hist& hist, const Cont& options);
+Hist reduce<Hist,...Ts>(const Hist& hist, const reduce_command& opt, const Ts&... opts) { return reduce(hist, std::initializer_list{opt, opts...});}
+auto sum<A,S>(const histogram<A,S>& hist, const coverage cov=all);
+```
+
+histogram, literals, make_histogram, make_profile, multi_index, ostream, sample, serialization
 
 ------
 ### Interval Utilities
@@ -733,6 +768,86 @@ public: explicit ctor(derivation d=deviation{1}) noexcept : z_{(value_type)d}{}
 struct weight_type<T> { T value; operator self<U>() const; };
 auto weight<T>(T&& t) noexcept { return weight_type<T>{std::forward<T>(t)}; }
 
+enum class coverage { inner, all };
+class indexed_range<Hist> {
+    using histogram_type = Hist;
+    static constexpr unsigned buffer_size = buffer_size<std::decay_t<Hist>::axes_type>::value;
+    iterator begin_, end_;
+    auto make_range(Hist& hist, coverage cov);
+public: using value_iterator = std::conditional_t<is_const_v<Hist>, Hist::const_iterator, Hist::iterator>;
+    using value_reference = std::iterator_traits<value_iterator>::reference;
+    using value_type = std::iterator_traits<value_iterator>::value_type;
+    class accessor : mirrored<self,void> {
+        iterator& iter_;
+        ctor(iterator& i) noexcept;
+        ctor(const self&)=default;
+    public: class index_view { using index_pointer = const iterator::index_data*;
+            index_pointer begin_, end_;
+            ctor(index_pointer b, index_pointer e);
+        public: using const_reference = const axis::index_type&;
+            class const_iterator : public iterator_adaptor<self, index_pointer, const_reference> {
+                explicit ctor(index_pointer i) noexcept;
+            public: const_reference operator*() const noexcept { return base()->idx; }
+            };
+            const_iterator {begin|end}() const noexcept;
+            size_t size() const noexcept;
+            const_reference operator[](unsigned d) const noexcept;
+            const_reference at(unsigned d) const;
+        };
+        self& operator=(const self& o);
+        self& operator=<T>(const T& x);
+        value_reference get() const noexcept;
+        value_reference operator*() const noexcept;
+        value_iterator operator->() const noexcept;
+        axis::index_type index(unsigned d=0) const noexcept;
+        index_view indices() const noexcept;
+        decltype(auto) bin<n=0>(std::integral_constant<unsigned,n>={}) const;
+        decltype(auto) bin(unsigned d) const;
+        double density() const;
+        bool operator{<|>|==|!=|<=|>=}(const self& o) noexcept;
+        bool operator{<|>|==|!=|<=|>=} <U> (const U& o) const noexcept;
+        operator value_type() const noexcept;
+    };
+    class iterator {
+        struct pointer_proxy { reference ref_; reference* operator->() noexcept; };
+        struct index_data { axis::index_type idx, begin, end; size_t begin_skip, end_skip; };
+        struct indices_t : private std::array<index_data, buffer_size> {
+            Hist* hist_;
+            using <const>_pointer = <const> index_data*;
+            ctor(Hist* h) noexcept;
+            using base::operator[];
+            unsigned size() const noexcept;
+            <const>_pointer {begin|end}() <const> noexcept;
+        };
+        value_iterator iter_; indices_t indices_;
+        ctor(value_iterator i, Hist& h);
+    public: using pointer = pointer_proxy; using difference_type = ptrdiff_t; using iterator_category = forward_iterator_tag;
+        reference operator*() noexcept;
+        pointer operator->() noexcept { return pointer_proxy{operator*()}; }
+        iterator& operator++(); iterator operator++(int);
+        bool operator{==|!=}(const iterator& x) const noexcept;
+        bool operator{==|!=}(const value_iterator& x) const noexcept;
+        size_t offset() const noexcept;
+    };
+    ctor(Hist& hist, coverage cov);
+    ctor<iterable Cont>(Hist& hist, Cont&& range);
+    iterator {begin|end}() noexcept;
+};
+
+auto indexed<Hist>(Hist&& hist, coverage cov=inner)
+{ return indexed_range<std::remove_reference_t<Hist>>{std::forward<Hist>(hist), cov}; }
+auto indexed<Hist,iterable Cont>(Hist&& hist, Cont&& range)
+{ return indexed_range<std::remove_reference_t<Hist>>{std::forward<Hist>(hist), std::forward<Cont>(range)}; }
+
+struct unsafe_access {
+    static <const> auto& axes<Hist>(<const> Hist& hist);
+    static decltype(auto) axis<Hist,i=0>(Hist& hist, std::integral_constant<unsigned,i>={});
+    static decltype(auto) axis<Hist>(Hist& hist, unsigned i);
+    static <const> auto& storage<Hist>(<const> Hist& hist);
+    static <const> auto& offset<Hist>(<const> Hist& hist);
+    static constexpr auto& unlimited_storage_buffer<Alloc>(unlimited_storage<Alloc>& storage);
+    static constexpr auto& storage_adaptor_impl<T>(storage_adaptor<T>& storage);
+};
 ```
 
 ------
@@ -893,12 +1008,108 @@ double normal_cdf(double x) noexcept { return std::fma(0.5, std::erf(x/std::sqrt
 double normal_ppf(double p) noexcept { return std::sqrt(2) * erf_inv(2 * (p-0.5)); }
 
 T square<T>(T t) { return t*t; }
+
+T make_default<T>(const T& t);
+
+constexpr auto data<C>(<const> C& c) -> decltype(c.data()) { return c.data(); }
+constexpr T* data<T,n>(T (&aray)[n]) noexcept { return array; }
+constexpr const E* data<E>(std::initializer_list<E> il) noexcept { return il.begin(); }
+constexpr <const> E* data<E>(<const> std::valarray<E>& v) noexcept { return std::begin(v); }
+constexpr auto size<C>(const C& c) -> decltype(c.size()) { return c.size(); }
+constexpr size_t size<T,n>(const T(&)[n]) { return n; }
+
+constexpr auto invalid_index = ~(size_t)0;
+struct optional_index {
+    size_t value;
+    self& operator=(size_t x) noexcept;
+    self& operator+=(intptr_t x) noexcept;
+    self& operator+=(const self& x) noexcept;
+    operator size_t() const noexcept;
+    friend bool operator<=(size_t x, self idx) noexcept;
+};
+constexpr bool is_valid(size_t) noexcept { return true; }
+bool is_valid(const optional_index x) noexcept { return x.value!=invalid_index; }
+
+using dynamic_size = std::integral_constant<size_t, -1>;
+constexpr dynamic_size relaxed_tuple_size<T>(const T&) noexcept;
+constexpr sd::integral_constant<size_t,sizeof...(Ts)> relaxed_tuple_size<...Ts>(const std::tuple<Ts...>&) noexcept;
+using relaxed_tuple_size_t<T> = decltype(relaxed_tuple_size(std::declval<T>()));
+
+class static_vector<T,n> {
+    size_type size_=0; element_type data_[n];
+public: using element_type = T; using size_type = size_t;
+    using <const>_reference = <const>T&; using <const>_point=<const>T*; using <const>_iterator = <const>_pointer;
+    ctor()=default; explicit ctor(size_t s) noexcept;
+    ctor(size_t s, const T& value) noexcept(...);
+    ctor(std::initializer_list<T> il) noexcept(...);
+    <const>_reference at(size_type pos) <const> noexcept;
+    <const>_reference operator[](size_type pos) <const> noexcept;
+    <const>_reference {front|back}() <const> noexcept;
+    <const>_pointer data() <const> noexcept;
+    <const>_iterator {begin|end} <const> noexcept;
+    const_iterator {cbegin|cend}() const noexcept;
+    constexpr size_type max_size() const noexcept;
+    size_type size() const noexcept;
+    bool empty() const noexcept;
+    void fill(const_reference value) noexcept(...);
+    void swap(self& other) noexcept(...);
+};
+bool operator{==|!=}<T,n>(const static_vector<T,n>& a, const static_vector<T,n>& b) noexcept;
+void std::swap<T,n>(const static_vector<T,n>& a, const static_vector<T,n>& b) noexcept(...);
+
+void for_each_axis<T,Unary>(T&& t, Unary&& p);
+struct axis_merger { T operator()<T,U>(const T& a, const U& u); };
+auto make_empty_dynamic_axes<T>(const T& axes) { return make_default(axes); }
+auto make_empty_dynamic_axes<...Ts>(const std::tuple<Ts...>&);
+auto axes_transform<...Ts,Functor>(const std::tuple<Ts...>& old_axes, Functor&& f);
+T axes_transform<T,Functor>(const T& old_axes, Functor&& f);
+std::tuple<Ts...> axes_transform<...Ts,Binary>(const std::tuple<Ts...>& lhs, const std::tuple<Ts...>& rhs, Binary&& bin);
+T axes_transform<T,Binary>(const T& lhs, const T& rhs, Binary&& bin);
+unsigned axes_rank<T>(const T& axes);
+constexpr unsigned axes_rank<...Ts>(const std::tuple<Ts...>&);
+void throw_if_axes_is_too_large<T>(const T& axes);
+void throw_if_axes_is_too_large<...Ts>(const std::tuple<Ts...>&);
+decltype(auto) axis_get<n,...Ts>(<const> std::tuple<Ts...>& axes);
+decltype(auto) axis_get<n,T>(<const> T& axes);
+decltype(auto) axis_get<Ts>(<const> std::tuple<Ts...>& axes, unsigned i);
+decltype(auto) axis_get<T>(<const> T& axes, unsigned i);
+bool axes_equal<T,U>(const T& u, const U& u) noexcept;
+std::tuple<Us...> axes_assign<...Ts,...Us>(std::tuple<Ts...>&, const std::tuple<Us...>&) requires(/*not same*/);
+void axes_assign<...Ts>(std::tuple<Ts...>& t, const std::tuple<Ts...>& u);
+void axes_assign<...Ts,U>(std::tuple<Ts...>& t, const U& u);
+void axes_assign<T,...Us>(T& t, const std::tuple<Us...>& u);
+void axes_assign<T,U>(T& t, const U& u);
+void axes_serialize<Archive,T>(Archive& ar, T& axes) { ar & make_nvp("axes", axes); }
+void axes_serialize<Archive,...Ts>(Archive& ar, std::tuple<Ts...>& axes); // "axes", with each "item"
+size_t bincount<T>(const T& axes);
+size_t offset<T>(const T& axes);
+auto make_stack_buffer<T,A>(const A& a, <const T& t>);
+using has_underflow<T>;
+using is_growing<T>;
+using is_not_inclusive<T>;
+using axis_types<T>;
+using has_special_axis<Trait<T>,Axes>;
+using has_growing_axis<Axes>;
+using has_non_inclusive_axis<Axes>;
+constexpr size_t type_score<T>();
+using type_less<T,U>
+using value_types<Axes>;
+
+struct reduce_command {
+    static constexpr unsigned unset = (unsigned)-1;
+    unsigned iaxis = unset;
+    enum class range_t : char { none, indices, values } range = none;
+    union { index_type index; double value; } begin{0}, end{0};
+    unsigned merge=0;
+    bool crop=false, is_ordered=true, use_underflow_bin=true, use_overflow_bin=true;
+};
+
+void normalize_reduce_commands(span<reduce_command> out, span<const reduce_command> in);
 ```
 
-algorithm/: empty, project, reduce, sum
-detail/: accumulator_traits, argument_traits, axes, chunk_vector, common_type, debug, erf_inv, fill_n, fill,
-    ignore_deprecation_warning_beginend, index_translator, large_int, limits, linearize, make_default, mutex_base,
-    nonmember_container_access, optional_index, reduce_command, relaxed_tuple_size, static_vector, term_info, tuple_slice
+detail/: accumulator_traits, argument_traits, chunk_vector, common_type, debug,
+    erf_inv, fill_n, fill, ignore_deprecation_warning_beginend, index_translator,
+    large_int, limits, linearize, mutex_base, term_info, tuple_slice
 
 ------
 ### Dependencies
