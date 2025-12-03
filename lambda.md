@@ -303,20 +303,47 @@ const lambda_functor<lambda_functor_base<action<2,other_action<member_pointer_ac
   operator ->* <Arg1,Arg2>(const lambda_functor<Arg1>& a1, const lambda_functor<Arg2>& a2);
 const lambda_functor<lambda_functor_base<action<2,other_action<member_pointer_action>>, tuple<const_copy_argument<Arg1>::type, lambda_functor<Arg2>>>>
   operator ->* <Arg1,Arg2>(const Arg1& a1, const lambda_functor<Arg2>& a2);
+
+class cast_action<T>;
+class static_cast_action<T>; class dynamic_cast_action<T>; class const_cast_action<T>; class reinterpret_cast_action<T>;
+class cast_action<static_cast_action<T>>;
+class cast_action<dynamic_cast_action<T>>;
+class cast_action<const_cast_action<T>>;
+class cast_action<reinterpret_cast_action<T>>;
+class typeid_action;
+class sizeof_action;
+struct return_type_N<cast_action<cast_type<T>>, A> { using type = T; };
+struct return_type_N<typeid_action, A> { using type = std::type_info const&; };
+struct return_type_N<sizeof_action, A> { using type = size_t; };
+const lambda_functor<lambda_functor_base<action<1,cast_action<static_cast_action<T>>>, tuple<const_copy_argument<const Arg1>::type>>>
+  ll_static_cast(const Arg1& a1);
+const lambda_functor<lambda_functor_base<action<1,cast_action<dynamic_cast_action<T>>>, tuple<const_copy_argument<const Arg1>::type>>>
+  ll_dynamic_cast(const Arg1& a1);
+const lambda_functor<lambda_functor_base<action<1,cast_action<const_cast_action<T>>>, tuple<const_copy_argument<const Arg1>::type>>>
+  ll_const_cast(const Arg1& a1);
+const lambda_functor<lambda_functor_base<action<1,cast_action<reinterpret_cast_action<T>>>, tuple<const_copy_argument<const Arg1>::type>>>
+  ll_reinterpret_cast(const Arg1& a1);
+const lambda_functor<lambda_functor_base<action<1,typeid_action>, tuple<const_copy_argument<const Arg1>::type>>>
+  ll_typeid(const Arg1& a1);
+const lambda_functor<lambda_functor_base<action<1,sizeof_action>, tuple<const_copy_argument<const Arg1>::type>>>
+  ll_sizeof(const lambda_functor<Arg1>& a1);
 ```
 
 -----
 #### Control Structures
 
 ```c++
+class tagged_lambda_functor<Tag,LambdaFunctor>;
+class tagged_lambda_functor<Tag,lambda_functor<Args>> : lambda_functor<Args>;
+
 class ifthen_action{}; class ifthenelse_action{}; class ifthenelsereturn_action{};
 class lambda_functor_base<ifthen_action,Args>;
-lambda_functor_base<ifthen_action,tuple<lambda_functor<Arg1>, lambda_functor<Arg2>>>
+const lambda_functor_base<ifthen_action,tuple<lambda_functor<Arg1>, lambda_functor<Arg2>>>
   if_then<Arg1,Arg2>(const lambda_functor<Arg1>& a1, const lambda_functor<Arg2>& a2);
 class lambda_functor_base<ifthenelse_action,Args>;
-lambda_functor_base<ifthenelse_action,tuple<lambda_functor<Arg1>, lambda_functor<Arg2>, lambda_functor<Arg3>>>
+const lambda_functor_base<ifthenelse_action,tuple<lambda_functor<Arg1>, lambda_functor<Arg2>, lambda_functor<Arg3>>>
   if_then_else<Arg1,Arg2,Arg3>(const lambda_functor<Arg1>& a1, const lambda_functor<Arg2>& a2, const lambda_functor<Arg3>& a3);
-lambda_functor_base<ifthenelsereturn_action,tuple<lambda_functor<Arg1>, const_copy_argument<Arg2>::type, const_copy_argument<Arg3>::type>>
+const lambda_functor_base<ifthenelsereturn_action,tuple<lambda_functor<Arg1>, const_copy_argument<Arg2>::type, const_copy_argument<Arg3>::type>>
   if_then_else_return<Arg1,Arg2,Arg3>(const lambda_functor<Arg1>& a1, const Arg2& a2, const Arg3& a3);
 struct return_type_2<other_action<ifthenelsereturn_action>, A, B>;
 class lambda_functor_base<ifthenelsereturn_action,Args>;
@@ -329,17 +356,17 @@ if_gen<CondT> if_<CondT>(CondT const& cond);
 class forloop_action{}; class forloop_no_body_action{};
 class whileloop_action{}; class whileloop_no_body_action{};
 class dowhileloop_action{}; class dowhileloop_no_body_action{};
-lambda_functor_base<forloop_action,tuple<lambda_functor<Arg1>, lambda_functor<Arg2>, lambda_functor<Arg3>, lambda_functor<Arg4>>>
+const lambda_functor_base<forloop_action,tuple<lambda_functor<Arg1>, lambda_functor<Arg2>, lambda_functor<Arg3>, lambda_functor<Arg4>>>
   for_loop<Arg1,Arg2,Arg3,Arg4>(const lambda_functor<Arg1>& a1, const lambda_functor<Arg2>& a2, const lambda_functor<Arg3>& a3, const lambda_functor<Arg4>& a4);
-lambda_functor_base<forloop_no_body_action,tuple<lambda_functor<Arg1>, lambda_functor<Arg2>, lambda_functor<Arg3>>>
+const lambda_functor_base<forloop_no_body_action,tuple<lambda_functor<Arg1>, lambda_functor<Arg2>, lambda_functor<Arg3>>>
   for_loop<Arg1,Arg2,Arg3>(const lambda_functor<Arg1>& a1, const lambda_functor<Arg2>& a2, const lambda_functor<Arg3>& a3);
-lambda_functor_base<whileloop_action,tuple<lambda_functor<Arg1>, lambda_functor<Arg2>>>
+const lambda_functor_base<whileloop_action,tuple<lambda_functor<Arg1>, lambda_functor<Arg2>>>
   while_loop<Arg1,Arg2>(const lambda_functor<Arg1>& a1, const lambda_functor<Arg2>& a2);
-lambda_functor_base<whileloop_no_body_action,tuple<lambda_functor<Arg1>, lambda_functor<Arg2>>>
+const lambda_functor_base<whileloop_no_body_action,tuple<lambda_functor<Arg1>, lambda_functor<Arg2>>>
   while_loop<Arg1>(const lambda_functor<Arg1>& a1);
-lambda_functor_base<dowhileloop_action,tuple<lambda_functor<Arg1>, lambda_functor<Arg2>>>
+const lambda_functor_base<dowhileloop_action,tuple<lambda_functor<Arg1>, lambda_functor<Arg2>>>
   do_while_loop<Arg1,Arg2>(const lambda_functor<Arg1>& a1, const lambda_functor<Arg2>& a2);
-lambda_functor_base<dowhileloop_no_body_action,tuple<lambda_functor<Arg1>, lambda_functor<Arg2>>>
+const lambda_functor_base<dowhileloop_no_body_action,tuple<lambda_functor<Arg1>, lambda_functor<Arg2>>>
   do_while_loop<Arg1>(const lambda_functor<Arg1>& a1);
 class lambda_functor_base<forloop_action,Args>;
 class lambda_functor_base<forloop_no_body_action,Args>;
@@ -357,10 +384,139 @@ do_gen const do_ = do_gen{};
 struct for_composite<InitT,CondT,StepT,DoT>;
 struct for_gen<InitT,CondT,StepT>;
 for_gen<InitT,CondT,StepT> for_<InitT,CondT,StepT>(InitT const& init, CondT const& cond, StepT const& step);
+
+struct switch_action<n,...S>{};
+struct detail::case_label<v>{}; struct detail::default_label{};
+struct detail::switch_case_tag<T>{};
+const tagged_lambda_functor<switch_case_tag<case_label<caseValue>>, lambda_functor<Arg>>
+  case_statement<caseValue,Arg>(const lambda_functor<Arg>& a);
+const tagged_lambda_functor<switch_case_tag<case_label<caseValue>>, lambda_functor<lambda_functor_base<do_nothing_action, null_type>>>
+  case_statement<caseValue>();
+const tagged_lambda_functor<switch_case_tag<default_label>, lambda_functor<Arg>>
+  default_statement<Arg>(const lambda_functor<Arg>& a);
+const tagged_lambda_functor<switch_case_tag<default_label>, lambda_functor<lambda_functor_base<do_nothing_action, null_type>>>
+  default_statement();
+class lambda_functor_base<switch_action<n,A...,[default_label]>,Args>;
+
+using placeholderE_type = lambda_functor<placeholder<EXCEPTION>>;
+struct detail::catch_block{}; struct detail::catch_all_block{}; struct exception_catch_tag<T>{};
+struct catch_action<...Catch>{}; // at least 1
+struct catch_all_action{};
+struct return_try_catch_action<CatchActions>{};
+struct try_catch_action<CatchActions>{};
+struct throw_new_action{};
+struct rethrow_action{};
+struct throw_action<ThrowType>;
+struct throw_action<rethrow_action>;
+struct throw_action<throw_new_action>;
+struct return_type_N<throw_action<T>,Any>{ using type = void; };
+const lambda_functor<lambda_functor_base<action<0,throw_action<rethrow_action>>,null_type>
+  rethrow();
+const lambda_functor<lambda_functor_base<action<1,throw_action<rethrow_action>>,tuple<const_copy_argument<const Arg1>::type>>
+  throw_exception<Arg1>(const Arg1&...a1);
+const tagged_lambda_functor<exception_catch_tag<catch_block<CatchType>>,lambda_functor<Arg>>
+  catch_exception<CatchType,Arg>(const lambda_functor<Arg>& a);
+const tagged_lambda_functor<exception_catch_tag<catch_block<CatchType>>,lambda_functor<lambda_functor_base<do_nothing_action,null_type>>>
+  catch_exception<CatchType>();
+const tagged_lambda_functor<exception_catch_tag<catch_all_block>,lambda_functor<Arg>>
+  catch_all<Arg>(const lambda_functor<Arg>& a);
+const tagged_lambda_functor<exception_catch_tag<catch_all_block>,lambda_functor<lambda_functor_base<do_nothing_action,null_type>>>
+  catch_all(const lambda_functor<Arg>& a);
+const lambda_functor<lambda_functor_base<action<2,try_catch_action<catch_action<Catch>...,CatchN>>, tuple<lambda_functor<TryArg>, LF1...>>>
+  try_catch<TryArg,...Catch,CatchN,...LF,LFN>(const lambda_functor<TryArg>& a1,
+    const tagged_lambda_functor<exception_catch_tag<catch_block<Catch>>, LF>&...a,
+    const tagged_lambda_functor<exception_catch_tag<CatchN>, LFN>& an);
+class lambda_functor_base<action<n+1,try_catch_action<catch_action<catch_block<Catch>...>>>,Args>;
+class lambda_functor_base<action<n+2,try_catch_action<catch_action<catch_block<Catch>...,catch_all_block>>>,Args>;
 ```
 
-detail/: bind_functions, control_constructs_common
-algorithm, bind, casts, closures, construct, exceptions, numeric, switch
+------
+#### Utilities
+
+```c++
+// algorithms (wraps std algorithms)
+struct ll::for_each;
+struct ll::find; struct ll::find_if; struct ll::find_end; struct ll::find_first_of; struct ll::adjacent_find;
+struct ll::count; struct ll::count_if;
+struct ll::mismatch; struct ll::equal;
+struct ll::search;
+struct ll::copy; struct ll::copy_backward;
+struct ll::swap; struct ll::swap_ranges; struct ll::iter_swap;
+struct ll::transform;
+struct ll::replace; struct ll::replace_if; struct ll::replace_copy; struct ll::replace_copy_if;
+struct ll::fill; struct ll::fill_n;
+struct ll::generate; struct ll::generate_n;
+struct ll::remove; struct ll::remove_if; struct ll::remove_copy; struct remove_copy_if;
+struct ll::unique; struct ll::unique_copy;
+struct ll::reverse; struct ll::reverse_copy;
+struct ll::rotate; struct ll::rotate_copy;
+struct ll::random_shuffle;
+struct ll::partition; struct ll::stable_partition;
+struct ll::sort; struct ll::stable_sort; struct ll::partial_sort;
+struct ll::nth_element;
+struct ll::lower_bound; struct ll::upper_bound; struct ll::equal_range; struct ll::binary_search;
+struct ll::merge; struct ll::inplace_merge;
+struct ll::includes; struct ll::set_union; struct ll::set_intersection; struct ll::set_difference; struct set_symmetric_difference;
+struct ll::push_heap; struct ll::pop_heap; struct ll::make_heap; struct ll::sort_heap;
+struct ll::min; struct ll::max; struct ll::min_element; struct ll::max_element;
+struct ll::lexicographical_compare;
+struct ll::next_permutation; struct ll::prev_permutation;
+
+struct ll::accumulate;
+struct ll::inner_product;
+struct ll::partial_sum;
+struct ll::adjacent_difference;
+
+// bind
+const lambda_functor<lambda_functor_base<action<n+1,function_action<n+1,Result>>, bind_tuple_mapper<Result(&)(P...), const A...>::type>>
+  bind<Result,...P,...A>(Result(&a1)(P...), const A...);
+const lambda_functor<lambda_functor_base<action<n,function_action<n>>, bind_tuple_mapper<const Args...>::type>>
+  bind<...Args>(const Args&... a);
+const lambda_functor<lambda_functor_base<action<n,function_action<n,Result>>, bind_tuple_mapper<const Args...>::type>>
+  bind<Result,...Args>(const Args&... a);
+
+// closures
+class closure_frame<ClosureT> : public ClosureT::tuple_t {
+  closure_frame* save; closure_frame*& frame; // no copy
+public: ctor(ClosureT& clos); ctor<TupleT>(ClosureT& clos, TupleT const& init); ~dtor();
+};
+class closure_member<n,ClosureT> {
+  ClosureT::closure_frame_t*& frame;
+public: using tuple_t = ClosureT::tuple_t;
+  ctor();
+  struct sig<TupleT>;
+  Ret call<Ret,A,B,C>(A&, B&, C&) const;
+};
+class closure<T0=null_type,...,T4=null_type> {
+  closure_frame_t* frame; // no copy
+public: using tuple_t = tuple<T0,...,T4>; using closure_frame_t = closure_frame<self>;
+  ctor();
+  closure_frame_t<const>& context() <const>;
+  using lambda_functor<closure_member<0,self>> member1; // 1~5
+};
+
+// construct
+struct constructor {
+  struct sig<T>{using type=void;};
+  void operator()<A>(A a) const;
+};
+struct new_ptr<T> {
+  struct sig<U> {using type = T*;};
+  T* operator()<...Args>(Args&&...args)const;
+};
+struct delete_ptr {
+  struct sig<U> {using type = void;};
+  void operator()<A>(A&& a) const;
+};
+struct new_array<T> {
+  struct sig<U> {using type = T*;};
+  T* operator()<...Args>(Args&&...args)const;
+};
+struct delete_array {
+  struct sig<U> {using type = void;};
+  void operator()<A>(A&& a) const;
+};
+```
 
 -----
 ### Dependencies
