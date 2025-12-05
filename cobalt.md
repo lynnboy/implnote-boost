@@ -19,7 +19,7 @@ concept with_get_executor<T> = requires (T& t) { {t.get_executor()}->asio::execu
 ```
 
 ------
-#### Main API
+#### Main Entrance
 
 ```c++
 struct detail::signal_helper { asio::cancellation_signal signal; };
@@ -30,11 +30,22 @@ struct detail::main_promise : signal_helper, promise_cancellation_base<cancellat
     static pmr::memory_resource* my_resource = pmr::get_default_resource();
     void* operator new(size_t size); void operator delete(void* raw, size_t size);
     std::suspend_always initial_suspend() noexcept { return {}; }
-    auto final_suspend() noexcept -> std::suspend_never;
+    auto final_suspend() noexcept -> std::suspend_never { error_code ec; if (signal_set) signal_set->cancel(ec); return {}; }
     void unhandled_exception() { throw; }
     void return_value(int res=0) { if (result) *result=res; }
-    static int run_main(main mn);
-    friend int main(int argc, char* argv[]){
+    static int run_main(main mn) {
+      asio::io_context ctx{CONCURRENCY_HINT_1};
+      this_thread::set_executor(ctx.get_executor());
+      int res=-1;
+      mn.promise->result=&res; mn.promise->exec.emplace(ctx.get_executor()); mn.promise->exec_ = mn.promise->exec->get_executor();
+      auto p = std::coroutine_handler::from_promise(*mn.promise); asio::basic_signal_set<executor_type> ss{ctx,SIGNINT,SIGTERM};
+      mn.promise->signal_set = &ss;
+      struct work { void operator()(error_code ec, int sig) const { if (sig==SIGINT) signal.emit(total); if (sig==SIGTERM) signal.emit(terminal); if (!ec) ss.async_wait(*this); } };
+      ss.async_wait(work{ss, signal=mn.promise->signal});
+      asio::post(ctx.get_executor(), [p]{ p.resume(); });
+      ctx.run(); return res;
+    }
+    friend int main(int argc, char* argv[]){ // standard entrance
       pmr::unsynchronized_pool_resource root_resource;
       struct reset_res { void operator()(pmr::memory_resource* res) { this_thread::set_default_resource(res); } };
       std::unique_ptr<pmr::memory_resource,reset_res> pr{this_thread::set_default_result(&root_resource)};
@@ -56,21 +67,100 @@ private:
 };
 struct std::coroutine_traits<main,int,Ch> { using promise_type = main_promise; };
 class main{ main_promise* promise; };
-auto co_main(int argc, char* argv[]) -> main;
+auto co_main(int argc, char* argv[]) -> main; // entrance
 ```
 
-async_for, channel, composition, config, detached, error, gather, generator, io, join, main, noop,
-op, promise, race, result, run, spawn, task, this_coro, this_thread, thread, unique_handle, wait_group, with
+#### This Thread, This Coro
+
+```c++
+namespace this_thread {
+pmr::memory_resource* get_default_resource() noexcept;
+pmr::memory_resource* set_default_resource(pmr::memory_resource* r) noexcept;
+pmr::polymorphic_allocator<void> get_allocator();
+executor& get_executor(const source_location& loc=CURRENT_LOCATION);
+bool has_executor();
+void set_executor(executor exec) noexcept;
+}
+namespace this_coro {
+struct allocator_t{}; constexpr allocator_t allocator;
+struct cancelled_t{}; constexpr cancelled_t cancelled;
+struct initial_t{}; constexpr initial_t initial;
+struct reset_cancellation_source_t<Slot=asio::cancellation_slot> { Slot source; };
+reset_cancellation_source_t<Slot=asio::cancellation_slot> reset_cancellation_source(Slot slot={}) { return{std::move(slot)}; }
+}
+struct promise_cancellation_base<Slot=asio::cancellation_slot,DefaultFilter=asio::enable_terminal_cancellation> {
+  using cancellation_slot_type = asio::cancellation_slot;
+  ctor<InitF=asio::enable_terminal_cancellation>(Slot slot={}, InitF filter={});
+  auto await_transform(cancelled_t) noexcept { return cancelled_t_awaitable{state_.cancelled()}; }
+  auto await_transform(cancellation_state_t) noexcept { return cancellation_state_t_awaitable{state_}; }
+  auto await_transform<...F( resetreset_cancellation_state_n_t<F...> reset) noexcept; // 0~2
+  <const> cancellation_state& cancellation_state() <const> { return state_; }
+  cancellation_type cancelled() const { return state_.cancelled(); }
+  cancellation_slot_type get_cancellation_slot() { return state_.slot(); }
+  void reset_cancellation_source(Slot source={});
+  <const> Slot& source() <const> { return source_; }
+private: Slot source_; cancellation_state state_{source_, DefaultFilter{}};
+  struct cancelled_t_awaitable;
+  struct cancellation_state_t_awaitable;
+  struct cancellation_state_n_t_awaitable; // 0~2
+};
+struct promise_throw_if_cancelled_base {
+  ctor(bool throw_if_cancelled=true);
+  auto await_transform(throw_if_cancelled_n_t) noexcept; // 0~1
+protected: bool throw_if_cancelled_{true};
+  struct throw_if_cancelled_n_awaitable_; // 0~1
+};
+struct promise_memory_resource_base {
+  using allocator_type = pmr::polymorphic_allocator<void>;
+  allocator_type get_allocator() const { return {resource}; }
+  static void* operator new<...Args>(size_t, Args&...args);
+  static void operator delete(void* raw, size_t size) noexcept;
+  ctor(pmr::memory_resource* resource=this_thread::get_default_resource());
+private: pmr::memory_resource* resource = this_thread::get_default_resource()
+};
+void* allocate_coroutine<Alloc>(size_t size, Alloc alloc_);
+void deallocate_coroutine<Alloc>(void* raw_, size_t size);
+
+struct enable_await_allocator<Promise> {
+  auto await_transform(allocator_t);
+private: struct allocator_awaitable_;
+};
+struct enable_await_executor<Promise> {
+  auto await_transform(executor_t);
+private: struct executor_awaitable_;
+};
+```
+
+async_for, channel, composition, detached, error, gather, generator, io, join, noop, op,
+  promise, race, result, run, spawn, task, thread, unique_handle, wait_group, with
+src/: channel, error, main, thread
 
 detail/: await_result_helper, detached, exception, fork, forward_cancellation, gather, generator, handler, join,
-main, monotonic_resource, promise, race, sbo_resource, spawn, task, this_thread, thread, util, wait_group, with, wrapper
+  monotonic_resource, promise, race, sbo_resource, spawn, task, thread, util, wait_group, with, wrapper
+src/detail/: exception, util
 
 experimental/: context, frame, yield_context
 
 impl/channel
 
 io/: acceptor, buffer, datagram_socket, endpoint, file, ops, pipe, random_access_device, random_access_file, read, resolver,
-seq_packet_socket, serial_port,signal_set, sleep, socket, ssl, steady_timer, stream_file, stream_socket, stream, system_timer, write
+  seq_packet_socket, serial_port, signal_set, sleep, socket, ssl, steady_timer, stream_file, stream_socket, stream, system_timer, write
+src/io/: acceptor, datagram_socket, endpoint, file, pipe, random_access_file, read, resolver,
+  seq_packet_socket, serial_port, signal_set, sleep, socket, ssl, steady_timer, stream_file, stream_socket, system_timer, write
+
+-----
+### Configuration
+
+`executor`: 
+* `USE_IO_CONTEXT`: `executor` is `asio::io_context::executor_type`
+* `CUSTOM_EXECUTOR`: `executor` is user-provided
+* Otherwise: `executor` is `asio::any_io_context`
+
+`pmr`:
+* `USE_STD_PMR` (default): `pmr` is `std::pmr`
+* `USE_BOOST_CONTAINER_PMR`: `pmr` is `container::pmr`
+* `USE_CUSTOM_PMR`: user-provided
+* `NO_PMR`: no allocator
 
 -----
 ### Dependencies
