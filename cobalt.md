@@ -49,7 +49,6 @@ void detail::throw_bad_executor(const source_location& loc=CURRENT_LOCATION);
 std::exception_ptr detail::wait_not_ready<_>() { return wait_not_ready(); }
 ```
 
-------
 #### Common Parts
 
 ```c++
@@ -90,10 +89,69 @@ struct detail::sbo_allocator<T> {
   constexpr void deallocate(T* p, size_t n);
   sbo_resource* resource() const;
 };
+
+struct detail::monotonic_resource {
+private:
+  struct block_{ void*p; size_t avail, size; std::align_val_t aligned; block_* next; };
+  block_ buffer_; block_* head_=&buffer_; size_t chunk_size_{buffer_.size};
+public: constexpr ctor(void* buffer, size_t size); constexpr ctor(size_t chunk_size=1024);
+  ctor(self&& lhs) noexcept=delete; constexpr ~dtor()
+  constexpr void release();
+  constexpr void* allocate(size_t size, std::align_val_t align_=alignof(std::max_align_t));
+};
+struct monotonic_allocator<T> {
+  ctor<U>(self<U> alloc): resource_{alloc.resource_}{}
+  using value_type=T; using size_type = size_t; using difference_type = ptrdiff_t;
+  using propagate_on_container_move_assignment=std::true_type;
+  [[nodiscard]] constexpr T* allocate(size_t n);
+  constexpr void deallocate(T* p, size_t n);
+  ctor(monotonic_resource* resource=nullptr);
+private: monotonic_resource* resource_{nullptr};
+};
 ```
 
-------
-#### Main Entrance
+#### Result
+
+```c++
+concept detail::result_error<T> = requires (const T& t, const source_location& loc) { <system::>throw_exception_from_error(t,loc); }; // qualified or ADL
+constexpr auto interpret_as_result(std::tuple<> &&) { return system::result<void>{}; }
+auto interpret_as_result<Arg(std::tuple<Arg> && args); // system::result<void,Arg> or result<Arg>
+auto interpret_as_result<First,...Args>(std::tuple<First,Args...>&& args) -> system::result<std::tuple<First,Args...>> requires(...);
+auto interpret_as_result<result_error Error,...Args>(std::tuple<Error,Args...>&& args) -> system::result<std::tuple<Args...>,Error>;
+auto interpret_as_result<result_error Error,Arg>(std::tuple<Error,Arg>&& args) -> system::result<Arg,Error>;
+
+struct as_result_t<awaitable_type Aw> {
+  ctor(Aw&& aw); ctor<Aw_>(Aw_&& aw) requires(...);
+  bool await_ready() { return aw_.await_ready(); }
+  auto await_suspend<T>(std::coroutine_handle<T> h) { return aw_.await_suspend(h); }
+  auto await_resume();
+private: Aw aw_;
+};
+as_result_t<awaitable_type Aw>(Aw&&) -> as_result_t<Aw>;
+as_result_t<Aw> requires(...) -> as_result<decltype(...)>;
+auto as_result<awaitable_type Aw>(Aw&& aw) -> as_result_t<Aw> { return {std::forward<Aw>(aw)}; }
+auto as_result<Aw>(Aw&& aw) requires(...) {
+  struct lazy_tuple{ Aw aw; auto operator co_await() { return {std::forward<Aw>(aw)}; } };
+  return lazy_tuple{std::forward<Aw>(aw)};
+}
+
+struct as_tuple_t<awaitable Aw> {
+  ctor(Aw&& aw); ctor<Aw_>(Aw_&& aw) requires(...);
+  bool await_ready() { return aw_.await_ready(); }
+  auto await_suspend<T>(std::coroutine_handle<T> h) { return aw_.await_suspend(h); }
+  auto await_resume();
+private: Aw aw_;
+};
+as_tuple_t<awaitable_type Aw>(Aw&&) -> as_tuple_t<Aw>;
+as_tuple_t<Aw> requires(...) -> as_tuple_t<decltype(...)>;
+auto as_tuple<awaitable_type Aw>(Aw&& aw) -> as_tuple_t<Aw> { return {std::forward<Aw>(aw)}; }
+auto as_tuple<Aw>(Aw&& aw) requires(...) {
+  struct lazy_tuple{ Aw aw; auto operator co_await() { return {std::forward<Aw>(aw)}; } };
+  return lazy_tuple{std::forward<Aw>(aw)};
+}
+```
+
+#### Main Entrance, Thread Entrance
 
 ```c++
 struct detail::signal_helper { asio::cancellation_signal signal; };
@@ -142,6 +200,60 @@ private:
 struct std::coroutine_traits<main,int,Ch> { using promise_type = main_promise; };
 class main{ main_promise* promise; };
 auto co_main(int argc, char* argv[]) -> main; // entrance
+
+struct detail::signal_helper_2{asio::cancellation_signal signal;};
+struct detail::thread_state { asio::io_context ctx{1u}; asio::cancellation_signal signal;
+  std::mutex mtx; std::optional<completion_handler<std::exception_ptr>> waitor; std::atomic<bool> done=false; };
+struct detail::thread_promise : signal_helper_2, promise_cancellation_base<cancellation_slot,enable_total_cancellation>,
+  promise_throw_if_cancelled_base, enable_awaitables<thread_promise>, enable_await_allocator<thread_promise>,
+  enable_await_executor<thread_promise>, enable_await_deferred {
+    ctor();
+    struct initial_awaitable {
+      bool await_ready() const {return false;}
+      void await_suspend(std::coroutine_handle<thread_promise> h) {h.promise().mtx.unlock();}
+      void await_resume(){}
+    };
+    initial_awaitable initial_suspend() noexcept { return {}; }
+    std::suspend_never final_suspend() noexcept { wexec_.reset(); return {}; }
+    void unhandled_exception() { throw; }
+    void return_void() {}
+    using executor_type = executor;
+    const executor_type& get_executor() const { return *exec_; }
+    using allocator_type = pmr::polymorphic_allocator<void>; using resource_type = pmr::unsynchronized_pool_resource;
+    resource_type* resource;
+    allocator_type get_allocator() const { return allocator_type{resource}; }
+    using base::await_transform;
+    thread get_return_object();
+    void set_executor(asio::io_context::executor_type exec) { wexec_.emplace(exec); exec_.emplace(exec); }
+    std::mutex mtx;
+private:
+    std::optional<asio::executor_work_guard<asio::io_context::executor>> wexec; std::optional<executor> exec_;
+};
+struct detail::thread_awaitable {
+  asio::cancellation_slot cl;
+  std::optional<std::tuple<std::exception_ptr>> res;
+  bool await_ready(const source_location& loc=CURRENT_LOCATION) const;
+  bool await_suspend<Promise>(std::coroutine_handle<Promise> h);
+  void await_resume();
+  system::result<void,std::exception_ptr> await_resume(const as_result_tag&);
+  std::tuple<std::exception_ptr> await_resume(const as_tuple_tag&);
+  explicit ctor(<std::thread thread>, std::shared_ptr<thread_state> state);
+private: std::optional<std::thread> thread_; std::shared_ptr<thread_state> state_;
+};
+
+struct thread {
+  void cancel(asio::cancellation_type type=all);
+  thread_awaitable operator co_wait() {&|&&};
+  ~dtor(); ctor(self&&) noexcept=default;
+  using executor_type = executor;
+  using id = std::thread::id;
+  id get_id() const noexcept;
+  void join(); bool joinable() const; void detach();
+  executor_type get_executor(const source_location& loc=CURRENT_LOCATION) const;
+  using promise_type = thread_promise;
+private: ctor(std::thread thr, std::shared_ptr<thread_state> state);
+  std::thread thread_; std::shared_ptr<thread_state> state_;
+};
 ```
 
 #### Promise
@@ -289,7 +401,7 @@ private: promise_receiver<Return> receiver_; bool attached_;
 };
 ```
 
-### Task & Async Operation
+### Task, Async Operation, Spawn, Run
 
 ```c++
 struct unique_handle<T> {
@@ -377,8 +489,39 @@ struct completion_handler<...Args> : completion_handler_base {
     std::move(p)();
   }
   ~dtor() { if (self && completed_immediately&&*completed_immediately==initiating && std::uncaught_exceptions()) self.release(); }
-private: unique_handler<void> self; result_type& result; source_location loc_;
+private: unique_handle<void> self; result_type& result; source_location loc_;
 };
+
+struct detail::composition_promise<...Args> : promise_cancellation_base<asio::cancellation_slot, asio::enable_total_cancellation>,
+  enable_await_allocator<composition_promise<Args...>>, enable_await_executor<composition_promise<Args...>> {
+    void get_return_object(){}
+    using base::await_transform;
+    using handler_type = completion_handler<Args...>;
+    using allocator_type = handler_type::allocator_type;
+    allocator_type get_allocator() const {return handler.get_allocator();}
+    using resource_type = sbo_resource;
+    auto await_transform<...Args_,Initiation,...InitArgs>(asio::deferred_async_operation<void(Args_...),Initiation,InitArgs...> op_);
+    auto await_transform<Op>(Op&& op_) requires(...);
+    using executor_type = handler_type::executor_type;
+    const executor& get_executor() const {return handler.get_executor();}
+    static void* operator new<...Ts>(size_t size, Ts&...args);
+    static void operator delete(void* raw) noexcept;
+    completion_handler<Args...> handler;
+    ctor<...Ts>(Ts&&...args);
+    void unhandled_exception(){throw;}
+    constexpr static std::suspend_never initial_suspend() {return{};}
+    void return_value(std::tuple<Args...> args) { handler.result.emplace(std::move(args)); }
+    struct final_awaitable {
+      constexpr bool await_ready() noexcept {return false;}
+      completion_handler<Args...> handler;
+      std::coroutine_handle<void> await_suspend(std::coroutine_handle<composition_promise> h) noexcept;
+      constexpr void await_resume() noexcept{}
+    };
+    final_awaitable final_suspend() noexcept { return{std::move(handler)}; }
+};
+
+struct std::coroutine_traits<void,T...,completion_handler<Args...>>
+{ using promise_type = composition_promise<Args...>; }
 
 struct noop<T=void> { T value;
   constexpr static bool await_ready() { return true; }
@@ -564,23 +707,161 @@ struct asio::async_result<use_task_t,void(Args...)> {
   static auto initiate<Initiation,...InitArgs>(Initiation initiation, use_task_t, InitArgs...args) -> return_type
   { co_return co_await async_initiate<const use_op_t&, void(Args...)>(std::move(initiation), use_op, std::move(args)...); }
 };
+
+struct detail::async_initiate_spawn {
+  ctor(executor exec);
+  using executor_type = executor;
+  const executor_type& get_executor() const { return exec; }
+  executor exec;
+  void operator()<Handler,T>(Handler&& h, task<T> a);
+  void operator()<Handler>(Handler&& h, task<void> a);
+};
+
+auto spawn<with_get_executor Context, T, Token>(Context& context, task<T>&& t, Token&& token)
+{ return asio::async_initiate<Token,void(std::exception_ptr,T)>(async_initiate_spawn{context.get_executor()}, token, std::move(t)); }
+auto spawn<convertible_to<executor> Executor, T, Token>(Executor& executor, task<T>&& t, Token&& token)
+{ return asio::async_initiate<Token,void(std::exception_ptr,T)>(async_initiate_spawn{executor}, token, std::move(t)); }
+auto spawn<with_get_executor Context, Token>(Context& context, task<void>&& t, Token&& token)
+{ return asio::async_initiate<Token,void(std::exception_ptr)>(async_initiate_spawn{context.get_executor()}, token, std::move(t)); }
+auto spawn<convertible_to<executor> Executor, Token>(Executor& executor, task<void>&& t, Token&& token)
+{ return asio::async_initiate<Token,void(std::exception_ptr)>(async_initiate_spawn{executor}, token, std::move(t)); }
+
+T run<T>(task<T> t) {
+  pmr::unsynchronized_pool_resource root_resource{this_thread::get_default_resource()};
+  struct reset_res{ void operator()(pmr::memory_resource* res){ this_thread::set_default_resource(res); } };
+  std::unique_ptr<pmr::memory_resource, reset_res> pr{this_thread::set_default_resource(&root_resource)};
+  std::future<T> f;
+  { asio::io_context ctx{CONCURRENCY_HINT_1};
+    struct reset_exec { std::optional<executor> exec;
+      ctor() { if (this_thread::has_executor()) exec = this_thread::get_executor(); }
+      ~dtor() { if (exec) this_thread::set_executor(*exec); }
+    } re;
+    this_thread::set_executor(ctx.get_executor());
+    f = spawn(ctx, std::move(t), asio::bind_executor(ctx.get_executor(), asio::use_future));
+    ctx.run(); }
+  return f.get();
+}
 ```
 
-async_for, channel, composition, detached, gather, generator, io, join,
-  race, result, run, spawn, thread, wait_group, with
-src/: channel, thread
+#### Generator
 
-detail/: await_result_helper, detached, fork, gather, generator, join,
-  monotonic_resource, race, spawn, thread, wait_group, with
+```c++
+struct detail::generator_receiver_base<Yield,Push> {
+  std::optional<Push> pushed_value;
+  auto get_awaitable(Push {const&|&&} push);
+};
+struct detail::generator_receiver_base<Yield,void> { bool pushed_value{false}; auto get_awaitable(); };
 
-experimental/: context, frame, yield_context
+struct detail::generator_receiver<Yield,Push> : generator_receiver_base<Yield,Push> {
+  std::exception_ptr exception; std::optional<Yield> result, result_buffer;
+  Yield get_result();
+  bool done=false;
+  unique_handle<void> awaited_from{nullptr};
+  unique_handle<generator_promise<Yield, Push>> yield_from{nullptr};
+  bool lazy=false;
+  bool ready() { return exception||result||done; }
+  ctor(noop<Yield> n); ctor()=default; ctor(self&& lhs); ~dtor();
+  ctor(self*& reference, asio::cancellation_signal& cancel_signal);
+  self& operator=(self&& lhs) noexcept;
+  self **reference=nullptr; asio::cancellation_signal* cancel_signal=nullptr;
+  using yield_awaitable = generator_yield_awaitable<Yield,Push>;
+  yield_awaitable get_yield_awaitable(generator_promise<Yield,Push>* pro) {return {pro};}
+  static yield_awaitable terminator() {return{nullptr};}
+  void yield_value<T>(T&& t);
+  struct awaitable {
+    generator_receiver* self; std::exception_ptr ex; asio::cancellation_slot cl;
+    variant2::variant<monostate, Push*, const Push*> to_push;
+    ctor(generator_receiver* self, <const> Push* to_push);
+    ctor(const self& aw) noexcept;
+    bool await_ready() const { return self->ready(); }
+    std::coroutine_handle<void> await_suspend<Promise>(std::coroutine_handle<Promise> h);
+    Yield await_resume(const source_location& loc=CURRENT_LOCATION) { return await_resume(as_result_tag{}).value(loc); }
+    std::tuple<std::exception_ptr, Yield> await_resume(const as_tuple_tag&);
+    system::result<Yield,std::exception_ptr> await_resume(const as_result_tag&);
+    void interrupt_await()& { if(!self)return; ex=detached_exception(); if(self->awaited_from) self->awaited_from.release().resume(); }
+  };
+  void interrupt_await()& { exception = detached_exception(); awaited_from.release().resume(); }
+  void rethrow_if() {if(exception) std::rethrow_exception(exception);}
+};
 
-impl/channel
+struct detail::generator_promise<Yield,Push> : promise_memory_resource_base,
+  promise_cancellation_base<asio::cancellation_slot, asio::enable_total_cancellation>, promise_throw_if_cancelled_base,
+  enable_awaitables<self>, enable_await_allocator<self>, enable_await_executor<self>, enable_await_deferred {
+    using base::await_transform;
+    [[nodiscard]] generator<Yield,Push> get_return_object(){return{this};}
+    mutable asio::cancellation_signal signal;
+    using executor_type = executor; executor_type exec;
+    const executor_type& get_executor() const { return exec; }
+    ctor<...Args>(Args&...args) : promise_memory_resource_base(get_memory_resource_from_args(args...)), exec(get_executor_from_args(args...)){reset_cancellation_source(signal.slot());}
+    std::suspend_never initial_suspend() noexcept { return {}; }
+    struct final_awaitable {
+      generator_promise* generator;
+      bool await_ready() const noexcept { return generator->receiver&& generator->receiver->awaited_from.get()==nullptr; }
+      auto await_suspend(std::coroutine_handle<generator_promise> h) noexcept;
+      void await_resume() noexcept { if(generator->receiver) generator->receiver->done=true; }
+    };
+    final_awaitable final_suspend() noexcept { return {this}; }
+    void unhandled_exception() { if(receiver)receiver->exception=std::current_exception(); else throw; }
+    void return_value(Yield {const&|&&} res) { if (receiver) receiver->yield_value(<std::move>(res)); }
+    generator_receiver<Yield,Push>* receiver{nullptr};
+    auto await_transform(this_coro::initial_t);
+    auto yield_value<Yield_>(Yield_&& ret);
+    void interrupt_await()&;
+    ~dtor();
+};
 
-io/: acceptor, buffer, datagram_socket, endpoint, file, ops, pipe, random_access_device, random_access_file, read, resolver,
-  seq_packet_socket, serial_port, signal_set, sleep, socket, ssl, steady_timer, stream_file, stream_socket, stream, system_timer, write
-src/io/: acceptor, datagram_socket, endpoint, file, pipe, random_access_file, read, resolver,
-  seq_packet_socket, serial_port, signal_set, sleep, socket, ssl, steady_timer, stream_file, stream_socket, system_timer, write
+struct detail::generator_yield_awaitable<Yield,Push> {
+  generator_promise<Yield,Push>* self;
+  constexpr bool await_ready() const { return self&&self->receiver&&self->receiver->push_value&&!self->receiver->result; }
+  std::coroutine_handle<void> await_suspend(std::coroutine_handle<generator_promise<Yield,Push>> h, const source_location& loc=CURRENT_LOCATION);
+  Push await_resume() { return *std::exchange(self->receiver->pushed_value, std::nullopt); }
+};
+struct detail::generator_yield_awaitable<Yield,void> {
+  generator_promise<Yield,void>* self;
+  constexpr bool await_ready() const { return self&&self->receiver&&self->receiver->push_value; }
+  std::coroutine_handle<> await_suspend(std::coroutine_handle<generator_promise<Yield,void>> h, const source_location& loc=CURRENT_LOCATION);
+  void await_resume() { self->receiver->pushed_value = false; }
+};
+struct generator_base<Yield,Push>{ auto operator()(Push {const&|&&} push); };
+struct generator_base<Yield,void>{ auto operator co_await(); };
+struct generator_with_awaitable<T> {
+  generator_base<T,void>& g; std::optional<generator_receiver<T,void>::awaitable> awaitable;
+  void await_suspend<Promise>(std::coroutine_handle<Promise> h) { g.cancel(); awaitable.emplace(g.operator co_await()); return awaitable->await_suspend(h); }
+  void await_resume(){}
+};
+
+struct [[nodiscard]] generator<Yield,Push=void> {
+  ctor(self&&) noexcept=default; self& operator=(self&& lhs) noexcept{cancel(); receiver_=std::move(lhs.receiver_); return *this; } // no copy
+  constexpr ctor(noop<Yield> n); ~dtor() {cancel();}
+  explicit operator bool() const { return !receiver_.done||receiver_.result||receiver_.exception; }
+  void cancel(asio::cancellation_type ct=all) { if (!receiver_.done&&*receiver_.reference=&receiver_) receiver_.cancel_signal->emit(ct); }
+  bool ready() const { return receiver_.result||receiver_.exception; }
+  Yield get() { receiver_.rethrow_if(); return receiver_.get_result(); }
+  using promise_type = generator_promise<Yield,Push>;
+private: ctor(generator_promise<Yield,Push>* generator);
+  generator_receiver<Yield,Push> receiver_;
+};
+```
+
+#### Detached Async Operation
+
+```c++
+struct detail::detached_promise : promise_memory_resource_base,
+  promise_cancellation_base<asio::cancellation_slot, asio::enable_total_cancellation>, promise_throw_if_cancelled_base,
+  enable_awaitables<self>, enable_await_allocator<self>, enable_await_executor<self>, enable_await_deferred, task_promise_result<Return> {
+    [[nodiscard]] detached get_return_object(){return{};}
+    std::suspend_never await_transform(this_core::reset_cancellation_source_t<asio::cancellation_slot> reset) noexcept
+    { this->reset_cancellation_source(reset.source); return {}; }
+    using executor_type = executor; executor_type exec;
+    const executor_type& get_executor() const { return exec; }
+    ctor<...Args>(Args&...args) : promise_memory_resource_base(get_memory_resource_from_args(args...)), exec(get_executor_from_args(args...)){}
+    std::suspend_never initial_suspend() noexcept { return {}; }
+    std::suspend_never final_suspend() noexcept { return {}; }
+    void return_void(){}
+    void unhandled_exception() { throw; }
+};
+struct detached { using promise_type = detached_promise; };
+```
 
 #### This Thread, This Coro
 
@@ -642,6 +923,497 @@ struct enable_await_executor<Promise> {
 private: struct executor_awaitable_;
 };
 ```
+
+#### Channel
+
+```c++
+struct channel_reader<T>;
+struct channel<T> { // delete move
+  explicit ctor(size_t limit=0u, executor executor=this_thread::get_executor(), pmr::memory_resource* resource=this_thread::get_default_resource());
+  ~dtor();
+  using executor_type = executor;
+  const executor_type& get_executor();
+  bool is_open() const;
+  void close();
+private: circular_buffer<T,pmr::polymorphic_allocator<T>> buffer_;
+  executor_type executor_; bool is_closed_{false};
+  struct read_op : intrusive::list_base_hook<link_mode<auto_unlink>> {
+    channel* chn; source_location loc; bool cancelled=false;
+    std::optional<T> direct{}; asio::cancellation_slot cancel_slot{};
+    unique_handle<void> awaited_from{nullptr}; void (*begin_transaction)(void*) =nullptr;
+    void transactinoal_unlink() { if (begin_transaction) begin_transaction(awaited_from.get()); unlink(); }
+    void interrupt_await() { if (!direct) { cancelled=true; if (awaited_from) awaited_from.release().resume(); } }
+    struct cancel_impl;
+    bool await_ready() const noexcept { return !chn->buffer_.empty() || chn->is_closed_; }
+    std::coroutine_handle<void> await_suspend<Promise>(std::coroutine_handle<Promise> h);
+    T await_resume();
+    std::tuple<system::error_code, T> await_resume(const as_tuple_tag&);
+    system::result<T> await_resume(const as_result_tag&);
+    explicit operator bool() const { return chn && chn->is_open(); }
+  };
+  struct write_op : intrusive::list_base_hook<link_mode<auto_unlink>> {
+    using ref_t = std::conditional_t<std::is_copy_constructible_v<T>, variant2::variant<T*,constT*>, T*>;
+    channel* chn; ref_t ref; source_location loc;
+    bool cancelled=false, direct=false, closed=!chn->is_open(); asio::cancellation_slot cancel_slot{};
+    unique_handle<void> awaited_from{nullptr}; void (*begin_transaction)(void*) =nullptr;
+    void transactinoal_unlink() { if (begin_transaction) begin_transaction(awaited_from.get()); unlink(); }
+    void interrupt_await() { if (!direct) { cancelled=true; if (awaited_from) awaited_from.release().resume(); } }
+    struct cancel_impl;
+    bool await_ready() const noexcept { return !chn->buffer_.full() || chn->is_closed_; }
+    std::coroutine_handle<void> await_suspend<Promise>(std::coroutine_handle<Promise> h);
+    void await_resume();
+    std::tuple<system::error_code> await_resume(const as_tuple_tag&);
+    system::result<void> await_resume(const as_result_tag&);
+    explicit operator bool() const { return chn && chn->is_open(); }
+  };
+  intrusive::list<read_op, constant_time_size<false>> read_queue_;
+  intrusive::list<write_op, constant_time_size<false>> write_queue_;
+public:
+  read_op read(const source_location& loc=CURRENT_LOCATION) requires std::is_copy_constructible_v<T> { return {{}, this, &value, loc}; }
+  write_op write(<const> T{&|&&} value, const source_location& loc=CURRENT_LOCATION) requires std::is_copy_constructible_v<T> { return {{}, this, &value, loc}; }
+};
+
+struct channel<void> { // delete move
+  explicit ctor(size_t limit=0u, executor executor=this_thread::get_executor());
+  ~dtor();
+  using executor_type = executor;
+  const executor_type& get_executor() { return executor_; }
+  bool is_open() const { return !is_closed_;}
+  void close();
+private: size_t limit_, n_{0u}; executor_type executor_; bool is_closed_{false};
+  struct read_op : intrusive::list_base_hook<link_mode<auto_unlink>> {
+    channel* chn; source_location loc; bool cancelled=false, direct=false;
+    asio::cancellation_slot cancel_slot{};
+    unique_handle<void> awaited_from{nullptr}; void (*begin_transaction)(void*) =nullptr;
+    void transactinoal_unlink() { if (begin_transaction) begin_transaction(awaited_from.get()); unlink(); }
+    void interrupt_await() { if (!direct) { cancelled=true; if (awaited_from) awaited_from.release().resume(); } }
+    struct cancel_impl;
+    bool await_ready() const noexcept { return chn->n_>0 || chn->is_closed_; }
+    std::coroutine_handle<void> await_suspend<Promise>(std::coroutine_handle<Promise> h);
+    void await_resume();
+    std::tuple<system::error_code> await_resume(const as_tuple_tag&);
+    system::result<void> await_resume(const as_result_tag&);
+    explicit operator bool() const { return chn && chn->is_open(); }
+  };
+  struct write_op : intrusive::list_base_hook<link_mode<auto_unlink>> {
+    channel* chn; source_location loc;
+    bool cancelled=false, direct=false, closed=!chn->is_open(); asio::cancellation_slot cancel_slot{};
+    unique_handle<void> awaited_from{nullptr}; void (*begin_transaction)(void*) =nullptr;
+    void transactinoal_unlink() { if (begin_transaction) begin_transaction(awaited_from.get()); unlink(); }
+    void interrupt_await() { if (!direct) { cancelled=true; if (awaited_from) awaited_from.release().resume(); } }
+    struct cancel_impl;
+    bool await_ready() const noexcept { return chn->n_ < chn->limit_ || chn->is_closed_; }
+    std::coroutine_handle<void> await_suspend<Promise>(std::coroutine_handle<Promise> h);
+    void await_resume();
+    std::tuple<system::error_code> await_resume(const as_tuple_tag&);
+    system::result<void> await_resume(const as_result_tag&);
+    explicit operator bool() const { return chn && chn->is_open(); }
+  };
+  intrusive::list<read_op, constant_time_size<false>> read_queue_;
+  intrusive::list<write_op, constant_time_size<false>> write_queue_;
+public:
+  read_op read(const source_location& loc=CURRENT_LOCATION) requires std::is_copy_constructible_v<T> { return {{}, this, loc}; }
+  write_op write(const source_location& loc=CURRENT_LOCATION) requires std::is_copy_constructible_v<T> { return {{}, this, loc}; }
+};
+
+struct channel_reader<T> {
+  ctor(channel<T>& chan, const source_location& loc=CURRENT_LOCATION);
+  auto operator co_await() { return chan_->read(loc_); }
+  explicit operator bool() const { return chan_ && chan_->is_open(); }
+private: channel<T>* chan_; source_location loc_;
+};
+```
+
+#### With
+
+```c++
+using detail::co_awaitable_type<T> = ...;
+using detail::co_await_result_t<T> = ...;
+decltype(auto) detail::get_awaitable_type<T>(T&& t);
+struct detail::awaitable_type_getter<T> {
+  using type = co_awaitable_type<T&&>; std::decay_t<T>& ref;
+  ctor<U>(U&& ref); operator type();
+};
+struct detail::awaitable_type_getter<awaitable_type T> {
+  using type = T&&; std::decay_t<T>& ref;
+  ctor<U>(U&& ref); operator type();
+};
+
+struct [[nodiscard]] detail::with_impl<T> {
+  struct promise_type : with_promise_value<T>, enable_awaitables<promise_type>, enable_await_allocator<promise_type> {
+    using base::await_transform;
+    using executor_type = executor;
+    const executor_type& get_executor() const { return *exec; }
+    std::optional<executor_type> exec;
+    self get_return_object() { return {*this}; }
+    std::exception_ptr e;
+    void unhandled_exception() { e = std::current_exception(); }
+    std::suspend_always initial_suspend() noexcept { return{}; }
+    struct final_awaitable { promise_type* promise;
+      bool await_ready() const noexcept { return false; }
+      auto await_suspend(std::coroutine_handle<promise_type> h) noexcept -> std::coroutine_handle<void>
+      { return from_address(h.promise().awaited_from.address()); }
+      void await_resume() noexcept{}
+    };
+    auto final_suspend() noexcept { return final_awaitable{this}; }
+    using cancellation_slot_type = asio::cancellation_slot;
+    cancellation_slot_type get_cancellation_slot() const { return slot_; }
+    asio::cancellation_slot slot_;
+    std::coroutine_handle<void> awaited_from{nullptr};
+  };
+  bool await_ready() const {return false;}
+  auto await_suspend<Promise>(std::coroutine_handle<Promise> h) ->std::coroutine_handle<promise_type>;
+  T await_resume();
+};
+struct detail::with_promise_value {
+  std::optional<T> result;
+  void return_value(std::optional<T>&& value) { if (value) result.emplace(std::move(*value)); }
+  std::optional<T> get_result() { return std::move(result); }
+};
+struct detail::with_promise_value<void> { void return_void(){} void get_result(){} };
+auto detail::invoke_await_exit<T>(T&& t, std::exception_ptr& e) { return std::forward<T>(t).await_exit(e); }
+
+auto with<Arg, Func, Teardown>(Arg arg, Func func, Teardown teardown) -> with_impl<void> requires(...) {
+  std::exception_ptr e;
+  try { <co_await> std::move(func)(arg); }catch(...) { e = std::current_exception(); }
+  try { co_await std::move(teardown)(std::move(arg), e); }catch(...) { if (!e) e = std::current_exception(); }
+  if (e) std::rethrow_exception(e);
+}
+auto with<Arg, Func, Teardown>(Arg arg, Func func, Teardown teardown) -> with_impl<decltype(std::move(func)(arg))> requires(...) {
+  std::exception_ptr e; std::optional<decltype(std::move(func)(arg))> res;
+  try { res = <co_await> std::move(func)(arg); }catch(...) { e = std::current_exception(); }
+  try { co_await std::move(teardown)(std::move(arg), e); }catch(...) { if (!e) e = std::current_exception(); }
+  if (e) std::rethrow_exception(e); co_return std::move(res);
+}
+auto with<Arg,Func>(Arg&& arg, Func&& func) requires(...)
+{ return with(std::forward<Arg>(arg), std::forward<Func>(func), &invoke_await_exit<Arg>); }
+```
+
+#### Race, Gather, Join, Wait Group
+
+```c++
+// fork
+struct detail::fork {
+  ctor()=default;
+  struct shared_state {
+    pmr::monotonic_buffer_resource resource{};
+    ctor<...Args>(Args&&...args){}
+    unique_handle<void> coro{}; size_t use_count=0u;
+    friend void intrusive_ptr_add_erf(shared_state* st) { st->use_count++; }
+    friend void intrusive_ptr_release(shared_state* st) { if (st->use_count--=1u) st->coro.reset(); }
+    bool outstanding_work() {return use_count!=0u;}
+    std::optional<executor> exec{};
+    bool wired_up() {return exec.has_value();}
+    using executor_type = executor;
+    const executor_type& get_executor() const { return *exec; }
+    source_location loc;
+  };
+  struct static_shared_state<bufSize> : private std::array<char,bufSize>, shared_state {};
+  struct wired_up_t{};
+  constexpr static wired_up_t wired_up{};
+  struct set_transaction_function {
+    void* begin_transaction_this = nullptr; void (*begin_transaction_func)(void*) = nullptr;
+    ctor<BeginTx>(BeginTx& transaction);
+  };
+  struct promise_type {
+    void* operator new<State,...Rest>(size_t size, State& st, Rest&&...) { return st.resource.allocate(size); }
+    void operator delete(void*)noexcept{};
+    ctor<...Rest>(shared_state& st, Rest&...);
+    intrusive_ptr<shared_state> sate; asio::cancellation_slot cancel;
+    using executor_type = executor;
+    const executor_type& get_executor() const { return state->get_executor(); }
+    using allocator_type = pmr::polymorphic_allocator<void>;
+    const allocator_type get_allocator() const { return &state->resource; }
+    using cancellation_slot_type = asio::cancellation_slot;
+    cancellation_slot_type get_cancellation_slot() const { return cancel; }
+    constexpr static std::suspend_never initial_suspend() noexcept {return{};}
+    struct final_awaitable {
+      promise_type* self;
+      bool await_ready() const noexcept { return self->state->use_count!=1u; }
+      std::coroutine_handle<void> await_suspend(std::coroutine_handle<promise_type> h) noexcept;
+      constexpr static void await_resume() noexcept {}
+    };
+    final_awaitable final_suspend() noexcept { if (cancel.is_connected()) cancel.clear(); return {this}; }
+    struct wrapped_awaitable<awaitable<promise_type> Aw> { Aw& aw;
+      constexpr static bool await_ready() noexcept { return false; }
+      auto await_suspend(std::coroutine_handle<promise_type> h) { return aw.await_suspend(h); }
+      auto await_resume() { return aw.await_resume(); }
+    };
+    auto await_transform<awaitable<promise_type> Aw>(Aw& aw) { return wrapped_awaitable<Aw>{aw}; }
+    struct wired_up_awaitable { promise_type* promise;
+      bool await_ready() const noexcept { return promise->state->wired_up(); }
+      void await_suspend(std::coroutine_handle<promise_type>){}
+      constexpr static void await_resume() noexcept {}
+    };
+    auto await_transform(wired_up_t){ return wired_up_awaitable{this}; }
+    auto await_transform(set_transaction_function sf) { begin_transaction_func = sf.begin_transaction_func; begin_transaction_this = sf.begin_transaction_this; return std::suspend_never{}; }
+    auto await_transform(asio::cancellation_slot slot) { cancel = slot; return std::suspend_never{}; }
+    [[noreturn]] void unhandled_exception() noexcept {std::terminate();}
+    void* begin_transaction_this = nullptr; void (*begin_transaction_func)(void*) = nullptr;
+    void begin_transaction() { if (begin_transaction_this) begin_transaction_func(begin_transaction_this); }
+    fork get_return_object() { return this; }
+  };
+  [[nodiscard]] bool done() const { return !handle_||handle_.done(); }
+  auto release() -> std::coroutine_handle<promise_type> { return handle_.release)(; )}
+private: unique_handle<promise_type> handle_;
+  ctor(promise_type* pt) : handle_{pt}{}
+};
+
+// race
+struct detail::left_race_tag{};
+struct detail::race_traits<Base,Awaitable=Base> {
+  constexpr static bool is_lvalue = std::is_lvalue_reference_v<Base>, is_actual = awaitable_type<awaitable>;
+  using awaitable = std::conditional_t<is_lvalue, std::decay_t<Awaitable>&, Awaitable&&>;
+  using actual_awaitable = std::conditional_t<is_actual, awaitable, decltype(get_awaitable_type(declval<awaitable>()))>;
+  using interruptible_type = std::conditional_t<is_lvalue, decay_t<actual_awaitable>&, decay_t<actual_awaitable>&&>;
+  constexpr static bool interruptible = interruptible<interruptible_type>;
+  static void do_interrupt(std::decay_t<actual_awaitable>& aw) { if constexpr(interruptible) ((interruptible_type)aw).interrupt_await(); }
+};
+struct detail::interruptible_base { virtual void interrupt_await() = 0; };
+struct detail::race_variadic_impl<asio::cancellation_type ct, URBG,...Args> {
+  ctor<URBG_>(URBG_&& g, Args&&...args);
+  std::tuple<Args...> args; URBG g;
+  constexpr static size_t tuple_size = sizeof...(Args);
+  struct awaitable : fork::static_shared_state<256 * tuple_size> { source_location loc;
+    ctor<...idx>(std::tuple<Args...>& args, URBG& g, std::index_sequence<idx...>);
+    std::tuple<Args...>& aws; std::array<asio::cancellation_signal, tuple_size> cancel_;
+    constexpr static auto make_null<_>() {return nullptr;}
+    std::array<asio::cancellation_signal*, tuple_size> cancel = {make_null<Args>()...};
+    std::array<interruptible_base*, tuple_size> working;
+    size_t index{std::numeric_limits<size_t>::max()};
+    constexpr static bool all_void = {std::is_void_v<co_await_result_t<Args>>&&...};
+    std::optional<variant2::variant<void_as_monostate<co_await_result_t<Args>>...>> result;
+    std::exception_ptr error;
+    bool has_result() const { return index!=std::numeric_limits<size_t>::max(); }
+    void cancel_all() { interrupt_await(); /* then emit and reset all cancel tokens*/ };
+    void interrupt_await() { for (auto i:working) if(i) i->interrupt_await(); }
+    void assign_error<T,Error>(system::result<T,Error>& res)
+    try{ std::move(res).value(loc); }catch(...) { error = std::current_exception(); }
+    void assign_error<T>(system::result<T,std::exception_ptr>& res) { error = std::move(res).error(); }
+    static fork await_impl<idx>(awaitable& this_);
+    std::array<fork(*)(awaitable&), tuple_size> impls {[]<...idx>(std::index_sequence<idx...>)
+      { return {&await_impl<idx>...}; }(std::make_index_sequence<tuple_size>{})};
+    fork last_forked;
+    bool await_ready() { last_forked = impls[0](*this); return last_forked.done(); }
+    auto await_suspend<H>(std::coroutine_handle<H> h, const source_location& loc=CURRENT_LOCATION);
+    auto await_resume()
+    { if(error) std::rethrow_exception(error); if constexpr (all_void) return index; else return std::move(*result); }
+    auto await_resume(const as_tuple_tag&)
+    { if constexpr (all_void) return std::make_tuple(error, index); else return std::make_tuple(error, std::move(*result)); }
+    auto await_resume(const as_result_tag&) -> system::result<std::conditional_t<all_void,size_t,variant2::variant<void_as_monostate<co_await_result_t<Args>>...>>, std::exception_ptr>
+    { if(error) return{in_place_error,error}; if constexpr (all_void) return {in_place_value,index}; else return {in_place_value,std::move(*result)}; }
+  };
+  awaitable operator co_await()&& { return {args, g, std::make_index_sequence<tuple_size>{}}; }
+};
+struct detail::race_ranged_impl<asio::cancellation_type ct, URBG,Range> {
+  using result_type = co_await_result_t<std::decay_t<decltype(*std::begin(std::declval<Range>()))>>;
+  ctor<URBG_>(URBG_&& g, Range&& rng);
+  Range range; URBG g;
+  struct awaitable : fork::shared_state { source_location loc;
+    using type = std::decay_t<decltype(*std::begin(std::declval<Range>()))>; using traits = race_traits<Range,type>;
+    size_t index{std::numeric_limits<size_t>::max()};
+    std::conditional_t<std::is_void_v<result_type>, variant2::monostate, std::optional<result_type>> result;
+    std::exception_ptr error;
+    pmr::polymorphic_allocator<void> alloc{&resource}; Range &aws;
+    struct dummy { ctor<...Args>(Args&&...){} };
+    std::conditional_t<traits::interruptible, pmr::vector<std::decay_t<traits::actual_awaitable>*>, dummy> working{std::size(aws), alloc};
+    pmr::vector<size_t> reorder{std::size(aws), alloc};
+    pmr::vector<asio::cancellation_signal> cancel_{std::size(aws), alloc};
+    pmr::vector<asio::cancellation_signal*> cancel{std::size(aws), alloc};
+    bool has_result() const { return index!=std::numeric_limits<size_t>::max(); }
+    ctor(Range& aws, URBG& g);
+    void cancel_all() { interrupt_await(); /* then emit and reset all cancel tokens*/ };
+    void interrupt_await() { if constexpr (traits::interruptible) for (auto i:working) if(i) traits::do_interrupt(*aw); }
+    void assign_error<T,Error>(system::result<T,Error>& res)
+    try{ std::move(res).value(loc); }catch(...) { error = std::current_exception(); }
+    void assign_error<T>(system::result<T,std::exception_ptr>& res) { error = std::move(res).error(); }
+    static fork await_impl(awaitable& this_, size_t idx);
+    fork last_forked;
+    bool await_ready() { last_forked = await_impl(*this, reorder.front()); return last_forked.done(); }
+    auto await_suspend<H>(std::coroutine_handle<H> h, const source_location& loc=CURRENT_LOCATION);
+    auto await_resume()
+    { if(error) std::rethrow_exception(error); if constexpr (std::is_void_v<result_type>) return index; else return std::make_pair(index, *result); }
+    auto await_resume(const as_tuple_tag&)
+    { if constexpr (std::is_void_v<result_type>) return std::make_tuple(error, index); else return std::make_tuple(error, std::make_pair(index,std::move(*result))); }
+    auto await_resume(const as_result_tag&) -> system::result<std::conditional_t<std::is_void_v<result>,size_t,std::pair<size_t,result_type>>, std::exception_ptr>
+    { if(error) return{in_place_error,error}; if constexpr (std::is_void_v<result_type>) return {in_place_value,index}; else return {in_place_value,std::make_pair(index,std::move(*result))}; }
+  };
+  awaitable operator co_await()&& { return {range, g}; }
+};
+
+auto race<asio::cancellation_type ct=all, URBG, awaitable<fork::promise_type>,...Promise>(URBG&& g, Promise&&...p) ->race_variadic_impl<ct,URBG,Promise...>;
+auto race<asio::cancellation_type ct=all, URBG, PromiseRange>(URBG&& g, PromiseRange&& p) -> race_ranged_impl<ct,URBG,PromiseRange>;
+auto race<asio::cancellation_type ct=all, awaitable<fork::promise_type>,...Promise>(URBG&& g, Promise&&...p) ->race_variadic_impl<ct,std::default_random_engine&,Promise...>;
+auto race<asio::cancellation_type ct=all, PromiseRange>(PromiseRange&& p) -> race_ranged_impl<ct,std::default_random_engine&,PromiseRange>;
+auto left_race<asio::cancellation_type ct=all, awaitable<fork::promise_type>,...Promise>(Promise&&...p) ->race_variadic_impl<ct,left_race_tag,Promise...>;
+auto left_race<asio::cancellation_type ct=all, PromiseRange>(PromiseRange&& p) -> race_ranged_impl<ct,left_race_tag,PromiseRange>;
+
+// gather
+struct detail::gather_variadic_impl<...Args> {
+  using tuple_type = std::tuple<decltype(get_awaitable_type(std::declval<Args&&>()))...>;
+  ctor(Args&&...args);
+  std::tuple<Args...> args;
+  constexpr static size_t tuple_size = sizeof...(Args);
+  struct awaitable : fork::static_shared_state<256 * tuple_size> {
+    ctor<...idx>(std::tuple<Args...>& args, std::index_sequence<idx...>);
+    tuple_type aws; std::array<asio::cancellation_signal, tuple_size> cancel;
+    using result_store_part<T> = variant2::variant<monostate, void_as_monostate<co_await_result_t<T>>, std::exception_ptr>;
+    std::tuple<result_store_part<Args>...> result;
+    void interrupt_await_step<idx>() { if constexpr(interruptible<...>) std::get<idx>(aws).interrupt_await(); }
+    void interrupt_await() { mp11::mp_for_each<mp_iota_c<sizeof...Args>>([&](idx){interrupt_await_step<idx>();}); }
+    static fork await_impl<idx>(awaitable& this_);
+    std::array<fork(*)(awaitable&), tuple_size> impls {[]<...idx>(std::index_sequence<idx...>)
+      { return std::array<fork(*)(awaitable&), tuple_size>{&await_impl<idx>...}; }(std::make_index_sequence<tuple_size>{})};
+    fork last_forked; size_t last_index=0u;
+    bool await_ready();
+    auto await_suspend<H>(std::coroutine_handle<H> h, const source_location& loc=CURRENT_LOCATION);
+    using result_part<T> = system::result<co_await_result_t<T>, std::exception_ptr>;
+    std::tuple<result_part<Args>...> await_resume();
+  };
+  awaitable operator co_await()&& { return {args, g, std::make_index_sequence<tuple_size>{}}; }
+};
+struct detail::gather_ranged_impl<Range> {
+  Range aws;
+  using result_type = system::result<co_await_result_t<std::decay_t<decltype(*std::begin(std::declval<Range>()))>>,std::exception_ptr>;
+  using result_storage_type = variant2::variant<monostate,void_as_monostate<co_await_result_t<std::decay_t<decltype(*std::begin(declval<Range>()))>>>,std::exception_ptr>;
+  struct awaitable : fork::shared_state {
+    using type = std::decay_t<decltype(*std::begin(std::declval<Range>()))>;
+    pmr::polymorphic_allocator<void> alloc{&resource};
+    std::conditional_t<awaitable_type<type>, Range&, pmr::vector<co_awaitable_type<type>>> aws;
+    pmr::vector<bool> ready{std::size(aws), alloc};
+    pmr::vector<asio::cancellation_signal> cancel{std::size(aws), alloc};
+    pmr::vector<result_storage_type> result{cancel.size(), alloc};
+    ctor(Range& aws);
+    void interrupt_await() { if constexpr (interruptible<...>) for (auto aw:aws) aw.interrupt_await(); }
+    static fork await_impl(awaitable& this_, size_t idx);
+    fork last_forked; size_t last_index=0u;
+    bool await_ready();
+    auto await_suspend<H>(std::coroutine_handle<H> h, const source_location& loc=CURRENT_LOCATION);
+    auto await_resume();
+  };
+  awaitable operator co_await()&& { return {aws}; }
+};
+
+auto gather<...Promise>(Promise&&...p) ->gather_variadic_impl<Promise...>;
+auto gather<PromiseRange>(PromiseRange&& p) -> gather_ranged_impl<PromiseRange>;
+
+// join
+struct detail::join_variadic_impl<...Args> {
+  using tuple_type = std::tuple<decltype(get_awaitable_type(std::declval<Args&&>()))...>;
+  ctor(Args&&...args);
+  std::tuple<Args...> args;
+  constexpr static size_t tuple_size = sizeof...(Args);
+  struct awaitable : fork::static_shared_state<256 * tuple_size> {
+    ctor<...idx>(std::tuple<Args...>& args, std::index_sequence<idx...>);
+    tuple_type aws;
+    std::array<asio::cancellation_signal, tuple_size> cancel_;
+    std::array<asio::cancellation_signal*, tuple_size> cancel={make_null<Args>()...};
+    constexpr static bool all_void = (std::is_void_v<co_await_result_t<Args>> && ...);
+    using result_store_part<T> = std::optional<void_as_monostate<co_await_result_t<T>>>;
+    std::conditional_t<all_void, monostate, std::tuple<result_store_part<Args>...>> result;
+    std::exception_ptr error;
+    void cancel_step<idx>() { auto& r=cancel[idx]; if(r) std::exchange(r,nullptr)->emit(all); }
+    void cancel_all() { mp_for_each<mp_iota_c<sizeof...(Args)>>([&](auto idx){cancel_step})}
+    void interrupt_await_step<idx>() { if constexpr(interruptible<...>) std::get<idx>(aws).interrupt_await(); }
+    void interrupt_await() { mp11::mp_for_each<mp_iota_c<sizeof...(Args)>>([&](idx){interrupt_await_step<idx>();}); }
+    static fork await_impl<idx>(awaitable& this_);
+    std::array<fork(*)(awaitable&), tuple_size> impls {[]<...idx>(std::index_sequence<idx...>)
+      { return std::array<fork(*)(awaitable&), tuple_size>{&await_impl<idx>...}; }(std::make_index_sequence<tuple_size>{})};
+    fork last_forked; size_t last_index=0u;
+    bool await_ready();
+    auto await_suspend<H>(std::coroutine_handle<H> h, const source_location& loc=CURRENT_LOCATION);
+    auto await_resume();
+    auto await_resume(const as_tuple_tag&);
+    auto await_resume(const as_result_tag&);
+  };
+  awaitable operator co_await()&& { return {args, g, std::make_index_sequence<tuple_size>{}}; }
+};
+struct detail::join_ranged_impl<Range> {
+  Range aws;
+  using result_type = co_await_result_t<std::decay_t<decltype(*std::begin(std::declval<Range>()))>>;
+  constexpr static size_t result_size = sizeof(std::conditional_t<std::is_void_v<result_type>, monostate, result_type>);
+  struct awaitable : fork::shared_state {
+    struct dumy {ctor<...Args>(Args&&...){}};
+    using type = std::decay_t<decltype(*std::begin(std::declval<Range>()))>;
+    pmr::polymorphic_allocator<void> alloc{&resource};
+    std::conditional_t<awaitable_type<type>, Range&, pmr::vector<co_awaitable_type<type>>> aws;
+    pmr::vector<bool> ready{std::size(aws), alloc};
+    pmr::vector<asio::cancellation_signal> cancel_{std::size(aws), alloc};
+    pmr::vector<asio::cancellation_signal*> cancel{std::size(aws), alloc};
+    std::conditional_t<std::is_void_v<result_type>,dummy,pmr::vector<std::optional<void_as_monostate<result_type>>>>
+      result{cancel.size(),alloc};
+    std::exception_ptr error{};
+    ctor(Range& aws);
+    void cancel_all() { for(auto&r:cancel) if(r) std::excahnge(r,nullptr)->emit(all); }
+    void interrupt_await() { if constexpr (interruptible<...>) for (auto aw:aws) if(cancel[0]) aw.interrupt_await(); }
+    static fork await_impl(awaitable& this_, size_t idx);
+    fork last_forked; size_t last_index=0u;
+    bool await_ready();
+    auto await_suspend<H>(std::coroutine_handle<H> h, const source_location& loc=CURRENT_LOCATION);
+    auto await_resume(const as_tuple_tag&);
+    auto await_resume(const as_result_tag&);
+    auto await_resume();
+  };
+  awaitable operator co_await()&& { return {aws}; }
+};
+
+auto join<...Promise>(Promise&&...p) -> join_variadic_impl<Promise...>;
+auto join<PromiseRange>(PromiseRange&& p) -> join_ranged_impl<PromiseRange>;
+
+struct detail::race_wrapper {
+  using impl_type = decltype(race(std::declval<std::list<promise<void>>&>()));
+  std::list<promise<void>> &waitables_;
+  ctor(std::list<promise<void>>& waitables);
+  struct awaitable_type {
+    bool await_ready() { if(waitables_.empty()) return true; else return impl_->await_ready(); }
+    auto await_suspend<Promise>(std::coroutine_handle<Promise> h) { return impl_->await_suspend(h) }
+    void await_resume();
+    ctor(std::list<promise<void>>& waitables);
+  private: std::optional<impl_type::awaitable> impl_;
+    std::list<promise<void>>& waitables_; std::default_random_engine& random_{prng()};
+  };
+  awaitable_type operator co_await()&& { return {waitables_}; }
+};
+struct detail::gather_wrapper {
+  using impl_type = decltype(gather(std::declval<std::list<promise<void>>&>()));
+  std::list<promise<void>>& waitables_;
+  ctor(std::list<promise<void>>& waitables);
+  struct awaitable_type {
+    bool await_ready() { if(waitables_.empty()) return true; else return impl_->await_ready(); }
+    auto await_suspend<Promise>(std::coroutine_handle<Promise> h) { return impl_->await_suspend(h) }
+    void await_resume();
+    ctor(std::list<promise<void>>& waitables);
+  private: std::optional<decltype(gather(waitables_).operator co_await())> impl_;
+    std::list<promise<void>>& waitables_;
+  };
+  awaitable_type operator co_await()&& { return {waitables_}; }
+};
+
+struct wait_group {
+  explicit ctor(asio::cancellation_type normal_cancel=none, asio:;cancellation_type exception_cancel=all);
+  void push_back(promise<void> p) { waitables_.push_back(std::move(p)); }
+  size_t size() const { return waitables_.size(); }
+  size_t reap() { return erase_if(waitables_, [](promise<void>& p){return p.ready()&&p;}); }
+  void cancel(asio::cancellation_type ct=all) { for (auto& w: waitables_) w.cancel(ct); }
+  race_wrapper wait_one() { return {waitables_}; }
+  gather_wrapper wait() { return {waitables_}; }
+  gather_wrapper::awaitable_type operator co_await() { return wait().operator co_await(); }
+  gather_wrapper await_exit(std::exception_ptr ep)
+  { auto ct=ep? ct_except_:ct_normal_; if (ct!=none) for (auto& w:waitables_) w.cancel(ct); return wait(); }
+private: std::list<promise<void>> waitables_; asio::cancellation_type ct_normal_, ct_except_;
+};
+```
+
+-----
+#### IO
+
+```c++
+```
+
+io/: acceptor, buffer, datagram_socket, endpoint, file, ops, pipe, random_access_device, random_access_file, read, resolver,
+  seq_packet_socket, serial_port, signal_set, sleep, socket, ssl, steady_timer, stream_file, stream_socket, stream, system_timer, write
+src/io/: acceptor, datagram_socket, endpoint, file, pipe, random_access_file, read, resolver,
+  seq_packet_socket, serial_port, signal_set, sleep, socket, ssl, steady_timer, stream_file, stream_socket, system_timer, write
 
 -----
 ### Configuration
