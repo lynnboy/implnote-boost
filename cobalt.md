@@ -1405,15 +1405,680 @@ private: std::list<promise<void>> waitables_; asio::cancellation_type ct_normal_
 ```
 
 -----
-#### IO
+### IO
+
+#### Buffer
 
 ```c++
+using asio::buffer; using asio::mutable_buffer; using asio::const_buffer;
+using asio::buffer_copy; using asio::buffer_size;
+
+struct mutable_buffer_sequence {
+  size_t buffer_count() const {return tail_.size()+1u;}
+  ctor(asio::mutable_registered_buffer buffer={}); ctor(mutable_buffer head); ctor(const self& rhs);
+  self& operator=(const self& rhs); ~dtor(){}
+  ctor<T>(const T& value) requires(std::constructible_from<std::span<const mutable_buffer>, const T&>)
+  ctor(std::span<const mutable_buffer> spn);
+  self& operator+=(size_t n);
+  struct const_iterator { using iterator_category=std::random_access_iterator_tag;
+    using value_type = mutable_buffer; using difference_type = ptrdiff_t;
+    using pointer = const value_type*; using reference = const value_type&;
+    ctor(value_type head, std::span<const value_type> tail, size_t offset=std::numeric_limits<size_t>::max());
+    reference& operator*() const; pointer operator->() const;
+    const_iterator operator{++|--}(); const_iterator operator{++|--}(int);
+    const_iterator operator{+|-}(difference_type diff) const;
+    const_iterator& operator+=(difference_type diff); const_iterator operator-=(difference_type diff);
+    reference operator[](difference_type n) const; difference_type operator-(const_iterator itr) const;
+    friend auto operator<=>(const self& lhs, const self& rhs); friend bool operator{==|!=}(const self& lhs, const self& rhs);
+  private: value_type head_; std::span<const value_type> tail_; size_t offset{std::numeric_limits<size_t>::max()};
+  };
+  const_iterator {begin|end}() const;
+  bool is_registered() const { return false; }
+  friend auto visit<Func>(const self& seq, Func&& func);
+private: mutable_buffer head_; std::span<const mutable_buffer> tail_;
+};
+
+struct const_buffer_sequence {
+  size_t buffer_count() const {return tail_.size()+1u;}
+  ctor(asio::const_registered_buffer buffer={}); ctor(asio::mutable_registered_buffer buffer);
+  ctor(asio::{const|mutable}_buffer head);
+  ctor(const self& rhs);
+  ctor<T>(const T& value) requires(std::constructible_from<std::span<const const_buffer>, const T&>)
+  self& operator=(const self& rhs); ~dtor(){}
+  ctor(std::span<const const_buffer> spn);
+  self& operator+=(size_t n);
+  struct const_iterator { using iterator_category=std::random_access_iterator_tag;
+    using value_type = const_buffer; using difference_type = ptrdiff_t;
+    using pointer = const value_type*; using reference = const value_type&;
+    ctor(value_type head, std::span<const value_type> tail, size_t offset=std::numeric_limits<size_t>::max());
+    reference& operator*() const; pointer operator->() const;
+    const_iterator operator{++|--}(); const_iterator operator{++|--}(int);
+    const_iterator operator{+|-}(difference_type diff) const;
+    const_iterator& operator+=(difference_type diff); const_iterator operator-=(difference_type diff);
+    reference operator[](difference_type n) const; difference_type operator-(const_iterator itr) const;
+    friend auto operator<=>(const self& lhs, const self& rhs); friend bool operator{==|!=}(const self& lhs, const self& rhs);
+  private: value_type head_; std::span<const value_type> tail_; size_t offset{std::numeric_limits<size_t>::max()};
+  };
+  const_iterator {begin|end}() const;
+  bool is_registered() const { return false; }
+  friend auto visit<Func>(const self& seq, Func&& func);
+private: const_buffer head_; std::span<const const_buffer> tail_;
+};
 ```
 
-io/: acceptor, buffer, datagram_socket, endpoint, file, ops, pipe, random_access_device, random_access_file, read, resolver,
-  seq_packet_socket, serial_port, signal_set, sleep, socket, ssl, steady_timer, stream_file, stream_socket, stream, system_timer, write
-src/io/: acceptor, datagram_socket, endpoint, file, pipe, random_access_file, read, resolver,
-  seq_packet_socket, serial_port, signal_set, sleep, socket, ssl, steady_timer, stream_file, stream_socket, system_timer, write
+#### Common IO Base Classes
+
+```c++
+struct write_stream { virtual ~dtor()=default; [[nodiscard]] virtual write_op write_some(const_buffer_sequence buffer)=0; };
+struct read_stream { virtual ~dtor()=default; [[nodiscard]] virtual read_op read_some(mutable_buffer_sequence buffer)=0; };
+struct stream : read_stream, write_stream {};
+
+struct random_access_write_device { virtual ~dtor()=default; [[nodiscard]] virtual write_at_op write_some_at(uint64_t offset, const_buffer_sequence buffer)=0; };
+struct random_access_read_device { virtual ~dtor()=default; [[nodiscard]] virtual read_at_op read_some_at(uint64_t offset, mutable_buffer_sequence buffer)=0; };
+struct random_access_device : random_access_read_device, random_access_write_device {};
+```
+
+#### Operations
+
+```c++
+struct write_op final: op<system::error_code, size_t> {
+  const_buffer_sequence buffer;
+  using implementation_t = void(void*, const_buffer_sequence, completion_handler<system::error_code, size_t>);
+  using try_implementation_t = void(void*, const_buffer_sequence, handler<system::error_code, size_t>);
+  ctor(const_buffer_sequence buffer, void* this_, implementation_t* implementation, try_implementation_t* try_implementation=nullptr);
+  void initiate(completion_handler<system::error_code, size_t> handler) final;
+  void ready(handler<system::error_code, size_t> handler) final;
+  ~dtor()=default;
+private: void* this_; implementation_t* implementation_; try_implementation_t* try_implementation_;
+};
+
+struct read_op final: op<system::error_code, size_t> {
+  mutable_buffer_sequence buffer;
+  using implementation_t = void(void*, mutable_buffer_sequence, completion_handler<system::error_code, size_t>);
+  using try_implementation_t = void(void*, mutable_buffer_sequence, handler<system::error_code, size_t>);
+  ctor(mutable_buffer_sequence buffer, void* this_, implementation_t* implementation, try_implementation_t* try_implementation=nullptr);
+  void initiate(completion_handler<system::error_code, size_t> handler) final;
+  void ready(handler<system::error_code, size_t> handler) final;
+  ~dtor()=default;
+private: void* this_; implementation_t* implementation_; try_implementation_t* try_implementation_;
+};
+
+struct write_at_op final: op<system::error_code, size_t> {
+  uint64_t offset; const_buffer_sequence buffer;
+  using implementation_t = void(void*, uint64_t, const_buffer_sequence, completion_handler<system::error_code, size_t>);
+  using try_implementation_t = void(void*, uint64_t, const_buffer_sequence, handler<system::error_code, size_t>);
+  ctor(uint64_t offset, const_buffer_sequence buffer, void* this_, implementation_t* implementation, try_implementation_t* try_implementation=nullptr);
+  void initiate(completion_handler<system::error_code, size_t> handler) final;
+  void ready(handler<system::error_code, size_t> handler) final;
+  ~dtor()=default;
+private: void* this_; implementation_t* implementation_; try_implementation_t* try_implementation_;
+};
+
+struct read_at_op final: op<system::error_code, size_t> {
+  uint64_t offset; mutable_buffer_sequence buffer;
+  using implementation_t = void(void*, uint64_t, mutable_buffer_sequence, completion_handler<system::error_code, size_t>);
+  using try_implementation_t = void(void*, uint64_t, mutable_buffer_sequence, handler<system::error_code, size_t>);
+  ctor(uint64_t offset, mutable_buffer_sequence buffer, void* this_, implementation_t* implementation, try_implementation_t* try_implementation=nullptr);
+  void initiate(completion_handler<system::error_code, size_t> handler) final;
+  void ready(handler<system::error_code, size_t> handler) final;
+  ~dtor()=default;
+private: void* this_; implementation_t* implementation_; try_implementation_t* try_implementation_;
+};
+
+struct wait_op final: op<system::error_code> {
+  uint64_t offset; mutable_buffer_sequence buffer;
+  using implementation_t = void(void*, completion_handler<system::error_code>);
+  using try_implementation_t = void(void*, handler<system::error_code>);
+  ctor(void* this_, implementation_t* implementation, try_implementation_t* try_implementation=nullptr);
+  void initiate(completion_handler<system::error_code, size_t> handler) final;
+  void ready(handler<system::error_code, size_t> handler) final;
+  ~dtor()=default;
+private: void* this_; implementation_t* implementation_; try_implementation_t* try_implementation_;
+};
+
+struct write_all final: op<system::error_code, size_t> { write_op step;
+  ctor(write_op op); ~dtor()=default;
+  void initiate(completion_handler<system::error_code, size_t>) final;
+};
+[[nodiscard]] write_all write<Stream>(Stream& s, const_buffer_sequence buffer) { return {s.write_some(buffer)}; }
+struct write_all_at final: op<system::error_code, size_t> { write_at_op step;
+  ctor(write_at_op op); ~dtor()=default;
+  void initiate(completion_handler<system::error_code, size_t>) final;
+};
+[[nodiscard]] write_all_at write_at<Stream>(Stream& s, uint64_t offset, const_buffer_sequence buffer) { return {s.write_some_at(offset, buffer)}; }
+
+struct read_all final: op<system::error_code, size_t> { read_op step;
+  ctor(read_op op); ~dtor()=default;
+  void initiate(completion_handler<system::error_code, size_t>) final;
+};
+[[nodiscard]] read_all read<Stream>(Stream& s, mutable_buffer_sequence buffer) { return {s.read_some(buffer)}; }
+struct read_all_at final: op<system::error_code, size_t> { read_at_op step;
+  ctor(read_at_op op); ~dtor()=default;
+  void initiate(completion_handler<system::error_code, size_t>) final;
+};
+[[nodiscard]] read_all_at read_at<Stream>(Stream& s, uint64_t offset, mutable_buffer_sequence buffer) { return {s.read_some_at(offset, buffer)}; }
+```
+
+#### Timers, Sleep
+
+```c++
+struct steady_timer {
+  using clock_type = std::chrono::steady_clock; using duration = clock_type::duration; using time_point = clock_type::time_point;
+  ctor(<const {time_point|duration}& expiry_time>, const executor& executor=this_thread::get_executor());
+  void cancel();
+  time_point expiry() const;
+  void reset(const {time_point|duration}& expiry_time);
+  bool expired() const;
+  [[nodiscard]] wait_op wait() { return {this, initiate_wait_, try_wait_}; }
+private:
+  static void initiate_wait_(void*, completion_handler<system::error_code>);
+  static void try_wait_(void*, handler<system::error_code>);
+  asio::basic_waitable_timer<std::chrono::steady_clock, asio::wait_traits<std::chrono::steady_clock>, executor> timer_;
+};
+
+struct system_timer final {
+  using clock_type = std::chrono::system_clock; using duration = clock_type::duration; using time_point = clock_type::time_point;
+  ctor(<const {time_point|duration}& expiry_time>, const executor& executor=this_thread::get_executor());
+  void cancel();
+  time_point expiry() const;
+  void reset(const {time_point|duration}& expiry_time);
+  bool expired() const;
+  [[nodiscard]] wait_op wait() { return {this, initiate_wait_, try_wait_}; }
+private:
+  static void initiate_wait_(void*, completion_handler<system::error_code>);
+  static void try_wait_(void*, handler<system::error_code>);
+  asio::basic_waitable_timer<std::chrono::system_clock, asio::wait_traits<std::chrono::system_clock>, executor> timer_;
+};
+
+struct detail::io::steady_sleep final: op<system::error_code> {
+  ctor(const steady_clock::{time_point|duration}&);
+  std::chrono::steady_clock::time_point tp;
+  void ready(handler<system::error_code> h) final override {if (tp < steady_clock::now()) h({});}
+  void initiate(completion_handler<system::error_code> h) final override;
+  ~dtor() = default;
+  std::optional<asio::basic_waitable_timer<std::chrono::steady_clock, asio::wait_traits<std::chrono::steady_clock>, executor>> timer_;
+};
+struct detail::io::system_sleep final: op<system::error_code> {
+  ctor(const system_clock::{time_point|duration}&);
+  std::chrono::system_clock::time_point tp;
+  void ready(handler<system::error_code> h) final override {if (tp < system_clock::now()) h({});}
+  void initiate(completion_handler<system::error_code> h) final override;
+  ~dtor() = default;
+  std::optional<asio::basic_waitable_timer<std::chrono::system_clock, asio::wait_traits<std::chrono::system_clock>, executor>> timer_;
+};
+
+[[nodiscard]] auto sleep(const std::chrono::steady_clock::{duration|time_point}& t) { return steady_sleep{t}; }
+[[nodiscard]] auto sleep(const std::chrono::system_clock::{duration|time_point}& t) { return system_sleep{t}; }
+[[nodiscard]] auto sleep<Duration>(const std::chrono::time_point<std::chrono::{steady_clock|system_clock}, Duration>& tp);
+[[nodiscard]] auto sleep<Rep,P>(const std::chrono::duration<Rep,P>& d);
+```
+
+#### Signals
+
+```c++
+struct signal_set {
+  ctor(<std::initializer_list<int> sigs>, const executor& executor=this_thread::get_executor());
+  [[nodiscard]] system::result<void> cancel();
+  [[nodiscard]] system::result<void> clear();
+  [[nodiscard]] system::result<void> add(int signal_number);
+  [[nodiscard]] system::result<void> remove(int signal_number);
+  [[nodiscard]] auto wait() { return wait_op_{signal_set_}; }
+private:
+  struct wait_op_ final: op<system::error_code, int> {
+    void initiate(completion_handler<system::error_code, int>h ) final;
+    ctor(asio::basic_signal_set<executor>& signal_set); ~dtor()=default;
+  private: asio::basic_signal_set<executor>& signal_set_;
+  };
+  asio::basic_signal_set<executor>& signal_set_;
+};
+```
+
+#### File IO
+
+```c++
+struct file : asio::file_base { // windows or when io_uring available
+  enum flags{ read_only=O_RDONLY, write_only=O_WRONLY, readwrite=O_RDWR, append=O_APPEND, create=O_CREAT, exclusive=O_EXCL, truncate=O_TRUNC, sync_all_on_write=O_SYNC};
+  friend flags operator{&/|/^}(flags x, flags y); friend flags operator~(flags x); friend flags& operator{&=/|=/^=}(flags& x, flags y);
+  enum seek_basis{seek_set=SEEK_SET, seek_cur=SEEK_CUR, seek_end=SEEK_END};
+  using native_handle_type = asio::basic_file<executor>::native_handle_type; // or int when !ASIO_HAS_FILE
+  system::result<void> assign(const native_handle_type& native_file);
+  system::result<void> cancel();
+  executor get_executor();
+  bool is_open() const;
+  system::result<void> close();
+  native_handle_type native_handle();
+  system::result<void> open({const char*|const std::string&} path, flags open_flags);
+  system::result<native_handle_type> release();
+  system::result<void> resize(uint64_t n);
+  system::result<uint64_t> size() const;
+  system::result<void> sync_all();
+  system::result<void> sync_data();
+  ctor(asio::basic_file<executor>& file); // when ASIO_HAS_FILE
+  ctor(executor exec, <int fd>); when !ASIO_HAS_FILE
+protected:: asio::basic_file<executor>& file_; // when ASIO_HAS_FILE
+  asio::posix::basic_stream_descriptor<executor> file_; // when !ASIO_HAS_FILE
+};
+
+struct stream_file : file, stream {
+  ctor(const executor& executor=this_thread::get_executor());
+  ctor({const char*|const std::string&} path, file::flags open_flags, const executor& executor=this_thread::get_executor());
+  ctor(const native_handle_type& native_file, const executor& executor=this_thread::get_executor());
+  ctor(self&& sf) noexcept;
+  [[nodiscard]] write_op write_some(const_buffer_sequence buffer) { return {buffer, this, initiate_write_some_}; }
+  [[nodiscard]] read_op read_some(mutable_buffer_sequence buffer) { return {buffer, this, initiate_read_some_}; }
+  system::result<uint64_t> seek(uint64_t offset, seek_basis whence);
+private: asio::basic_stream_file<executor> implementation_; // when ASIO_HAS_FILE
+  static void initiate_read_some_(void*, mutable_buffer_sequence, completion_handler<system::error_code, size_t>);
+  static void initiate_write_some_(void*, const_buffer_sequence, completion_handler<system::error_code, size_t>);
+};
+
+struct random_access_file : file, random_access_device {
+  ctor(const executor& executor=this_thread::get_executor());
+  ctor({const char*|const std::string&} path, file::flags open_flags, const executor& executor=this_thread::get_executor());
+  ctor(const native_handle_type& native_file, const executor& executor=this_thread::get_executor());
+  ctor(self&& sf) noexcept;
+  [[nodiscard]] write_at_op write_some_at(uint64_t offset, const_buffer_sequence buffer) { return {offset, buffer, this, initiate_write_some_at_}; }
+  [[nodiscard]] read_at_op read_some_at(uint64_t offset, mutable_buffer_sequence buffer) { return {offset, buffer, this, initiate_read_some_at_}; }
+  system::result<uint64_t> seek(uint64_t offset, seek_basis whence);
+private: asio::basic_random_access_file<executor> implementation_; // when ASIO_HAS_FILE
+  static void initiate_read_some_at_(void*, uint64_t, mutable_buffer_sequence, completion_handler<system::error_code, size_t>);
+  static void initiate_write_some_at_(void*, uint64_t, const_buffer_sequence, completion_handler<system::error_code, size_t>);
+};
+```
+
+#### Serial Port IO
+
+```c++
+struct serial_port final : stream {
+  system::result<void> close();
+  system::result<void> cancel();
+  bool is_open() const;
+  [[nodiscard]] system::result<void> send_break();
+  [[nodiscard]] system::result<void> set_baud_rate(unsigned rate); [[nodiscard]] system::result<unsigned> get_baud_rate();
+  [[nodiscard]] system::result<void> set_character_size(unsigned size); [[nodiscard]] system::result<unsigned> get_character_size();
+  using flow_control = asio::serial_port_base::flow_control::type;
+  [[nodiscard]] system::result<void> set_flow_control(flow_control ctrl); [[nodiscard]] system::result<flow_control> get_flow_control();
+  using parity = asio::serial_port_base::parity::type;
+  [[nodiscard]] system::result<void> set_parity(parity p); [[nodiscard]] system::result<parity> get_parity();
+  using native_handle_type = asio::basic_serial_port<executor>::native_handle_type;
+  native_handle_type native_handle() {return serial_port_.native_handle();}
+
+  ctor(const executor& executor=this_thread::get_executor());
+  ctor(self&& lhs) = default;
+  ctor(std::string_view device,         const executor& executor=this_thread::get_executor());
+  ctor(native_handle_type native_handle, const executor& executor=this_thread::get_executor());
+  [[nodiscard]] sytem::result<void> assign(native_handle_type native_handle);
+  [[nodiscard]] sytem::result<void> open(std::string_view device);
+  [[nodiscard]] write_op write_some(const_buffer_sequence buffer) { return {buffer, this, initiate_write_some_}; }
+  [[nodiscard]] read_op read_some(mutable_buffer_sequence buffer) { return {buffer, this, initiate_read_some_}; }
+private: asio::basic_serial_port<executor> serial_port_; // when ASIO_HAS_FILE
+  static void initiate_read_some_(void*, mutable_buffer_sequence, completion_handler<system::error_code, size_t>);
+  static void initiate_write_some_(void*, const_buffer_sequence, completion_handler<system::error_code, size_t>);
+};
+```
+
+#### Pipe
+
+```c++
+struct readable_pipe final: read_stream {
+  using native_handle_type = asio::basic_readable_pipe<executor>::native_handle_type;
+  ctor(const executor& executor=this_thread::get_executor());
+  ctor(native_handle_type native_handle, const executor& executor=this_thread::get_executor());
+  ctor(self&& sf);
+  sytem::result<void> assign(native_handle_type native_handle);
+  sytem::result<void> cancel();
+  executor get_executor();
+  bool is_open() const;
+  sytem::result<void> close();
+  native_handle_type native_handle();
+  sytem::result<native_handle_type> release();
+  [[nodiscard]] read_op read_some(mutable_buffer_sequence buffer) { return {buffer, this, initiate_read_some_}; }
+private: asio::basic_readable_pipe<executor> implementation_;
+  static void initiate_read_some_(void*, mutable_buffer_sequence, completion_handler<system::error_code, size_t>);
+};
+
+struct writable_pipe final: write_stream {
+  using native_handle_type = asio::basic_readable_pipe<executor>::native_handle_type;
+  ctor(const executor& executor=this_thread::get_executor());
+  ctor(native_handle_type native_file, const executor& executor=this_thread::get_executor());
+  ctor(self&& sf);
+  sytem::result<void> assign(native_handle_type native_file);
+  sytem::result<void> cancel();
+  executor get_executor();
+  bool is_open() const;
+  sytem::result<void> close();
+  native_handle_type native_handle();
+  sytem::result<native_handle_type> release();
+  [[nodiscard]] write_op write_some(cont_buffer_sequence buffer) { return {buffer, this, initiate_write_some_}; }
+private: asio::basic_writable_pipe<executor> implementation_;
+  static void initiate_write_some_(void*, cont_buffer_sequence, completion_handler<system::error_code, size_t>);
+};
+
+system::result<std::pair<readable_pipe, writable_pipe>> pipe(const executor& exeutor=this_thread::get_executor());
+
+struct boost::process::is_readable_pipe<readable_pipe> : std::true_type{};
+struct boost::process::is_writable_pipe<writable_pipe> : std::true_type{};
+```
+
+#### Network IO: Endpoint, Resolver, SSL Support
+
+```c++
+// endpoint
+[[noreturn]] void detail::throw_bad_endpoint_access(source_location const& loc);
+
+struct protocol_type {
+  using family_t = decltype(AF_INET); using type_t=decltype(SOCK_STREAM); using protocol_t=decltype(IPOROTO_TCP);
+  constexpr family_t family() const noexcept{return family_;}
+  constexpr type_t type() const noexcept{return type_;}
+  constexpr protocol_t protocol() const noexcept{return protocol_;}
+  constexpr explicit ctor(family_t family=0, type_t type=0, protoocl_t protocol=0) noexcept;
+  constexpr ctor<OtherProtocol>(const OtherProtocol& op) noexcept requires(...);
+  friend auto operator<=>(const self&, const self&) noexcept = default;
+  using endpoint = io::endpoint; using socket=stream_socket;
+private: family_t family_{0}; type_t type_{0}; protocol_t protocol_{0};
+};
+
+struct static_protocol<family=0,type=0,protocol=0> {
+  using family_t=protocol_type::family_t; using type_t=protocol_type::type_t; using protocol_t=protocol_type::protocol_t;
+  constexpr family_t family() const noexcept{return {family};}
+  constexpr type_t type() const noexcept{return {type};}
+  constexpr protocol_t protocol() const noexcept{return {protocol};}
+  using endpoint = io::endpoint;
+};
+constexpr static_protocol<BOOST_ASIO_OS_DEF(AF_UNSPEC), static_cast<protocol_type::type_t>(0), BOOST_ASIO_OS_DEF(IPPROTO_IP)>   ip    {};
+constexpr static_protocol<BOOST_ASIO_OS_DEF(AF_INET),   static_cast<protocol_type::type_t>(0), BOOST_ASIO_OS_DEF(IPPROTO_IP)>   ip_v4 {};
+constexpr static_protocol<BOOST_ASIO_OS_DEF(AF_INET6),  static_cast<protocol_type::type_t>(0), BOOST_ASIO_OS_DEF(IPPROTO_IP)>   ip_v6 {};
+constexpr static_protocol<BOOST_ASIO_OS_DEF(AF_UNSPEC), BOOST_ASIO_OS_DEF(SOCK_STREAM), BOOST_ASIO_OS_DEF(IPPROTO_TCP)>  tcp   {};
+constexpr static_protocol<BOOST_ASIO_OS_DEF(AF_INET),   BOOST_ASIO_OS_DEF(SOCK_STREAM), BOOST_ASIO_OS_DEF(IPPROTO_TCP)>  tcp_v4{};
+constexpr static_protocol<BOOST_ASIO_OS_DEF(AF_INET6),  BOOST_ASIO_OS_DEF(SOCK_STREAM), BOOST_ASIO_OS_DEF(IPPROTO_TCP)>  tcp_v6{};
+constexpr static_protocol<BOOST_ASIO_OS_DEF(AF_UNSPEC), BOOST_ASIO_OS_DEF(SOCK_DGRAM),  BOOST_ASIO_OS_DEF(IPPROTO_UDP)>  udp   {};
+constexpr static_protocol<BOOST_ASIO_OS_DEF(AF_INET),   BOOST_ASIO_OS_DEF(SOCK_DGRAM),  BOOST_ASIO_OS_DEF(IPPROTO_UDP)>  udp_v4{};
+constexpr static_protocol<BOOST_ASIO_OS_DEF(AF_INET6),  BOOST_ASIO_OS_DEF(SOCK_DGRAM),  BOOST_ASIO_OS_DEF(IPPROTO_ICMP)> udp_v6{};
+constexpr static_protocol<BOOST_ASIO_OS_DEF(AF_UNSPEC), BOOST_ASIO_OS_DEF(SOCK_DGRAM),  BOOST_ASIO_OS_DEF(IPPROTO_ICMP)> icmp  {};
+constexpr static_protocol<AF_UNIX,                      BOOST_ASIO_OS_DEF(SOCK_STREAM)>    local_stream   {};
+constexpr static_protocol<AF_UNIX,                      BOOST_ASIO_OS_DEF(SOCK_DGRAM)>     local_datagram {};
+constexpr static_protocol<AF_UNIX,                      BOOST_ASIO_OS_DEF(SOCK_SEQPACKET)> local_seqpacket{};
+constexpr static_protocol<AF_UNIX>                                                         local_protocol {};
+
+constexpr static_protocol<BOOST_ASIO_OS_DEF(AF_UNSPEC), BOOST_ASIO_OS_DEF(SOCK_SEQPACKET), IPPROTO_SCTP>  sctp   {}; // when IPPROTO_SCTP
+constexpr static_protocol<BOOST_ASIO_OS_DEF(AF_INET),   BOOST_ASIO_OS_DEF(SOCK_SEQPACKET), IPPROTO_SCTP>  sctp_v4{}; // when IPPROTO_SCTP
+constexpr static_protocol<BOOST_ASIO_OS_DEF(AF_INET6),  BOOST_ASIO_OS_DEF(SOCK_SEQPACKET), IPPROTO_SCTP>  sctp_v6{}; // when IPPROTO_SCTP
+
+struct make_endpoint_tag<family>{};
+struct get_endpoint_tag<family>{};
+
+struct endpoint {
+  using storage_type = asio::detail::sockaddr_storage_type; using addr_type = asio::detail::socket_addr_type;
+  void resize(size_t size) { size_ = size; }
+  <const> void* data() <const> { return &storage_; }
+  size_t size() const { return size_; } size_t capacity() const { return sizeof(storage_); }
+  void set_type(protoocl_type::type_t type) { type_=type; }
+  void set_protocol(protoocl_type::protocol_t protocol) { protocol_=protocol; }
+  protocol_type protocol() const { return {base_.sa_family, type_, protocol_}; }
+  ctor()=default; ctor(const self& ep);
+  ctor<family,type,protocol,...Args>(static_protocol<family,type,protocol> proto, Args&&...args);
+  ctor<OtherEndpoint>(OtherEndpoint&& oe) requires(...);
+  friend auto get_if<static_protocol p>(const self* ep) ->decltype(...);
+private: union { asio::detail::socket_addr_type base_{}; storage_type storage_;};
+  size_t size_{sizeof(base_)};
+  protocol_type::protocol_t protocol_{0}; protocol_type::type_t type_{0};
+};
+using endpoint_sequence=pmr::vector<endpoint>;
+
+struct bad_endpoint_access : public std::exception;
+auto get<static_protocol p>(const endpoint& ep, const source_location& loc=CURRENT_LOCATION) requires(...);
+
+struct local_endpoint {
+  std::string_view path() const { return unix_.sun_path;}
+private: union { asio::detail::sockaddr_storage_type addr_; asio::detail::sockaddr_un_type unix_; };
+};
+size_t tag_invoke(make_endpoint_tag<AF_UNIX>, asio::detail::socket_addr_type* base, std::string_view sv);
+const local_endpoint* tag_invoke(get_endpoint_tag<AF_UNIX>, protocol_type actual, const endpoint::addr_type* addr);
+
+struct ip_address_v4 {
+  uint16_t port() const { return big_to_native(in_.sin_port); }
+  uint32_t addr() const { return in_.sin_addr.s_addr; }
+private: union { asio::detail::sockaddr_storage_type addr_; asio::detail::sockaddr_in4_type in_; };
+};
+size_t tag_invoke(make_endpoint_tag<AF_INET>, asio::detail::socket_addr_type* base, {uint32_t|std::string_view} address, uint16_t port);
+const ip_address_v4* tag_invoke(get_endpoint_tag<AF_INET>, protocol_type actual, const endpoint::addr_type* addr);
+
+struct ip_address_v6 {
+  uint16_t port() const { return big_to_native(in_.sin6_port); }
+  std::array<uint8_t,16u> addr() const;// in_.sin6_addr.s6_addr;
+  static_string<45> addr_str() const;
+private: union { asio::detail::sockaddr_storage_type addr_; asio::detail::sockaddr_in6_type in_; };
+};
+size_t tag_invoke(make_endpoint_tag<AF_INET6>, asio::detail::socket_addr_type* base, {std::span<uint8_t,16>|std::string_view} address, uint16_t port);
+const ip_address_v6* tag_invoke(get_endpoint_tag<AF_INET6>, protocol_type actual, const endpoint::addr_type* addr);
+
+struct ip_address {
+  bool is_ipv6() const { return addr_.ss_family==AF_INET6; } bool is_ipv4() const { return addr_.ss_family==AF_INET; }
+  uin616_t port() const { return big_to_native(addr_.ss_family==AF_INET? in_.sin_port : in6_.sin6_port); }
+  std:;array<std::uint8_t,16u> addr() const; static_string<45> addr_str() const;
+private: union { asio::detail::sockaddr_storage_type addr_; asio::detail::sockaddr_in_type in_; asio::detail::sockaddr_in6_type in6_; };
+}
+size_t tag_invoke(make_endpoint_tag<AF_UNSPEC>, asio::detail::socket_addr_type* base, std::string_view address, uint16_t port);
+const ip_address* tag_invoke(get_endpoint_tag<AF_UNSPEC>, protocol_type actual, const endpoint::addr_type* addr);
+
+// resolver
+struct resolver { using flags = asio::ip::resolver_base::falgs;
+  ctor(const executor& exec=this_thread::get_executor()); ctor(self&&)=delete;
+  void cancel();
+  [[nodiscard]] auto resolve(std::string_view host, std::string_view service, flags flags_={}) { return resolve_op_{resolver_, host, service, flags_}; }
+private: asio::ip::basic_resolver<protocol_type, executor> resolver_;
+  struct resolve_op_ final: op<system::error_code, endpoint_sequence> {
+    void initiate(completion_handler<system::error_code, endpoint_sequence> h) override;
+    ctor(asio::ip::basic_resolver<protocol_type, executor>& resolver, std::string_view host, std::string service, flags flags_={});
+    ~dtor()=default;
+  private: asio::ip::basic_resolver<protocol_type,executor>& resolver_; std::string_view host_, service_; flags flags_;
+  };
+};
+struct lookup final: op<system::error_code, endpoint_sequence> {
+  ctor(std::string_view host, std::string_view service, const executor& exec=this_thread::get_executor(), resolver::flags flags_={});
+  void initiate(completion_handler<system::error_code, endpoint_sequence> h) final override; ~dtor()=default;
+private: std::string_view host_, service_; asio::ip::basic_resolver<protocol_type, executor> resolver_; resolver::flags flags_;
+};
+```
+
+#### Network IO: Socket, Acceptor
+
+```c++
+struct socket {
+  [[nodiscard]] system::result<void> open(protocol_type prot={});
+  [[nodiscard]] system::result<void> close();
+  [[nodiscard]] system::result<void> cancel();
+  [[nodiscard]] bool is_open() const;
+  struct rebind_executor<T> { using other=socket; };
+  using shutdown_type = asio::socket_base::shutdown_type; // and wait_type, message_flags;
+  constexpr static int message_peek = asio::socket_base::message_peek; // and out_of_band, do_not_route, end_of_record
+  using native_handle_type = asio::basic_socket<protocol_type, executor>::native_handle_type;
+  native_handle_type native_handle();
+  [[nodiscard]] system::result<void> shutdown(shutdown_type=shutdown_both);
+  [[nodiscard]] system::result<endpoint> <local|remote>_endpoint() const;
+  system::result<void> assign(protocol_type protocol, native_handle_type native_handle);
+  system::result<native_handle_type> release();
+
+  [[nodiscard]] system::result<size_t> bytes_readable();
+  [[nodiscard]] system::result<void> set_debug(bool v); [[nodiscard]] system::result<bool> get_debug();
+  [[nodiscard]] system::result<void> set_do_not_route(bool v); [[nodiscard]] system::result<bool> get_do_not_route();
+  [[nodiscard]] system::result<void> set_enable_connection_aborted(bool v); [[nodiscard]] system::result<bool> get_enable_connection_aborted();
+  [[nodiscard]] system::result<void> set_keep_alive(bool v); [[nodiscard]] system::result<bool> get_keep_alive();
+  [[nodiscard]] system::result<void> set_linger(bool linger, int timeout); [[nodiscard]] system::result<std::pair<bool,int>> get_linger();
+  [[nodiscard]] system::result<void> set_{receive|send}_buffer_size(int v); [[nodiscard]] system::result<int> get_{receive|send}_buffer_size();
+  [[nodiscard]] system::result<void> set_{receive|send}_low_watermark(int v); [[nodiscard]] system::result<int> get_{receive|send}_low_watermark();
+  [[nodiscard]] system::result<void> set_reuse_address(bool v); [[nodiscard]] system::result<bool> get_reuse_address();
+  [[nodiscard]] system::result<void> set_no_delay(bool v); [[nodiscard]] system::result<bool> get_no_delay();
+
+  struct wait_op final: op<system::error_code> {  wait_type wt;
+    void ready(handler<system::error_code>) final; void initiate(completion_handler<system::error_code>) final;
+    ctor(wait_type wt, socket& sock); ~dtor()=default;
+  private: socket& sock_;
+  };
+  [[nodiscard]] wait_op wait(wait_type wt=wait_read) { return {wt, *this}; }
+
+  struct connect_op final: op<system::error_code> {  struct endpoint endpoint;
+    void initiate(completion_handler<system::error_code>) final;
+    ctor(struct endpoint endpoint, socket& sock); ~dtor()=default;
+  private: socket& sock_;
+  };
+  [[nodiscard]] connect_op connect(endpoint ep) { return {ep, *this}; }
+
+  struct ranged_connect_op final: op<system::error_code, endpoint> {  endpoint_sequence endpoints;
+    void initiate(completion_handler<system::error_code, endpoint>) final;
+    ctor(endpoint_sequence eps, socket& sock); ~dtor()=default;
+  private: socket& sock_;
+  };
+  [[nodiscard]] ranged_connect_op connect(endpoint_sequence ep) { return {std::move(ep), *this}; }
+protected: virtual void adopt_endpoint_(endpoint&){} ctor(asio::basic_socket<protocol_type, executor>& socket);
+private: asio::basic_socket<protoocl_type, executor>& socket_;
+};
+system::result<void> connect_pair(protocol_type protocol, socket& socket1, socket& socket2);
+
+struct acceptor {
+  using wait_type = asio::socket_base::wait_type;
+  constexpr static size_t max_listen_connections = asio::socket_base::max_listen_connections;
+  ctor(const executor& executor=this_thread::get_executor());
+  ctor(endpoint ep, const executor& executor=this_thread::get_executor());
+  system::result<void> bind(endpoint ep);
+  system::result<void> listen(int backlog=max_listen_connections);
+  endpoint local_endpoint();
+private:
+  struct accept_op final: op<system::error_code> {
+    void initiate(completion_handler<system::error_code> h) override;
+    ctor(asio::basic_socket_acceptor<protocol_type, executor>& acceptor, socket& sock); ~dtor() = default;
+  private: asio::basic_socket_acceptor<protocol_type, executor>& acceptor_; socket& sock_;
+  };
+  struct accept_stream_op final: op<system::error_code, stream_socket> {
+    void initiate(completion_handler<system::error_code, stream_socket> h) override;
+    ctor(asio::basic_socket_acceptor<protocol_type, executor>& acceptor); ~dtor() = default;
+  private: asio::basic_socket_acceptor<protocol_type, executor>& acceptor_; stream_socket sock_{acceptor_.get_executor()};
+  };
+  struct accept_seq_packet_op final: op<system::error_code, seq_packet_socket> {
+    void initiate(completion_handler<system::error_code, seq_packet_socket> h) override;
+    ctor(asio::basic_socket_acceptor<protocol_type, executor>& acceptor); ~dtor() = default;
+  private: asio::basic_socket_acceptor<protocol_type, executor>& acceptor_; seq_packet_socket sock_{acceptor_.get_executor()};
+  };
+  struct wait_op final: op<system::error_code> {
+    void initiate(completion_handler<system::error_code> h) override ;
+    ctor(asio::basic_socket_acceptor<protocol_type, executor>& acceptor, wait_type wt); ~dtor() = default;
+  private: asio::basic_socket_acceptor<protocol_type, executor>& acceptor_; wait_type wt_;
+  };
+public:
+  [[nodiscard]] accept_op accept(socket& sock) { return {acceptor_, socket}; }
+  [[nodiscard]] accept_stream_op accept<f=tcp.family(),p=tcp.protocol()>(static_protocol<f,tcp.type(),p> stream_proto=tcp) { return {acceptor_}; }
+  [[nodiscard]] accept_seq_packet_op accept<f,p>(static_protocol<f,local_seqpacket.type(),p> stream_proto) { return {acceptor_}; }
+  [[nodiscard]] wait_op wait(wait_type wt=wait_read) { return {acceptor_,wt}; }
+private: asio::basic_socket_acceptor<protocol_type, executor> acceptor_;
+};
+
+// socket I/O
+struct stream_socket final: socket, stream {
+  ctor(const executor& executor=this_thread::get_executor());
+  ctor(self&& lhs);
+  ctor(native_handle_type h, protocol_type protocol={}, const executor& executor=this_thread::get_executor());
+  ctor(endpoint ep, const executor& executor=this_thread::get_executor());
+  [[nodiscard]] write_op write_some(const_buffer_sequence buffer) override { return {buffer, this, initiate_write_some_}; }
+  [[nodiscard]] read_op read_some(mutable_buffer_sequence buffer) override { return {buffer, this, initiate_read_some_}; }
+private: void adopt_endpoint_(endpoint& op) override;
+  static void initiate_read_some_(void*, mutable_buffer_sequence, completion_handler<system::error_code, size_t>);
+  static void initiate_write_some_(void*, const_buffer_sequence, completion_handler<system::error_code, size_t>);
+  asio::basic_stream_socket<protocol_type, executor> stream_socket_;
+};
+system::result<std::pair<stream_socket, stream_socket>> make_pair<decltype(local_stream) protocol>;
+
+struct datagram_socket final: socket {
+  ctor(const executor& executor=this_thread::get_executor());
+  ctor(self&& lhs);
+  ctor(native_handle_type h, protocol_type protocol={}, const executor& executor=this_thread::get_executor());
+  ctor(endpoint ep, const executor& executor=this_thread::get_executor());
+  [[nodiscard]] write_op send(const_buffer_sequence buffer) override { return {buffer, this, initiate_send_}; }
+  [[nodiscard]] read_op receive(mutable_buffer_sequence buffer) override { return {buffer, this, initiate_receive_}; }
+private: void adopt_endpoint_(endpoint& op) override;
+  static void initiate_send_(void*, mutable_buffer_sequence, completion_handler<system::error_code, size_t>);
+  static void initiate_receive_(void*, const_buffer_sequence, completion_handler<system::error_code, size_t>);
+  asio::basic_datagram_socket<protocol_type, executor> datagram_socket_;
+};
+system::result<std::pair<datagram_socket, datagram_socket>> make_pair<decltype(local_datagram) protocol>;
+
+struct seq_packet_socket final: socket {
+  ctor(const executor& executor=this_thread::get_executor());
+  ctor(self&& lhs);
+  ctor(native_handle_type h, protocol_type protocol={}, const executor& executor=this_thread::get_executor());
+  ctor(endpoint ep, const executor& executor=this_thread::get_executor());
+
+  struct send_op final : op<system::error_code, size_t> {
+    message_flags in_flags; const_buffer_sequence buffer;
+    ctor(message_flags in_flags, const_buffer_sequence buffer, asio::basic_seq_packet_socket<protocol_type, executor> & seq_packet_socket);
+    void initiate(completion_handler<system::error_code, size_t> handler) final;
+    ~dtor() = default;
+   private: asio::basic_seq_packet_socket<protocol_type, executor> & socket_;
+  };
+  struct receive_op final : op<system::error_code, size_t> {
+    message_flags in_flags, *out_flags; mutable_buffer_sequence buffer;
+    ctor(message_flags in_flags, message_flags * out_flags, mutable_buffer_sequence buffer, asio::basic_seq_packet_socket<protocol_type, executor> & seq_packet_socket);
+    void initiate(completion_handler<system::error_code, size_t> handler) final;
+    ~dtor() = default;
+   private: asio::basic_seq_packet_socket<protocol_type, executor> & socket_;
+  };
+  [[nodiscard]] send_op send(message_flags in_flags, const_buffer_sequence buffer) { return {in_flags, buffer, seq_packet_socket_}; }
+  [[nodiscard]] receive_op receive(message_flags in_flags, <message_flags& out_flags>, mutable_buffer_sequence buffer) { return {buffer, {nullptr|&out_flags}, seq_packet_socket_}; }
+private: void adopt_endpoint_(endpoint& op) override;
+  asio::basic_seq_packet_socket<protocol_type, executor> seq_packet_socket_;
+};
+system::result<std::pair<seq_packet_socket, seq_packet_socket>> make_pair<decltype(local_seqpacket) protocol>;
+
+// SSL/TLS support
+namespace ssl {
+enum class verify { none=asio::ssl::verify_none, peer, fail_if_no_peer_cert, client_once }; // all same as asio::ssl::verify_xxx
+using context = asio::ssl::context; using verify_mode = asio::ssl::verify_mode;
+struct stream final : socket, stream, asio::ssl::stream_base {
+  ctor(context& ctx, const executor& executor=this_thread::get_executor());
+  ctor(context& ctx, stream_socket&& sock);
+  ctor(context& ctx, native_handle_type h, protocol_type protocol={}, const executor& executor=this_thread::get_executor());
+  ctor(context& ctx, endpoint ep, const executor& executor=this_thread::get_executor());
+  [[nodiscard]] write_op write_some(const_buffer_sequence buffer) override { return {buffer,this,initiate_write_some_}; }
+  [[nodiscard]] read_op read_some(mutable_buffer_sequence buffer) override { return {buffer,this,initiate_read_some_}; }
+  [[nodiscard]] bool secure() const {return upgraded_;}
+  system::result<void> set_verify_callback<VerifyCallback>(VerifyCallback vc) requires(...);
+  system::result<void> set_verify_depth(int depth);
+  system::result<void> set_verify_mode(verify mode);
+private: asio::ssl::stream<asio::basic_stream_socket<protocol_type, executor>> stream_socket_;
+  struct handshake_op_ final : op<system::error_code> {
+    void ready(handler<system::error_code> h) final;
+    void initiate(completion_handler<system::error_code> h) final;
+    ctor(handshake_type type, bool upgraded, asio::ssl::stream<asio::basic_stream_socket<protocol_type, executor>>& stream_socket);
+    ~dtor() = default;
+   private: handshake_type type_; bool upgraded_;
+    asio::ssl::stream<asio::basic_stream_socket<protocol_type, executor>>& stream_socket_;
+  };
+  struct handshake_buffer_op_ final : op<system::error_code,size_t> {
+    void ready(handler<system::error_code,size_t> h) final;
+    void initiate(completion_handler<system::error_code,size_t> h) final;
+    ctor(handshake_type type, bool upgraded, const_buffer_sequence buffer_, asio::ssl::stream<asio::basic_stream_socket<protocol_type, executor>>& stream_socket);
+    ~dtor() = default;
+   private: handshake_type type_; bool upgraded_; const_buffer_sequence buffer_;
+    asio::ssl::stream<asio::basic_stream_socket<protocol_type, executor>>& stream_socket_;
+  };
+  struct shutdown_op_ final : op<system::error_code> {
+    void ready(handler<system::error_code> h) final;
+    void initiate(completion_handler<system::error_code> h) final;
+    ctor(bool upgraded, asio::ssl::stream<asio::basic_stream_socket<protocol_type, executor>>& stream_socket);
+    ~dtor() = default;
+   private: bool upgraded_;
+    asio::ssl::stream<asio::basic_stream_socket<protocol_type, executor>>& stream_socket_;
+  };
+public:
+  [[nodiscard]] auto handshake(handshake_type type) { return handshake_{type, upgraded_, stream_socket_}; }
+  [[nodiscard]] auto handshake(handshake_type type, const_buffer_sequence buffer) { return handshake_buffer_op_{type, upgraded_, buffer, stream_socket_}; }
+  [[nodiscard]] auto shutdown() { return shutdown_op_{upgraded_, stream_socket_}; }
+private: void adopt_endpoint_(endpoint& ep) override;
+  static void initiate_read_some_ (void *, mutable_buffer_sequence, cobalt::completion_handler<system::error_code, size_t>);
+  static void initiate_write_some_(void *,   const_buffer_sequence, cobalt::completion_handler<system::error_code, size_t>);
+  bool upgraded_ =false;
+};
+}
+```
 
 -----
 ### Configuration
