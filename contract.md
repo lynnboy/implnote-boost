@@ -4,15 +4,6 @@
 * repo: `boostorg/contract`
 * commit: `4a4047f`, 2025-06-09
 
-contract, contract_macro
-call_if, check, constructor, destructor, function, old, public_function
-core/: access, check_macro, constructor_precondition, exception
-detail/: assert, auto_ptr, check, checking, config, debug, declspec, inlined, name, none, operator_safe_bool, static_local_var
-detail/condition/: cond_base, cond_inv, cond_post, cond_subcontracting
-detail/inlined/: core/exception, detail/checking, old
-detail/operation/: constructor, destructor, function, public_function, static_public_function
-detail/type_traits/: member_function_types, mirror, optional
-
 ------
 #### Commons
 
@@ -116,6 +107,117 @@ int foo(int& x) {
 }
 ```
 
+#### `call_if`
+
+```c++
+struct call_if_statement<pred,Then,ThenResult=none>{};
+struct call_if_statement<true,Then,none> : call_if_statement<true,Then,result_of_t<Then()>>{};
+struct call_if_statement<true,Then,ThenResult> {
+  explicit ctor(Then f) : r_{make_shared<ThenResult>{f()}}{}
+  operator ThenResult() const { return *r_; }
+  ThenResult else_<Else>(Else const& f) const { return *r_; }
+  self else_if_c<elseIfPred,ElseIfThen>(ElseIfThen const& f) const { return *this; }
+  self else_if<ElseIfPred,ElseIfThen>(ElseIfThen const& f) const { return *this; }
+private: shared_ptr<ThenResult> r_;
+};
+struct call_if_statement<true,Then,void> {
+  explicit ctor(Then f) {f();}
+  void else_<Else>(Else const& f) const {}
+  self else_if_c<elseIfPred,ElseIfThen>(ElseIfThen const& f) const { return *this; }
+  self else_if<ElseIfPred,ElseIfThen>(ElseIfThen const& f) const { return *this; }
+};
+struct call_if_statement<false,Then,none> {
+  explicit ctor(Then const& f) {}
+  result_of_t<Else()> else_<Else>(Else f) const { return f(); }
+  self<elseIfPred,ElseIfThen> else_if_c<elseIfPred,ElseIfThen>(ElseIfThen f) const { return {f}; }
+  self<ElseIfPred::value,ElseIfThen> else_if<ElseIfPred,ElseIfThen>(ElseIfThen f) const { return {f}; }
+};
+call_if_statement<pred,Then> call_if_c<pred,Then>(Then f) { return {f}; }
+call_if_statement<Pred::value,Then> call_if<Pred,Then>(Then f) { return {f}; }
+bool condition_if_c<pred,Then>(Then f, bool else_=true) { return pred ? f() : else_; }
+bool condition_if<Pred,Then>(Then f, bool else_=true) { return condition_if_c<Pred::value>(f, else_); }
+```
+
+#### Checking Entrances
+
+```c++
+class check {
+public: ctor<F>(F const& f) { CHECK({f();}) }
+  ctor(self const& other) : cond_{((check&)other).cond_.release()}{}
+  ctor<VirtualResult> (specify_precondition_old_postcondition_except<VirtualResult> const& contract);
+  ctor<VirtualResult> (specify_old_postcondition_except<VirtualResult> const& contract);
+  ctor<VirtualResult> (specify_postcondition_except<VirtualResult> const& contract);
+  ctor<VirtualResult> (specify_except const& contract);
+  ctor<VirtualResult> (specify_nothing const& contract);
+  ~dtor();
+private: auto_ptr<cond_base> cond_;
+};
+
+specify_old_postcondition_except<> constructor<Class>(Class* obj);
+specify_old_postcondition_except<> destructor<Class>(Class* obj);
+specify_old_postcondition_except<> function();
+specify_precondition_old_postcondition_except<> public_function<Class>();
+specify_precondition_old_postcondition_except<> public_function<Class>(Class* obj);
+specify_precondition_old_postcondition_except<> public_function<Class>(virtual_* v, Class* obj);
+specify_precondition_old_postcondition_except<VirtualResult> public_function<VirtualResult,Class>(virtual_* v, VirtualResult& r, Class* obj);
+specify_precondition_old_postcondition_except<> public_function<Override,F,Class,...Args>(virtual_* v, F f, Class* obj, Args&...args);
+specify_precondition_old_postcondition_except<VirtualResult> public_function<Override,VirtualResult,F,Class,...Args>(virtual_* v, VirtualResult& r, F f, Class* obj, Args&...args);
+
+struct is_old_value_copyable<T> : is_copy_constructible<T> {};
+struct is_old_value_copyable<old_value> : true_type {};
+struct old_value_copy<T> {
+  explicit ctor(T const& old) : old_{old}{}
+  T const& old() const { return old_; }
+private: T const old_;
+};
+class old_ptr<T> {
+public: using element_type = T;
+  ctor(){}
+  T const& operator*() const { return typed_copy_->old(); }
+  T const* operator->() const { if (typed_copy_) return &typed_copy_->old(); return 0; }
+  explicit operator bool() const;
+private: shared_ptr<old_value_copy<T>> typed_copy_;
+};
+class old_ptr_if_copyable<T> {
+public: using element_type = T;
+  ctor(){}
+  ctor(old_ptr<T> const& other) : typed_copy_{other.typed_copy_}{}
+  T const& operator*() const { return typed_copy_->old(); }
+  T const* operator->() const { if (typed_copy_) return &typed_copy_->old(); return 0; }
+  explicit operator bool() const;
+private: shared_ptr<old_value_copy<T>> typed_copy_;
+};
+class old_value {
+public: ctor<T>(T const& old) : untyped_copy_{new old_value_copy<T>(old)}{}
+  ctor<T>(T const& old){}
+private: shared_ptr<void> untyped_copy_;
+};
+class old_pointer {
+public: operator old_ptr_if_copyable<T>() { return get<old_ptr_if_copyable<T>>(); }
+  operator old_ptr<T>() { return get<old_ptr<T>>(); }
+private: explicit ctor(virtual_* v, old_value const& old): v_{v}, untyped_copy_{old.untyped_copy_}{}
+  Ptr get<Ptr>();
+  virtual_* v_; shared_ptr<void> untyped_copy_;
+};
+old_value null_old();
+old_pointer make_old(old_value const& old);
+old_pointer make_old(virtual_* v, old_value const& old);
+bool copy_old();
+bool copy_old(virtual_* v);
+```
+
+* `OLDOF(par)`
+
+#### Invariants
+
+```c++
+class T {
+public: // must be public
+  void invariant() const {...}
+  static void static_invariant() {...}
+};
+```
+
 #### Subcontracting
 
 * `BASE_TYPES(...)`, `OVERRIDE(name)`, `OVERRIDES(name, list)`
@@ -217,3 +319,5 @@ public:     typedef BOOST_CONTRACT_BASE_TYPES(BASES) base_types; // Bases typede
 
 ------
 ### Standard Facilities
+
+Language: Contracts (C++26)
