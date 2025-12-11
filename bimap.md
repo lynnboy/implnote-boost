@@ -5,8 +5,6 @@
 * commit: `f64de6d`, 2025-01-28
 
 ------
-### Commons
-
 #### Tags
 
 ```c++
@@ -890,12 +888,111 @@ struct unconstrained_set_of_relation : public set_type_of_relation_tag {
   struct bind_to<Relation> { using type = unconstrained_set_of<Relation>; };
   using left_mutable_key = bool_<true>; using right_mutable_key = bool_<true>;
 };
+
+struct detail::get_value_type<Type> { using type = Type::value_type; };
+struct detail::independent_index_tag{};
+struct detail::bimap_core<LSet,RSet,AP1,AP2,AP3> {
+	using {left|right}_set_type = manage_bimap_key<{L|R}Set>::type;
+	using {left|right}_tagged_type = default_tagged<{left|right}_set_type::user_type, member_at::{left|right}>::type;
+	using {left|right}_tag = {left|right}_tagged_type::tag;
+	using {left|right}_key_type = {left|right}_set_type::value_type;
+	using left_data_type = right_key_type; using right_data_type = left_key_type;
+	using parameters = manage_additional_parameters<AP1,AP2,AP3>::type;
+	using relation = mutant_relation<tagged<mpl::if_<and_<left_set_type::mutable_key,parameters::set_type_of_relation::left_mutable_key>, left_key_type, add_const_t<left_key_type>>::type, left_tag>,
+									tagged<mpl::if_<and_<right_set_type::mutable_key,parameters::set_type_of_relation::right_mutable_key>, right_key_type, add_const_t<right_key_type>>::type, right_tag>,
+									parameters::additional_info, true>;
+	using {left|right}_value_type = relation::{left|right}_pair;
+private:
+	using {left|right}_member_extractor = multi_index::member< relation::storage_base,{left|right}_key_type,&relation::storage_base::{left|right}>
+	using left_core_indices = mpl::if_<is_unconstrained_set_of<left_set_type>,mpl::vector<>,mpl::vector<left_set_type::index_bind<left_member_extractor,left_tag>::type>>::type;
+	using basic_core_indices = mpl::if_<is_unconstrained_set_of<right_set_type>,left_core_indices,mpl::push_front<left_core_indices,right_set_type::index_bind<right_member_extractor,right_tag>::type>::type>::type;
+	using tagged_set_of_relation_type = mpl::if_<is_same<parameters::set_type_of_relation,left_based>, tagged<left_set_type,left_tag>,
+										mpl::if_<is_same<parameters::set_type_of_relation,right_based>, tagged<right_set_type,right_tag>,
+											tagged<parameters::set_type_of_relation::bind_to<relation>::type,independent_index_tag>>::type>::type;
+protected:
+	using relation_set_tag = tagged_set_of_relation_type::tag;
+	using relation_set_type_of = tagged_set_of_relation_type::value_type;
+	using logic_left_tag = mpl::if_<is_unconstrained_set_of<left_set_type>, mpl::if_<is_unconstrained_set_of<right_set_type>, independent_index_tag, right_tag>::type, left_tag>::type;
+	using logic_right_tag = mpl::if_<is_unconstrained_set_of<right_set_type>, mpl::if_<is_unconstrained_set_of<left_set_type>, independent_index_tag, left_tag>::type, right_tag>::type;
+	using logic_relation_set_tag = mpl::if_<is_same<relation_set_tag,independent_index_tag>,
+							mpl::if_<is_unconstrained_set_of<relation_set_type_of>, logic_left_tag,independent_index_tag>::type,
+							mpl::if_<is_same<parameters::set_type_of_relation,left_based>, logic_left_tag, logic_right_tag>::type>::type;
+private:
+	using complete_core_indices = mpl::if_<and_<is_same<relation_set_tag,independent_index_tag>,not_<is_unconstrained_set_of<relation_set_type_of>>>,
+					push_front<basic_core_indices, relation_set_type_of::index_bind<both_keys_extractor<relation>,independent_index_tag>::type>::type, basic_core_indices>::type;
+	struct core_indices : public complete_core_indices{};
+public:
+	using core_type = multi_index::multi_index_container<relation,core_indices,allocator_rebind<parameters::allocator,relation>::type>;
+	using {left|right}_index = multi_index::index<core_type, logic_{left|right}_tag>::type;
+	using {left|right}_core_<const>_iterator = {left|right}_index::<const>_iterator;
+	using relation_set_core_index = multi_index::index<core_type,logic_relation_set_tag>::type;
+	using relation_set = relation_set_type_of::set_view_bind<relation_set_core_index>::type;
+};
+
+struct detail::left_map_view_type<BimapBase> {
+	using left_set_type = BimapBase::left_set_type;
+	using type = left_set_type::map_view_bind<BimapBase::left_tag,BimapBase>::type;
+};
+struct detail::right_map_view_type<BimapBase> {
+	using right_set_type = BimapBase::right_set_type;
+	using type = right_set_type::map_view_bind<BimapBase::right_tag,BimapBase>::type;
+};
 ```
 
-bimap
-support/: {data|iterator|key|map|value}_type_by, lambda, map_by
-property_map/: <unordered>_set_support
-detail/: bimap_core
+#### Supports
+
+```c++
+struct support::data_type_by<Tag,Bimap>; // {left|right}_data_type
+struct support::key_type_by<Tag,Bimap>; // {left|right}_key_type
+struct support::map_type_by<Tag,Bimap>; // {left|right}_map
+struct support::value_type_by<Tag,Bimap>; // {left|right}_value_type
+struct support::<const>_iterator_type_by<Tag,Bimap>; // {left|right}_<const>_iterator
+struct support::<const>_reverse_iterator_type_by<Tag,Bimap>; // {left|right}_<const>_reverse_iterator
+struct support::<const>_local_iterator_type_by<Tag,Bimap>; // {left|right}_<const>_local_iterator
+struct support::result_of::map_by<Tag,Bimap>;
+result_of::map_by<Tag,Bimap>::type support::map_by<Tag,Bimap>(Bimap& bimap);
+auto& _key = lambda::_1; auto& _data = lambda::_2;
+
+class bimap<KeyA,KeyB,AP1=mpl::na,AP2=mpl::na,AP3=mpl::na>
+	: public bimap_core<KeyA,KeyB,AP1,AP2,AP3>, public bimap_core::relation_set,
+	public left_map_view_extra_typedefs<left_map_view_type<bimap_core>::type>,
+	public right_map_view_extra_typedefs<right_map_view_type<bimap_core>::type>
+{	core_type core;
+public:
+	using {left|right}_map = {left|right}_map_view_type<bimap_core>::type;
+	using {left|right}_<const>_iterator = {left|right}_map::<const>_iterator;
+	using {left|right}_<const>_reference = {left|right}_map::<const>_reference;
+	using info_type = relation::info_type; using allocator_type = core_type::allocator_type;
+	left_map left; right_map right;
+	using ctor_args_list = core_type::ctor_args_list;
+	ctor(const allocator_type& al={}); ctor<InIt>(InIt f, InIt l, const allocator_type& al={});
+	ctor(const self& x); self& operator=(const self& x);
+	{left|right}_<const>_iterator project_{left|right}<It>(It iter) <const> { return core.project<logic_{left|right}_tag>(iter.base()); }
+	relation_set::<const>_iterator project_up<It>(It iter) <const> { return core.project<logic_relation_set_tag>(iter.base()); }
+	<const>_iterator_type_by<Tag,self>::type project<Tag,It>(It iter) <const> { return core.project<Tag>(iter.base()); }
+	struct map_by<Tag> : public map_type_by<Tag,self>::type { using type = map_type_by<Tag,self>::type; };
+	<const> map_type_by<Tag,self>::type& by() <const> { return map_by<Tag>(*this); }
+	void serialize<Archive>(Archive& ar, unsigned) { ar & make_nvp("mi_core", core); }
+};
+```
+
+#### Property Map Supporting
+
+```c++
+struct property_traits<views::map_view<Tag,Bimap>> {
+	using value_type = data_type_by<Tag,Bimap>::type;
+	using key_type = key_type_by<Tag,Bimap>::type;
+	using category = readable_property_map_tag;
+};
+const data_type_by<Tag,Bimap>::type& get<Tag,Bimap>(const views::map_view<Tag,Bimap>& m, const key_type_by<Tag,Bimap>::type& key) { return m.at(key); }
+
+struct property_traits<views::unordered_map_view<Tag,Bimap>> {
+	using value_type = data_type_by<Tag,Bimap>::type;
+	using key_type = key_type_by<Tag,Bimap>::type;
+	using category = readable_property_map_tag;
+};
+const data_type_by<Tag,Bimap>::type& get<Tag,Bimap>(const views::unordered_map_view<Tag,Bimap>& m, const key_type_by<Tag,Bimap>::type& key) { return m.at(key); }
+```
 
 -----
 ### Configuration
