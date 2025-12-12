@@ -52,6 +52,33 @@ using rebind_any_t<Any,T> = rebind_any<Any,T>::type;
 
 struct as_param<Any,T> { using type = mpl::if_<is_placeholder<remove_cv_ref_t<T>>, param<concept_of<Any>::type,T>,T>::type };
 using as_param_t<Any,T> = as_param<Any,T>::type;
+
+struct static_binding<Map> { using map_type = Map; };
+static_binding<Map> make_binding() { return {}; }
+
+struct detail::can_optimize_conversion<Source,Dest,Map> : and_<is_same<Source,Dest>, is_same<find_if<Map,not_<is_same<first<_1>,second<_1>>>>::type, end<Map>::type>>::type {};
+class binding<C> {
+    using actual_concept = transform<normalize_concept<C>::type, maybe_adapt_to_vtable<_1>>::type;
+    using table_type = make_vtable<actual_concept>::type;
+    using placeholder_subs = get_placeholder_normalization_map<C>::type;
+    struct impl_type {
+        ctor() { table = &make_vtable_init_impl<transform<actual_concept,get_null_vtable_entry<_1>>::type, table_type>::type::value; }
+        ctor<Map>(const static_binding<Map>&) { table = &make_vtable_init_impl<transform<actual_concept,
+            rebind_placeholders<_1,add_deductions<Map,placeholder_subs>::type>>::type, table_type>::type::value; }
+        ctor<C2,Map>(const binding<C2>& other, const static_binding<Map>&, false_) : manager(new table_type)
+        { manager->convert_from<convert_deductions<Map,placeholder_subs,binding<C2>::placeholder_subs>::type>(*other.impl.table); table = manager.get(); }
+        ctor<Placeholders,Map>(const dynamic_binding<Placeholders>& other, const static_binding<Map>&) : manager(new table_type)
+        { manager->convert_from<convert_deductions<Map,placeholder_subs>::type>(*other.impl); table = manager.get(); }
+        ctor<C2,Map>(const binding<C2>& other, const static_binding<Map>&, false_) : table{other.impl.table}, manager(new table_type) {}
+    } impl;
+public: ctor(){}
+    explicit ctor<Map>(const {Map|static_binding<Map>}&):impl{(make_instantiate_concept<C,Map>::apply<instantiate_concept_impl>*)0, static_binding<Map>{}}{}
+    ctor<C2,Map>(const self<C2>& other, const {Map|static_binding<Map>}&) requires (check_map<C,Map> && is_subconcept<C,C2,Map>)
+        :impl{other, static_binding<Map>{}, can_optimize_conversion<C2,C,Map>()}{}
+    ctor<Placeholders,Map>(const dynamic_binding<Placeholders>& other, const static_binding<Map>&) :impl{other, static_binding<Map>{}}{}
+    friend bool operator{==|!=}(const self& lhs, const self& rhs) { return *lhs.impl.table {==|!=} *rhs.impl.table; }
+    T::type find<T>() const { return impl.table->lookup((T*)0); }
+};
 ```
 
 ### Placeholder
@@ -190,13 +217,10 @@ call_result<Op,void(U&&...)>::type call<Op,...U>(const Op& f, U&&...arg)
 { require_match(f,std::forward<U>(arg)...); return unchecked_call(f,std::forward<U>(arg)...); }
 ```
 
-any_cast, any, binding_of, binding, callable,
-derived, dynamic_any_cast, dynamic_binding, free,
-is_empty, is_subconcept, iterator, member, operators,
-register_binding, same_type, static_binding, tuple, typeid_of
+any_cast, any, binding_of, callable, derived, dynamic_any_cast, dynamic_binding, free,
+is_empty, is_subconcept, iterator, member, operators, register_binding, same_type, tuple, typeid_of
 
-detail/: auto_link, check_map, const, construct, dynamic_vtable,
-instantiate, macro, member11, normalize, null, vtable
+detail/: auto_link, const, construct, dynamic_vtable, macro, member11
 
 ------
 ### Common Details
@@ -224,6 +248,31 @@ struct detail::vtable_adapter_impl<PrimC,storage[&|&&](T...),R2(U...)> { using t
 struct detail::vtable_adapter<PrimC,Sig> : vtable_adapter_impl<PrimC,Sig,get_signature<PrimC>::type> {};
 struct detail::get_vtable_signature<R(T...)> { using type = replace_result_for_vtable<R>::type (replace_param_for_vtable<T>::type...); };
 
+struct detail::null_throw<Sig>;
+struct detail::null_throw<R(T...)> { static R value(T...){ THROW_EXCEPTION(bad_function_call{}); } };
+struct detail::get_null_vtable_entry{ using type = null_throw<remove_pointer_t<C::type>>; };
+
+struct detail::stored_arg_pack<...T>;
+struct detail::make_arg_pack_impl<It,End,...T> { using type = make_arg_pack_impl<mpl::next<It>::type, End, T..., mpl::deref<It>::type>::type; };
+struct detail::make_arg_pack_impl<End,End,T...> { using type = stored_arg_pack<T...>; };
+struct detail::make_arg_pack<Seq> { using type = make_arg_pack_impl<mpl::begin<Seq>::type, mpl::end<Seq>::type>::type; };
+struct detail::make_vtable<Args> { using type = make_vtable_impl<make_arg_pack<Seq>::type>::type; };
+struct detail::make_vtalbe_init<Seq,Table> { using type = make_vtable_init_impl<Table,make_arg_pack<Seq>::type>::type; };
+struct detail::vtable_entry<T> { T::type value; ctor()=default; constexpr ctor(T::type arg): value{arg}{} };
+struct detail::compare_vtable<> { static bool apply<S>(const S&, const S&) { return true; } };
+struct detail::compare_vtable<T0,T...> { static bool apply<S>(const S& s1, const S& s2) { return ((const vtable_entry<T0>&)s1).value == ((const vtable_entry<T0>&)s1).value && compare_vtable<T...>::apply(s1, s2); } };
+struct detail::vtable_storage<...T> : vtable_entry<T>... {
+    ctor()=default; explicit ctor(T::type...arg) : base(arg)... {}
+    void convert_from<Bindings,Src>(const Src& src) { *this = {src.lookup((rebind_placeholders<T,Bindings>::type*)0)...}; }
+    bool operator==(const self& other) const { return compare_vtable<T...>::apply(*this, other); }
+    U::type lookup<U>(U*) const { return ((const vtable_entry<U>*)this)->value; }
+};
+struct detail::vtable_storage<> { ctor()=default; void convert_from<Bindings,Src>(const Src&){} bool operator==(const self&) const { return true; } };
+struct detail::make_vtable_impl<stored_arg_pack<T...>> { using type = vtable_storage<T...>; };
+struct detail::vtable_init<Table,...T> { static constexpr Table value = Table{T::value...}; };
+struct detail::make_vtable_init_impl<Table,stored_arg_pack<T...>> { using type = vtable_init<Table,T...>; };
+
+
 struct detail::identity<T> { using type = T; };
 struct detail::rebind_placeholders<T,Bindings> { using type = void; };
 using detail::rebind_placeholders_t<T,Bindings> = rebind_placeholders<T,Bindings>::type;
@@ -244,8 +293,75 @@ struct detail::maybe_extract_concept<T,U> { using type = mpl::eval_if<is_placeho
 struct detail::extract_concept<R(T0,T...), U0,U...> { using type = combine_concepts<maybe_extract_concept<T0,U0>::type, extract_concept<void(T...),U...>::type>::type; };
 struct detail::extract_concept<void()> { using type = void; };
 
-struct detail::normalize_deduced<M,T>;
-struct detail::normalize_placeholder<M,T>;
+struct detail::normalize_deduced<M,T<U...>> { using type = deduced<T<normalize_placeholder<M,U>...>>; };
+
+struct detail::substitution_map_tag{};
+struct detail::substitution_map<M> { using tag = substitution_map_tag; using map_type = M; };
+struct detail::select_pair<T,U>; // mpl::pair<T,U> if any of T, U is deduced
+using detail::resolve_same_type_t<M,T> = if_<mp_map_contains<M,T>, resolve_same_type_t<M,mp_second<mp_map_find<M,T>>>, T>;
+using detail::resolve_same_type<M,T> = identity<resolve_same_type_t<M,T>>;
+struct detail::normalize_deduced_impl<T> { using apply<M> = T; };
+struct detail::normalize_deduced_impl<deduced<F<T...>>> { using apply<M> = deduced<F<normalize_placeholder_t<M,T>...>>::type; };
+using detail::normalize_placeholder_t<M,T> = if_<mp_map_contains<M,T>, normalize_placeholder_t<M,mp_second<mp_map_find<M,T>>>,
+    normalize_deduced_impl<T>::apply<M>>;
+using detail::normalize_placeholder<M,T> = identity<normalize_placeholder_t<M,T>>;
+
+struct detail::create_placeholder_map<M> {
+    using transform_one<P> = mpl::pair<first<P>::type, normalize_placeholder_t<M,second<P>::type>>;
+    using type = mp_transform<transform_one,M>;
+};
+using detail::create_placeholder_map_t<M> = create_placeholder_map<M>::type;
+struct detail::convert_deduced<Binding,P,Out,Sub> {
+    using result = mp_second<mp_map_find<Sub,rebind_placeholders_in_argument_t<P::first,Bindings>>>;
+    using type = mp_map_insert<Out, pair<P::second,result>>;
+};
+struct convert_deduced_f<Bindings,Sub> { apply<Out,P> = convert_deduced<Bindings,P,Out,Sub>::type; };
+using detail::convert_deductions_t<Bindings,M,Sub> = mp_fold<M, make_mp_list<Bindings>, convert_deduced_f<Bindings,Sub>::apply>;
+using detail::convert_deductions<Bindings,M,Sub> = identity<convert_deductions_t<Bindings,M,Sub>>;
+struct detail::add_deduced<Bindings,P,Out> {
+    using result = rebind_placeholders_in_argument<P::first,Bindings>;
+    using type = mp_map_insert<Out, pair<P::second,result>>;
+};
+struct detail::add_deduced_f<Bindings> { using apply<Out,P> = add_deduced<Bindings,P,Out>::type; };
+using detail::add_deductions_t<Bindings,M> = mp_fold<M,make_mp_list<Bindings>, add_deduced_f<make_mp_list<Bindings>>::apply>;
+using detail::add_deductions<Bindings,M> = identity<add_deductions_t<Bindings,M>>;
+struct detail::insert_concept_impl<T> { using apply<Out> = pair<mp_set_push_back<Out::first,T>,Out::second>; };
+using detail::insert_concept_same_type<T1,T2,Out> = pair<Out::first, eval_if<is_same_v<T1,T2>, first,mp_map_insert, Out::second,select_pair<T1,T2>::type>>;
+struct detail::insert_concept_impl<same_type<T,U>> { using apply<Out> = insert_concept_same_type<resolve_same_type_t<Out::second,T>, resolve_same_type_t<Out::second,U>, Out>; };
+struct detail::normalize_concept_impl_test<true> { using apply<Out,C> = mp_fold<make_mp_list<C>,Out,normalize_concept_impl_f>; };
+struct detail::normalize_concept_impl_test<false> { using apply<Out,C> = insert_concept_impl<C>::apply<Out>; };
+using detail::normalize_concept_impl_f<Out,C> = normalize_concept_impl_test<mpl::is_sequence<C>::value>::apply<Out,C>;
+using detail::normalize_concept_impl_t<C> = normalize_concept_impl_f<pair<mp_list<>,mp_list<>>,C>;
+using detail::normalize_concept_impl<C = identity<normalize_concept_impl_t<C>>>;
+using detail::get_all_placeholders_impl<S,T> = get_placeholders<T,S>::type;
+using detail::get_all_placeholders<Seq> = mp_fold<Seq,mp_list<>,get_all_placeholders_impl>;
+using detail::make_identity_pair<T> = mpl::pair<T,T>;
+using detail::make_identity_placeholder_map<C> = mp_transform<make_identity_pair,get_all_placeholders<normalize_concept_impl_t<C>::first>>;
+using detail::append_type_info<S,T> = mp_set_push_back<S,typeid_<T>>;
+using detail::add_typeinfo_t<Seq> = mp_fold<get_all_placeholders<Seq>, Seq, append_type_info>;
+using detail::add_typeinfo<Seq> = identity<add_typeinfo_t<Seq>>;
+struct detail::normalize_concept_substitute_f<Subs> { using apply<Set,C> = mp_set_push_back<Set,rebind_placeholders<C,Subs>::type>; };
+using detail::normalize_concept_adjustments<C,Pair> = eval_if<is_relaxed<C>::value, add_typeinfo_t, first, mp_fold<Pair::first,mp_list<>,normalize_concept_substitute_f<create_placeholder_map_t<Pair::second>>::apply>>;
+using detail::get_placeholder_normalization_map_t<C> = create_placeholder_map_t<normalize_concept_impl_t<C>::second>;
+using detail::get_placeholder_normalization_map<C> = create_placeholder_map<normalize_concept_impl_t<C>::second>;
+using detail::normalize_concept_t<C> = normalize_concept_adjustments<C,normalize_concept_impl_t<C>>;
+using detail::normalize_concept<C> = identity<normalize_concept_t<C>>;
+using detail::collect_concepts_recursive<Out,C,M> = mp_fold<make_mp_list<C>,Out,collect_concepts_f<M>::apply>;
+using detail::collect_concepts_impl<C,M,Out,Transformed> = eval_if<is_same_v<Transformed,void>, first, mp_set_push_front, eval_if<is_sequence<C>::value, collect_concepts_recursive, first, Out,C,M>, Transformed>;
+using detail::collect_concepts_t<C,M=create_placeholder_map_t<normalize_concept_impl_t<C>::second>,Out=mp_list<>> = collect_concepts_impl<C,M,Out,rebind_placeholders<C,M>::type>;
+struct detail::collect_concepts_f<M> { using apply<Out,C> = collect_concepts_f<C,M,Out>; };
+using detail::collect_concepts<C> = identity<collect_concepts_t<C>>;
+
+struct detail::is_deduced<T> : false_{};
+struct detail::is_deduced<deduced<T>> : true_{};
+struct detail::check_map<C,Map> {
+    using placeholders = get_all_placeholders<normalize_concept_t<C>>;
+    using placeholder_subs = get_placeholder_normalization_map<C>::type;
+    using okay_placeholders = mp_unique<mp_append< mp_transform<mp_first,make_mp_list<Map>>, mp_transform<mp_second,make_mp_list<placeholder_subs>> >>;
+    using check_placeholder<P> = or_<is_deduced<P>,mp_set_contains<okay_placeholders,P>>;
+    using type = mp_all_of<placeholders, check_placeholder>;
+};
+struct detail::check_map<C,static_binding<Map>> : check_map<C,Map>{};
 
 struct detail::storage {
     ctor(){} ctor(self {<const>&|&&} o); self& operator=(const self& o);
@@ -296,6 +412,13 @@ using detail::check_nonplaceholder_arg_t<P,Arg> = ...;
 using detail::check_arg_t<P,Arg> = ...;
 struct detail::check_arg<P,Arg> { using type = check_arg_t<P,Arg>; };
 struct detail::check_call<R(T...), void(U...)> { using type = mp_all<check_arg<T,U>::type...>; };
+
+struct detail::instantiate_concept<T,T t>;
+using detail::instantiate_concept_impl<T> = instantiate_concept<decltype(&T::apply), &T::apply>;
+struct detail::make_instantiate_concept_impl<mp_list<T...>> { using apply<F<_>> = void(F<T>...); };
+struct detail::instantiate_concept_rebind_f<Map> { using apply<T> = rebind_placeholders<T,Map>::type; };
+using detail::make_instantiate_concept<C,Map> = make_instantiate_concept_impl<mp_transform<
+    instantiate_concept_rebind_f<add_deductions< make_mp_list<Map>, get_placeholder_normalization_map<C>::type >::type>::apply, normalize_concept_t<C>>;
 ```
 
 ------
