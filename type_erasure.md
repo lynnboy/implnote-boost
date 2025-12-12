@@ -5,7 +5,7 @@
 * commit: `5281f14`, 2025-05-05
 
 ------
-### Any
+### Concept wrappers: Any, Param
 
 ```c++
 struct any_base<Derived> {
@@ -13,11 +13,53 @@ struct any_base<Derived> {
     void* _b_te_deduce_constructor(...) const volatile {return 0;}
     void* _b_te_deduce_assign(...) {return 0;}
 };
+
+struct detail::placeholder_conversion<From,To> : false_{};
+struct detail::placeholder_conversion<T,T>: true_{}; // T -> T|T&|const T&, const T -> T|const T&|, T& -> T|T&|const T&, const T& -> T|const T&, T&& -> T|const T&|T&&
+
+struct param<C,T>{
+  using _b_te_is_any = void; using _b_te_derived_type = self;
+  ctor<U>(any<C,U> {const&|&|&&} a) requires (placeholder_conversion<{U|const U|U&&},T>::value) : _impl{<std::move>(a)}{}
+  ctor(const storage& data, const binding<C>& table) :_impl{data,table}{}
+  any<C,T> get()const { return _impl; }
+private: any<C,T> _impl;
+};
+struct param<C,const T&>{
+  using _b_te_is_any = void; using _b_te_derived_type = self;
+  ctor(const storage& data, const binding<C>& table) :_impl{data,table}{}
+  ctor<U>(U& u) requires (is_same_v<U,const any<C,T>>) :_impl{u}{}
+  any<C,const T&> get()const { return _impl; }
+protected:
+  struct _impl_t{
+    ctor(const storage& d, const binding<C>& t) : table{t}, data{d}{}
+    ctor(const any<C,T>& u) : table{access::table(u)}, data{access::data(u)}{}
+    const binding<C>& table; storage data;
+  } _impl;
+};
+struct param<C,T&>: public param<C,const T&> {
+  using _b_te_is_any = void; using _b_te_derived_type = self;
+  ctor(const storage& data, const binding<C>& table) :base{data,table}{}
+  any<C,T&> get()const { return {access::data{_impl}, access::table{_impl}}; }
+};
+struct param<C,T&&>: public param<C,const T&> {
+  using _b_te_is_any = void; using _b_te_derived_type = self;
+  ctor(const storage& data, const binding<C>& table) :base{data,table}{}
+  any<C,T&&> get()const { return {access::data{_impl}, access::table{_impl}}; }
+};
+
+struct rebind_any<Any,T> { using type = mpl::if_<is_placeholder<remove_cv_ref_t<T>>,T>::type; };
+using rebind_any_t<Any,T> = rebind_any<Any,T>::type;
+
+struct as_param<Any,T> { using type = mpl::if_<is_placeholder<remove_cv_ref_t<T>>, param<concept_of<Any>::type,T>,T>::type };
+using as_param_t<Any,T> = as_param<Any,T>::type;
 ```
 
 ### Placeholder
 
 ```c++
+struct placeholder { using _b_te_is_placeholder = void; };
+struct _a : placeholder{}; // up to _g, and _self
+
 struct is_placeholder<T>; // detect T::_b_te_is_placeholder
 
 struct placeholder_of<T> { using type = placeholder_of<T::_b_te_derived_type>::type; };
@@ -37,17 +79,124 @@ struct concept_of<any<C,T>> { using type = C; };
 struct concept_of<param<C,T>> { using type = C; };
 using concept_of_t<T> = concept_of<T>::type;
 
+struct concept_interface<C,Base,ID,Enable=void> : Base{};
+
 struct relaxed : vector<>{};
 struct is_relaxed<C>;
+
+struct constructible<Sig>;
+struct constructible<R(T...)> { static storage apply(T...arg) { return {.data=new R(std::forward<T>(arg)...)}; } };
+struct concept_interface<constructible<Tag(T...)>, Base,Tag> :Base
+{ using Base::_b_te_deduce_constructor; constructible<Tag(T...)>* _b_te_deduce_constructor(as_param<Base,T>::type...) const { return 0; } };
+
+struct detail::null_construct<Sig>;
+struct detail::null_construct<void(T...)>{ static storage value(T...) { return {.data=0}; } };
+struct detail::get_null_vtable_entry<C>;
+struct detail::get_null_vtable_entry<vtable_adapter<constructible<T(const T&)>, R(U...)>> { using type = null_construct<void(U...)>; };
+
+struct destructible<T=_self> { using type = void(*)(storage&); static void {value|apply}(storage& arg) { delete (T*)arg.data; } };
+
+struct copy_constructible<T=_self> : mpl::vector<constructible<T(const T&)>, destructible<T>>{};
+
+struct assignable<T=_self, U=const T&> : mpl::vector<assignable<T, const U&>>{};
+struct assignable<T, U&&> { static void apply(T& dst, U&& src){ dst = std::forward<U>(src); } };
+struct assignable<T, U&> { static void apply(T& dst, U& src){ dst = src; } };
+struct concept_interface<assignable<T,U>, Base,T> requires (is_reference_v<U>) :Base
+{ using Base::_b_te_deduce_assign; assignable<T,U>* _b_te_deduce_assign(as_param<Base,T>::type) { return 0; } };
+
+struct typeid_<T=_self> { using type = const std::type_info& (*)(); static const std::type_info& {value|apply}() { return typeid(T); } };
+struct detail::get_null_vtable_entry<typeid_<T>> { using type = typeid_<void>; };
+struct detail::null_destroy { static void value(storage&){} };
+struct detail::get_null_vtable_entry<destructible<T>> { using type = null_destroy; };
 ```
 
-any_cast, any, binding_of, binding, builtin, call, callable, check_match, concept_interface,
-constructible, derived, dynamic_any_cast, dynamic_binding, exception, free,
-is_empty, is_subconcept, iterator, member, operators, param, placeholder,
-rebind_any, register_binding, require_match, same_type, static_binding, tuple, typeid_of
+------
+### Concept Constraining and Calling
+
+```c++
+struct bad_function_call : public std::invalid_argument {};
+struct bad_any_cast : public std::bad_cast {};
+
+bool detail::check_table<C,R>(const binding<C>*, R(*)()) { return true; }
+bool detail::check_table<C,R,T0,...T,U0,...U>(const binding<C>* t, R(*)(T0,T...), const U0& arg0, const U&...arg)
+{ using t0 = remove_cv_ref_t<T0>;
+  if (!maybe_check_table<t0>(arg0,t,should_check<C,t0>())) return false;
+  return check_table(t, (void(*)(T...))0, arg...);
+}
+bool check_match<C,Op,...U>(const binding<C>& table, const Op&, U&&...arg)
+{ return check_table(&table, (get_signature<Op>::type*)0, arg...); }
+bool check_match<Op,...U>(const Op&, U&&...arg)
+{ const binding<extract_concept<get_signature<Op>::type,U...>::type>* p =0; return check_table(p, (get_signature<Op>::type*)0, arg...); }
+
+
+void require_match<C,Op,...U>(const binding<C>& table, const Op& op, U&&...arg)
+{ if constexpr (is_relaxed<C>::value)
+  if (!check_match(table, op, std::forward<U>(arg)...)) THROW_EXCEPTION(bad_function_call{}); }
+void require_match<Op,...U>(const Op& op, U&&...arg)
+{ if constexpr (is_relaxed<extract_concept<get_signature<Op>::type, U...>::type>::value)
+  if (!check_match(op, std::forward<U>(arg)...)) THROW_EXCEPTION(bad_function_call{}); }
+
+struct detail::is_placeholder_arg<T> : is_placeholder<remove_cv_ref_t<T>> {};
+storage&       detail::convert_arg<T>  (any_base<T>                    & arg, true_) { return access::data(arg); }
+storage const& detail::convert_arg<T>  (any_base<T>               const& arg, true_);
+storage&       detail::convert_arg<C,T>(any_base<any<C,T      &>>      & arg, true_);
+storage const& detail::convert_arg<C,T>(any_base<any<C,T const&>>      & arg, true_);
+storage const& detail::convert_arg<C,T>(any_base<any<C,T const&>> const& arg, true_);
+storage const& detail::convert_arg<C,T>(any_base<any<C,T const&>>     && arg, true_);
+storage&       detail::convert_arg<C,T>(any_base<any<C,T&>>           && arg, true_);
+storage&&      detail::convert_arg<C,T>(any_base<any<C,T>>            && arg, true_);
+storage&&      detail::convert_arg<C,T>(any_base<any<C,T&&>>           & arg, true_);
+storage&&      detail::convert_arg<C,T>(any_base<any<C,T&&>>      const& arg, true_);
+
+storage&       detail::convert_arg<C,T>(param<C,T>        & arg, true_);
+storage const& detail::convert_arg<C,T>(param<C,T const&> & arg, true_);
+storage const& detail::convert_arg<C,T>(param<C,T>        & arg, true_);
+storage const& detail::convert_arg<C,T>(param<C,T const&>&& arg, true_);
+storage&       detail::convert_arg<C,T>(param<C,T&>      && arg, true_);
+storage&&      detail::convert_arg<C,T>(param<C,T>       && arg, true_);
+storage&&      detail::convert_arg<C,T>(param<C,T&&>      & arg, true_);
+storage&&      detail::convert_arg<C,T>(param<C,T&&> const& arg, true_);
+
+T&& detail::convert_arg<T>(T&& arg, false_) { return std::forward<T>(arg); }
+
+struct detail::call_impl<Sig,Args,C=void,check=checkk_call<Sig,Args>::value>{};
+struct detail::call_result<Op,Args,C=void> : call_impl<get_signature<Op>::type,Args,C>{};
+struct detail::call_result<binding<C1>,Args,C>{};
+void detail::ignore<...T>(const T&...){}
+int detail::maybe_get_table<T,Table>(const T& arg, const Table*& table, ) { if (table==0) table=&access::table(arg); return 0; }
+const binding<extract_concept_t<mp_list<T...>, mp_list<U...>>>*
+  detail::extract_table<R,...T,...U>(R(*)(T...), const U&...arg)
+{ const binding<...>* result =0; ignore(maybe_get_table(arg,result,is_placeholder_arg<T>())...); return result; }
+
+struct detail::call_impl_dispatch<Sig,Args,C,returnsAny>;
+struct detail::call_impl_dispatch<R(T...),void(U...),C,false> { using type = R;
+  static type apply<F>(const binding<C>* table, U...arg)
+  { return table->find<F>()(convert_arg(std::forward<U>(arg), is_placeholder_arg<T>())...); } };
+struct detail::call_impl_dispatch<R(T...),void(U...),C,true> { using type = any<C,R>;
+  static type apply<F>(const binding<C>* table, U...arg)
+  { return type{table->find<F>()(convert_arg(std::forward<U>(arg), is_placeholder_arg<T>())...), *table}; } };
+struct detail::call_impl<R(T...),void(U...),C,true> : call_impl_dispatch<R(T...),void(U...),C,is_placeholder_arg<R>::value>{};
+struct detail::call_impl<R(T...),void(U...),void,true>
+  : call_impl_dispatch<R(T...),void(U...), extract_concept_t<mp_list<T...>,mp_list<remove_reference_t<U>...>>, is_placeholder_arg<R>::value>{};
+
+call_result<Op,void(U&&...),C>::type unchecked_call<C,Op,...U>(const binding<C>& table, const Op&, U&&...arg)
+{ return call_impl<get_signature<Op>::type,void(U&&...),C>::apply<adapt_to_vtable<Op>::type>(&table, std::forward<U>(arg)...); }
+call_result<Op,void(U&&...),C>::type call<C,Op,...U>(const binding<C>& table, const Op& f, U&&...arg)
+{ require_match(table,f,std::forward<U>(arg)...); return unchecked_call(table,f,std::forward<U>(arg)...); }
+call_result<Op,void(U&&...)>::type unchecked_call<Op,...U>(const Op&, U&&...arg)
+{ return call_impl<get_signature<Op>::type,void(U&&...)>::apply<adapt_to_vtable<Op>::type>(
+    extract_table((get_signature<Op>::type*)0, arg...), std::forward<U>(arg)...); }
+call_result<Op,void(U&&...)>::type call<Op,...U>(const Op& f, U&&...arg)
+{ require_match(f,std::forward<U>(arg)...); return unchecked_call(f,std::forward<U>(arg)...); }
+```
+
+any_cast, any, binding_of, binding, callable,
+derived, dynamic_any_cast, dynamic_binding, free,
+is_empty, is_subconcept, iterator, member, operators,
+register_binding, same_type, static_binding, tuple, typeid_of
 
 detail/: auto_link, check_map, const, construct, dynamic_vtable,
-instantiate, macro, member11, normalize_deduced, normalize, null, vtable
+instantiate, macro, member11, normalize, null, vtable
 
 ------
 ### Common Details
@@ -91,6 +240,12 @@ struct detail::combine_concepts<T,U>; // <T,T> => T, <T,void> => T, <void,T> => 
 using detail::combine_concepts_t<T,U> = combine_concepts<T,U>::type;
 using detail::extract_concept_or_void<T,U> = mp_eval_if_c<is_placeholder<remove_cv_ref_t<T>::value>,void,concept_of_t,U>;
 using detail::extract_concept_t<L1,L2> = mp_fold<mp_transform<extract_concept_or_void,L1,L2>,void,combine_concepts_t>;
+struct detail::maybe_extract_concept<T,U> { using type = mpl::eval_if<is_placeholder<remove_cv_ref_t<T>>, concept_of<remove_reference_t<U>>, identity<void>>::type; };
+struct detail::extract_concept<R(T0,T...), U0,U...> { using type = combine_concepts<maybe_extract_concept<T0,U0>::type, extract_concept<void(T...),U...>::type>::type; };
+struct detail::extract_concept<void()> { using type = void; };
+
+struct detail::normalize_deduced<M,T>;
+struct detail::normalize_placeholder<M,T>;
 
 struct detail::storage {
     ctor(){} ctor(self {<const>&|&&} o); self& operator=(const self& o);
