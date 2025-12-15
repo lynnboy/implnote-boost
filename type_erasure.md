@@ -79,6 +79,190 @@ public: ctor(){}
     friend bool operator{==|!=}(const self& lhs, const self& rhs) { return *lhs.impl.table {==|!=} *rhs.impl.table; }
     T::type find<T>() const { return impl.table->lookup((T*)0); }
 };
+
+class dynamic_binding<PlaceholderList> {
+  make_dynamic_vtable<PlaceholderList>::type impl;
+public: ctor<Map>(const static_binding<Map&>) { impl.init<Map>(); }
+  ctor<C,Map>(const binding<C>& other, const static_binding<Map>&) { impl.convert_from(*other.impl.table); }
+};
+
+const binding<C>& binding_of<C,T>(const any<C,T>& arg) { return access::table(arg); }
+
+struct detail::default_concept_interface { using apply<C,Base,ID> = concept_interface<C,Base,ID>; };
+default_concept_interface detail::b_te_find_interface(...);
+struct detail::choose_concept_interface<C,Base,ID> { using type = b_te_find_interface(declval<C>()).apply<C,Base,ID>; };
+struct detail::compute_bases_f<ID> { using apply<C,Base> = choose_concept_interface<C,Base,ID>::type; };
+using detail::compute_bases_t<Derived,C,T> = mp_reverse_fold<collect_concepts_t<C>, any_base<Derived>, computebases_f<T>::apply>;
+using detail::compute_bases<Derived,C,T> = identity<compute_bases_t<Derived,C,T>>;
+
+struct detail::is_any<T> : false_{};
+struct detail::is_any<any<C,T>>: true_{};
+struct detail::has_constructor<Any,...U> : ...{};
+using detail::has_copy_constructor<Any> = is_subconcept<constructible<placeholder_of<Any>::type(placeholder_of<Any>::type const&)>, concept_of<Any>::type>;
+using detail::has_move_constructor<Any> = is_subconcept<constructible<placeholder_of<Any>::type(placeholder_of<Any>::type &&)>, concept_of<Any>::type>;
+using detail::has_mutable_copy_constructor<Any> = is_subconcept<constructible<placeholder_of<Any>::type(placeholder_of<Any>::type &)>, concept_of<Any>::type>;
+
+struct detail::is_binding_arg<T> : false_{};
+struct detail::is_binding_arg<binding<T> [const&|&|&&]> : true_{};
+struct detail::is_static_binding_arg<T> : false_{};
+struct detail::is_static_binding_arg<static_binding<T> [const&|&|&&]> : true_{};
+struct detail::is_any_arg<T> : false_{};
+struct detail::is_any_arg<any<C,T> [const&|&|&&]> : true_{};
+struct detail::safe_concept_of<any<C,T> [const&|&|&&]> { using type = C; };
+struct detail::safe_placeholder_of<any<C,T> [const&|&|&&]> { using type = T; };
+using detail::safe_placeholder_t<T> = remove_cv_ref_t<safe_placeholder_of<T>::type>;
+
+struct any_constructor_control<Base,Enable=void> : Base { using base::ctor; };
+struct any_constructor_control<Base,enable_if_c<!has_copy_constructor<Base> && has_move_constructor<Base> && has_mutable_copy_constructor<Base>>::type> : Base
+{ using base::ctor; /* all special ctor/assign =default */ };
+struct any_constructor_control<Base,enable_if_c<!has_copy_constructor<Base> && !has_move_constructor<Base> && has_mutable_copy_constructor<Base>>::type> : Base
+{ using base::ctor; /* move-ctor =delete */ };
+struct any_constructor_control<Base,enable_if_c<!has_copy_constructor<Base> && has_move_constructor<Base> && !has_mutable_copy_constructor<Base>>::type> : Base
+{ using base::ctor; /* copy-ctor =delete */ };
+struct any_constructor_control<Base,enable_if_c<!has_copy_constructor<Base> && !has_move_constructor<Base> && !has_mutable_copy_constructor<Base>>::type> : Base
+{ using base::ctor; /* copy/move-ctor =delete */ };
+struct any_constructor_impl<C,T> : compute_bases<any<C,T>, C,T>::type {
+  using _b_te_base = base; using _b_te_table_type = binding<C>;
+  ctor(storage {const&|&&} data_arg, const _b_te_table_type& table_arg) : _b_te_table{table_arg}, _b_te_data[data_arg]{}
+  ctor() { _b_te_data.data=0; }
+  ctor<U>(U&& data_arg) requires(!is_any_arg<U> && !is_binding_arg<U> && !is_static_binding_arg<U>)
+    : _b_te_table{make_binding<mpl::map<pair<T,decay_t<U>>>>()}, _b_te_data{std::forward<U>(data_arg)}{}
+  ctor<U>(U&& data_arg, const static_binding<Map>& b) requires(!is_any_arg<U> && !is_binding_arg<U> && !is_static_binding_arg<U>)
+    : _b_te_table{b}, _b_te_data{std::forward<U>(data_arg)}{}
+  ctor<U>(U&& other) requires(is_subconcept<C, safe_concept_of<U>::type, if_c<is_same<T,safe_placeholder_t<U>>::value, void, mpl::map<pair<T,safe_placeholder_t<U>>>>>)
+    : _b_te_table{access::table(other), if_c<is_same<T,safe_placeholder_t<U>>,make_identity_placeholder_map<C>,map<pair<T,safe_placeholder_t<U>>>>::type{}}, _b_te_data{std::forward<U>(other)}{}
+  ctor<U>(U&& other, const binding<C>& binding_arg) requires(is_any_arg<U>)
+    : _b_te_table{binding_arg}, _b_te_data{std::forward<U>(other)}{}
+  ctor<U,Map>(U&& other, const static_binding<Map>& binding_arg) requires(is_subconcept<C,safe_concept_of<U>::type, M>>)
+    : _b_te_table{access::table(other), binding_arg}, _b_te_data{std::forward<U>(other)}{}
+  ctor(self {const&|&|&&} other) : _b_te_table{access::table(other)}, _b_te_data{<std::move>(other)}{}
+  const _b_te_table_type& _b_te_extract_table<R,...A,...U>(constructible<R(A...)>*, U&&...u) { return *extract_table((void(*)(A...))0, u...); } // called by each ctor
+  explicit ctor<...U>(U&&...u) requires has_constructor<self,U...> : _b_te_table{std::forward<U>(u)...}, _b_te_data{std::forward<U>(u)...}{}
+  explicit ctor<...U>(const binding<c>& binding_arg, U&&...u) requires has_constructor<self,U...> : _b_te_table{binding_arg}, _b_te_data{std::forward<U>(u)...}{}
+  self& operator=(self {const&|&|&&} other) { _b_te_resolve_assign(other); return *this; }
+  ~dtor() { _b_te_table.find<destructible<T>>()(_b_te_data); }
+protected: _b_te_table_type _b_te_table; storage _b_te_data;
+};
+
+struct detail::is_rvalue_for_any<T> : not_<is_lvalue_reference<T>>{};
+struct detail::is_rvalue_for_any<any<C,P>> : not_<is_lvalue_reference<T>>{};
+
+class any<C,T=_self> : public any_constructor_control<any_constructor_impl<C,T>> {
+  using table_type = binding<C>;
+public: using _b_te_concept_type = C; using _b_te_base = base;
+  using base::ctor;
+  self& operator=<U>(U&& other) { _b_te_resolve_assign(std::forward<U>(other)); return *this; }
+  operator param<C,T{&|&&}>() {&|&&} { return {access::data(*this); access::table(*this)}; }
+private: void _b_te_swap(self& other) { std::swap(_b_te_data, other._b_te_data); std::swap(b_te_table, other._b_te_table); }
+  void _b_te_resolve_assign<Other>(Other&& other){ call(assignable<T,U>{}, *this, std::forward<Other>(other)); }
+  void _b_te_resolve_assign<C2,T2>(any<C2,T2> {const&|&|&&} other) { _b_te_resolve_assign_any(<std::move>(other)); }
+  void _b_te_resolve_assign_any<Other>(Other&& other);
+};
+class any<C,T&> : public compute_bases<self,C,T>::type {
+  using table_type = binding<C>;
+public: using _b_te_concept_type = C;
+  ctor(const storage& data_arg, const table_type& table_arg): data{data_arg}, table{table_arg}{}
+  ctor<U>(U& arg) requires !(is_const_v<U>||is_any<U>) : table{make_binding<map<pair<T,U>>>{}} { data.data = addressof(arg); }
+  ctor<U,Map>(U& arg, const static_binding<Map>& binding_arg) : table{binding_arg} { data.data = addressof(arg); }
+  ctor(self {const&|&} other) : data{other.data}, table{other.table}{}
+  ctor(any<C,T>& other) : data{access::data(other)}, table{access::table(other)}{}
+  ctor<C2,T2>(any<C2,T2&>& other) requires !(is_same_v<C,C2>||is_const_v<T2>) : data{access::data(other), access::table(other), map<pair<T,T2>>{}}{}
+  ctor<C2,T2>(any<C2,T2>& other) requires !(is_same_v<C,C2>||is_const_v<remove_reference_t<T2>>) : data{access::data(other)}, table{access::table(other), map<pair<T,remove_reference_t<T2>>>{}}{}
+  ctor<C2,T2,Map>(const any<C2,T2&>& other, const static_binding<Map>& binding_arg) requires !is_const_v<T2> : data{access::data(other)}, table{access::table(other), binding_arg}{}
+  ctor<C2,T2,Map>(any<C2,T2>& other, const static_binding<Map>& binding_arg) requires !is_const_v<remove_reference_t<T2>> : data{access::data(other)}, table{access::table(other), binding_arg}{}
+  ctor<C2,T2>(const any<C2,T2&>& other, const binding<C>& binding_arg) requires !is_const_v<T2> : data{access::data(other)}, table{binding_arg}{}
+  ctor<C2,T2>(any<C2,T2>& other, const binding<C>& binding_arg) requires !is_const_v<remove_reference_t<T2>> : data{access::data(other)}, table{binding_arg}{}
+  self& operator=(self {const&|&|&&} other) { _b_te_resolve_assign(<std::move>(other)); return *this; }
+  self& operator=<U>(U&& other) { _b_te_resolve_assign(std::forward<U>(other)); return *this; }
+  operator param<C,T&>() const { return {data, table}; }
+private: void _b_te_swap(self& other) { std::swap(_b_te_data, other._b_te_data); std::swap(b_te_table, other._b_te_table); }
+  void _b_te_resolve_assign<Other>(Other&& other){ call(assignable<T,U>{}, *this, std::forward<Other>(other)); }
+  storage data; table_type table;
+};
+class any<C,T const&> : public compute_bases<self,C,T>::type {
+  using table_type = binding<C>;
+public: using _b_te_concept_type = C;
+  ctor(const storage& data_arg, const table_type& table_arg): data{data_arg}, table{table_arg}{}
+  ctor<U>(U const& arg) requires !(is_const_v<U>||is_any<U>) : table{make_binding<map<pair<T,U>>>{}} { data.data = addressof(arg); }
+  ctor<U,Map>(U const& arg, const static_binding<Map>& binding_arg) : table{binding_arg} { data.data = addressof(arg); }
+  ctor(self const& other) : data{other.data}, table{other.table}{}
+  ctor(any<C,T>const& other) : data{access::data(other)}, table{access::table(other)}{}
+  ctor<C2,T2>(any<C2,T2&>const& other) requires !(is_same_v<C,C2>||is_const_v<T2>) : data{access::data(other), access::table(other), map<pair<T,T2>>{}}{}
+  ctor<C2,T2>(any<C2,T2>const& other) requires !(is_same_v<C,C2>||is_const_v<remove_reference_t<T2>>) : data{access::data(other)}, table{access::table(other), map<pair<T,remove_reference_t<T2>>>{}}{}
+  ctor<C2,T2,Map>(any<C2,T2&>const& other, const static_binding<Map>& binding_arg) requires !is_const_v<T2> : data{access::data(other)}, table{access::table(other), binding_arg}{}
+  ctor<C2,T2,Map>(any<C2,T2>const& other, const static_binding<Map>& binding_arg) requires !is_const_v<remove_reference_t<T2>> : data{access::data(other)}, table{access::table(other), binding_arg}{}
+  ctor<C2,T2>(any<C2,T2&>const& other, const binding<C>& binding_arg) requires !is_const_v<T2> : data{access::data(other)}, table{binding_arg}{}
+  ctor<C2,T2>(any<C2,T2>const& other, const binding<C>& binding_arg) requires !is_const_v<remove_reference_t<T2>> : data{access::data(other)}, table{binding_arg}{}
+  self& operator=(self const& other) { _b_te_resolve_assign(<std::move>(other)); return *this; }
+  self& operator=<U>(U const& other) { _b_te_resolve_assign(std::forward<U>(other)); return *this; }
+  operator param<C,T const&>() const { return {data, table}; }
+private: void _b_te_swap(self& other) { std::swap(_b_te_data, other._b_te_data); std::swap(b_te_table, other._b_te_table); }
+  storage data; table_type table;
+};
+class any<C,T&&> : public compute_bases<self,C,T>::type {
+  using table_type = binding<C>;
+public: using _b_te_concept_type = C;
+  ctor(const storage& data_arg, const table_type& table_arg): data{data_arg}, table{table_arg}{}
+  ctor<U>(U&& arg) requires !(is_const_v<U>||is_any<U>) : table{make_binding<map<pair<T,U>>>{}} { data.data = addressof(arg); }
+  ctor<U,Map>(U&& arg, const static_binding<Map>& binding_arg) : table{binding_arg} { data.data = addressof(arg); }
+  ctor(self {const&|&&} other) : data{other.data}, table{<std::move>(other.table)}{}
+  ctor(any<C,T>&& other) : data{access::data(other)}, table{std::move(access::table(other))}{}
+  ctor<C2,T2>(any<C2,T2&&>&& other) requires !(is_reference_v<T2>||is_same_v<C,C2>||is_const_v<T2>) : data{access::data(other), access::table(std::move(other)), map<pair<T,T2>>{}}{}
+  ctor<C2,T2>(any<C2,T2>&& other) requires !(is_same_v<C,C2>||is_const_v<remove_reference_t<T2>>) : data{access::data(other)}, table{std::move(access::table(other)), map<pair<T,remove_reference_t<T2>>>{}}{}
+  ctor<C2,T2,Map>(const any<C2,T2&&>& other, const static_binding<Map>& binding_arg) requires !is_const_v<T2> : data{access::data(other)}, table{std::move(access::table(other)), binding_arg}{}
+  ctor<C2,T2,Map>(any<C2,T2>&& other, const static_binding<Map>& binding_arg) requires !is_const_v<remove_reference_t<T2>> : data{access::data(other)}, table{access::table(other), binding_arg}{}
+  ctor<C2,T2>(const any<C2,T2&&>& other, const binding<C>& binding_arg) requires !is_const_v<T2> : data{access::data(other)}, table{binding_arg}{}
+  ctor<C2,T2>(any<C2,T2>&& other, const binding<C>& binding_arg) requires !is_const_v<remove_reference_t<T2>> : data{access::data(other)}, table{binding_arg}{}
+  self& operator=(self const& other) { _b_te_resolve_assign(<std::move>(other)); return *this; }
+  self& operator=<U>(U&& other) { _b_te_resolve_assign(std::forward<U>(other)); return *this; }
+  operator param<C,T&&>() const { return {data, table}; }
+private: void _b_te_swap(self& other) { std::swap(_b_te_data, other._b_te_data); std::swap(b_te_table, other._b_te_table); }
+  void _b_te_resolve_assign<Other>(Other&& other){ call(assignable<T,U>{}, *this, std::forward<Other>(other)); }
+  storage data; table_type table;
+};
+
+using any_ref<C,T> = any<C,T&>;
+using any_cref<C,T> = any<C,const T&>;
+using any_rvref<C,T> = any<C,T&&>;
+
+<const> void* detail::get_pointer<C,T>(any<C,T[&|const&]> <const>& arg) { return access::data(arg).data; }
+bool detail::check_any_cast<T,C,Tag>(const any<C,T>& arg)
+{ if constexpr (is_void_v<remove_reference_t<T>>) {return true;}
+  else { return access::table(arg).find<typeid_<remove_cv_ref_t<Tag>>>()() == typeid(T); } }
+T any_cast<T,C,Tag>(any<C,T <const>&> arg) { if (check_any_cast<T>(arg) return *(remove_reference_t<const T>*)get_pointer(arg)); else THROW_EXCEPTION(bad_any_cast{}); }
+T any_cast<T,C,Tag>(any<C,T <const>*> arg) { if (check_any_cast<T>(*arg) return *(remove_reference_t<const T>*)get_pointer(*arg)); else return 0; }
+
+struct detail::make_ref_placeholder<P,P2<&&>,Any> { using type = P&&; }; // (P2,<const>Any&)-><const>P&, (P2&,<const>Any<&>)->P&, (const P2&,<const>Any<&>)->const P&, (P2&&,<const>Any&)-><const> P&
+struct detail::make_ref_placeholder<P,P2<&|const&>,Any{const&|&}> { using type = <const>P&; };
+struct detail::make_result_placeholder_map<R,Tag> { using type = map<pair<remove_cv_ref_t<placeholder_of<R>::type>, remove_cv_ref_t<Tag>>>; };
+R detail::dynamic_any_cast_impl<R,Any,Map>(Any&& arg, const static_binding<Map>& map);
+R dynamic_any_cast<R,C,Tag>(any<C,Tag>{const&|&|&&} arg) { return dynamic_any_cast_impl<R>(<std::move>(arg), make_binding<make_result_placeholder_map<R,Tag>::type>()); }
+R dynamic_any_cast<R,C,Tag,Map>(any<C,Tag>{const&|&|&&} arg, const static_binding<Map>& map) { return dynamic_any_cast_impl<R>(<std::move>(arg), map); }
+
+using detail::first_placeholder_index_t<...T> = first_placeholder_index<remove_cv_ref_t<T>...>::type;
+using detail::free_param_t<Base,Tn,i,...T> = eval_if_c<first_placeholder_index_t<T...>::value==i, maybe_const_this_param<Tn,Base>,as_param<Base,Tn>>::type;
+struct detail::free_interface_chooser<Sig,ID> { using apply<Base,C<_>,F<...>> = Base; };
+struct detail::free_interface_chooser<R(A...),first_placeholder<remove_cv_ref_t<A>...>::type>
+{ using apply<Base,C<_>,F<...>> = F<R(A...),Base,make_index_list_t<sizeof...(A)>>; };
+struct detail::free_choose_interface<Sig,C<_>,F<...>> { using apply<C,Base,ID> = free_interface_chooser<Sig,ID>::apply<Base,C,F>; };
+
+bool is_empty<T>(const T& arg) { return access::data(arg).data == 0; }
+struct detail::mp_set_has_key<S,K> : mp_set_contains<S,K>{};
+struct detail::is_subconcept_f<Super,Bindings> { using apply<T> = mp_set_contains<Super,rebind_placeholders_t<T,Bindings>>; };
+struct detail::is_subconcept_f<Super,void> { using apply<T> = mp_set_contains<Super,T>; };
+struct detail::is_subconcept_impl<Sub,Super,PhMap> {
+  using super_set = normalize_concept_t<Super>; using ph_subs_super = get_placeholder_normalization_map_t<Super>;
+  using normalized_sub = normalize_concept_t<Sub>; using ph_subs_sub = get_placeholder_normalization_map_t<Sub>;
+  using bindings = mp_eval_if<is_same<PhMap,void>, void, convert_deductions_t, PhMap, ph_subs_sub, ph_subs_super>;
+  using type = mp_all_of<normalized_sub, is_subconcept_f<super_set,bindings>::apply>;
+};
+struct is_subconcept<Sub,Super,PhMap=void> : and_<check_map<Sub,PhMap>, is_subconcept_impl<Sub,Super,PhMap>>::type {};
+struct is_subconcept<Sub,Super,void> : is_subconcept_impl<Sub,Super,void>::type {};
+struct is_subconcept<Sub,Super,static_binding<PhMap>> : and_<check_map<Sub,PhMap>, is_subconcept_impl<Sub,Super,PhMap>>::type {};
+
+const std::type_info& typeid_of<C,T>(const any<C,T>& arg) { return access::table(arg).find<type_id<remove_cv_ref_t<T>>>()(); }
+const std::type_info& typeid_of<C,T>(const param<C,T>& arg) { return access::table(arg).find<type_id<remove_cv_ref_t<T>>>()(); }
+const std::type_info& typeid_of<C,T>(const binding<C>& binding_arg) { return binding_arg.find<typeid_<T>>()(); }
 ```
 
 ### Placeholder
@@ -95,6 +279,54 @@ struct placeholder_of<param<C,T>> { using type = T; };
 using placeholder_of_t<T> = placeholder_of<T>::type;
 
 struct deduced<MF> : placeholder { using type = mpl::eval_if<empty<get_placeholders<MF,mp_list<>>::type>, MF, identity<self>>::type; };
+
+struct same_type<T,U>{};
+
+struct cons<C,...T>;
+struct cons<C> { ctor<Bindings>(const Bindings&){} };
+struct cons<C,T0,T...> { using value_type = any<C,T0>; using rest_type = cons<Concept,T...>;
+  ctor<Binding,U0,...U>(const Binding& b, U0&& u0, U&&...u) : value{std::forward<U0>(u0), b}, rest(b, std::forward<U>(u)...){}
+  any<C,T0> value; cons<C,T...> rest; }
+struct detail::cons_advance<n,Cons> { using type = self<n-1,Cons>::type::rest_type;
+  static const type& call(const Cons& c) { return self<n-1,Cons>::call(c).rest; } };
+struct detail::cons_advance<0,Cons> { using type = Cons; static const type& call(const Cons& c) { return c; } };
+struct detail::make_map<...T>;
+struct detail::make_map<T0,T...> { using type = mpl::insert<make_map<T...>::type,T0>::type; };
+struct detail::make_map<> { using type = map<>; };
+struct tuple_iterator<Tuple,n> : fusion::iterator_facade<self, random_access_iterator_tag> {
+  using index = int_<n>; explicit ctor(Tuple& t): t{&t}{}
+  struct value_of<It> { using type = Tuple::value_at<Tuple,index>::type; };
+  struct deref<It> { using type = Tuple::at<Tuple,index>::type; static type call(It it) { return tuple::call(*it.t); } };
+  struct advance<It,M> { using type = tuple_iterator<Tuple,It::index::value+M::value>; static type call(It it) { return {*it.t}; } };
+  struct next<It> : advance<It,int_<1>>{}; struct prior : advance<It,int_<-1>>{};
+  struct distance<It1,It2> { using type = mpl::minus<It2::index,It1::index>::type; static type call(It1,It2) { return {}; } };
+private: Tuple* t;
+};
+struct tuple<C,T...> : fusion::sequence_facade<self,forward_traversal_tag> {
+  explicit ctor<...U>(U&&...args) : impl{make_binding<make_map<pair<remove_cv_ref_t<T>,remove_cv_ref_t<U>>...>::type>(), std::forward<U>(args)...}{}
+  struct begin<Seq> { using type = tuple_iterator<Seq,0>; static type call(Seq& seq) { return {seq}; } };
+  struct end<Seq> { using type = tuple_iterator<Seq,sizeof...(T)>; static type call(Seq& seq) { return {seq}; } };
+  struct size<Seq> { using type = int_<sizeof...(T)>; static type call(Seq& seq) { return {}; } };
+  struct empty<Seq> { using type = bool_<sizeof...(T)==0>; static type call(Seq& seq) { return {}; } };
+  struct at<Seq,N> { using value_type = cons_advance<N::value,cons<C,T...>>::type::value_type;
+    using type = if_<is_const<Seq>, const value_type&, value_type&>::type;
+    static type call(Seq& seq) { return {cons_advance<N::value, cons<C,T...>>::call(seq.impl).value; } };
+  };
+  struct value_at<Seq,N> { using value_type = cons_advance<N::value, cons<C,T...>>::type::value_type; };
+  cons<C,T...> impl;
+};
+<const> cons_advance<n,cons<C,T...>>::type::value_type& get<n,C,...T>(<const> tuple<C,T...>& t) { return R::call(t.impl).value; }
+
+using detail::key_type = std::vector<const std::type_info*>;
+using detail::value_type = void(*)();
+void detail::register_function_impl(const key_type& key, value_type fn);
+value_type detail::lookup_function_impl(const key_type& key);
+struct detail::append_to_key_static<Map> { void operator()<P>(P) { key->push_back(&typeid(mp_second<mp_map_find<Map,P>>)); } key_type* key; };
+struct detail::_<n> : placeholder{};
+struct detail::counting_map_appender { struct apply<State,Key> { using type = insert<State,pair<Key,_<size<State>::value>>>::type; } };
+struct detail::register_function<Map> { void operator()<F>(F); };
+void register_binding<C,Map>(const static_binding<Map>&);
+void register_binding<C,T>();
 ```
 
 ------
@@ -135,8 +367,148 @@ struct typeid_<T=_self> { using type = const std::type_info& (*)(); static const
 struct detail::get_null_vtable_entry<typeid_<T>> { using type = typeid_<void>; };
 struct detail::null_destroy { static void value(storage&){} };
 struct detail::get_null_vtable_entry<destructible<T>> { using type = null_destroy; };
-```
 
+struct detail::result_of_callable<Sig>;
+struct callable<R(T...),F> { static R apply(F&f, T...arg) { return f(std::forward<T>(arg)...); } };
+struct callable<void(T...),F> { static void apply(F&f, T...arg) { f(std::forward<T>(arg)...); } };
+struct concept_interface<callable<R(T...),<const>F>, Base,F,Enable> : Base {
+  struct result<Sig> : result_of_callable<Sig>{};
+  using _b_te_is_callable=void; using _b_te_callable_results = vector<R>; using _b_te_callable_size = char(&)[1];
+  _b_te_callable_size _b_te_deduce_callable(as_param<Base,T>::type...) <const>;
+  rebind_any<Base,R>::type operator()(as_param<Base,T>::type...arg) { return call(callable<R(T...),<const>F>(),*this,std::forward<as_param<Base,T>::type>(arg)...); }
+};
+struct concept_interface<callable<R(T...),<const>F>, Base,F,Base::_b_te_is_callable> : Base {
+  using _b_te_callable_results = push_back<Base::_b_te_callable_results,R>; using _b_te_callable_size = char(&)[mpl::size<_b_te_callable_results>::value];
+  _b_te_callable_size _b_te_deduce_callable(as_param<Base,T>::type...) <const>; using base::_b_te_deduce_callable;
+  rebind_any<Base,R>::type operator()(as_param<Base,T>::type...arg) { return call(callable<R(T...),<const>F>(),*this,std::forward<as_param<Base,T>::type>(arg)...); }
+};
+struct detail::result_of_callable<This(T...)> { using type = at_c<This::_b_te_callable_results, sizeof(declval<This>()._b_te_deduce_callable(declval<T>()...))-1>:type;  };
+
+struct derived<T> { using type = T::_b_te_derived_type; };
+using derived_t<T> = T::_b_te_derived_type;
+
+// operators
+struct incrementable<T=_self> { static void apply(T& arg){ ++arg; } };
+struct concept_interface<incrementable<T>,Base,T> requires(should_be_<non>_const<T,Base>) : Base
+{ using _derived = derived<Base>::type;
+  <const> _derived& operator++() <const> { call(incrementable<T>{}, *this); return {*this}; }
+  rebind_any<Base,T>::type operator++(int) <const> { rebind_any::type result={(<const>_derived&)*this}; call(name<T>{},*this); return result; }
+};
+struct decrementable<T=_self> { static void apply(T& arg){ --arg; } };
+struct concept_interface<decrementable<T>,Base,T> requires(should_be_<non>_const<T,Base>) : Base
+{ using _derived = derived<Base>::type;
+  <const> _derived& operator--() <const> { call(decrementable<T>{}, *this); return {*this}; }
+  rebind_any<Base,T>::type operator--(int) <const> { rebind_any::type result={(<const>_derived&)*this}; call(name<T>{},*this); return result; }
+};
+struct complementable<T=_self,R=T> { static R apply(const T& arg) { return ~arg;} };
+struct concept_interface<complementable<T,R>,Base,T> : Base
+{ rebind_any<Base,R>::type operator~() const { return call(complementable<T,R>{}, *this); } };
+struct negatable<T=_self,R=T> { static R apply(const T& arg) { return -arg;} };
+struct concept_interface<negatable<T,R>,Base,T> : Base
+{ rebind_any<Base,R>::type operator-() const { return call(negatable<T,R>{}, *this); } };
+struct dereferenceable<T=_self,R=T> { static R apply(const T& arg) { return *arg;} };
+struct concept_interface<dereferenceable<R,T>,Base,T> : Base
+{ rebind_any<Base,R>::type operator*() const { return call(dereferenceable<R,T>{}, *this); } };
+
+// (NAME,OP): (addable,+), (subtractable,-), (multipliable,*), (dividable,/), (modable,%), (left_shiftable,<<), (right_shiftable,>>), (bitandable,&), (bitorable,|), (bitxorable,^)
+struct NAME<T=_self,U=T,R=T> { static R apply(const T& lhs, const U& rhs){ return lhs OP rhs; } };
+struct concept_interface<NAME<T,U,R>,Base,T> : Base
+{ friend rebind_any<Base,R>::type operator OP(const derived<Base>::type& lhs, as_param<Base,const U&>::type rhs) { return call(NAME<T,U,R>{}, lhs, rhs); } };
+struct concept_interface<NAME<T,U,R>,Base,U> requires (!is_placeholder<T>) : Base
+{ friend rebind_any<Base,R>::type operator OP(const T& lhs, const derived<Base>::type& rhs) { return call(NAME<T,U,R>{}, lhs, rhs); } };
+// (NAME,OP): (add_assignable,+=), (subtract_assignable,-=), (multiply_assignable,*=), (divide_assignable,/=), (mod_assignable,%=), (left_shift_assignable,<<=), (right_shift_assignable,>>=), (bitand_assignable,&=), (bitor_assignable,|=), (bitxor_assignable,^=)
+struct NAME<T=_self,U=T> { static void apply(T& lhs, const U& rhs){ lhs OP rhs; } };
+struct concept_interface<NAME<T,U>,Base,T> requires (!is_same<placeholder_of<Base>::type, const T&>) : Base
+{ friend non_const_this_param<Base>::type& operator OP(non_const_this_param<Base>::type& lhs, as_param<Base,const U&>::type rhs) { call(NAME<T,U>{}, lhs, rhs); return lhs; } };
+struct concept_interface<NAME<T,U>,Base,U> requires (!is_placeholder<T>) : Base
+{ friend T& operator OP(T& lhs, const derived<Base>::type& rhs) { call(NAME<T,U>{}, lhs, rhs); return lhs; } };
+
+struct equality_comparable<T=_self,U=T> { static bool apply(const T& lhs, const U& rhs) { return lhs == rhs; } };
+struct concept_interface<equality_comparable<T,U>,Base,T> : Base {
+  friend bool operator==(const derived<Base>::type& lhs, as_param<Base,const U&>::type rhs)
+  { if (check_match(equality_comparable<T,U>{}, lhs,rhs)) return unchecked_call(equality_comparable<T,U>{}, lhs,rhs); return false; }
+  friend bool operator!=(const derived<Base>::type& lhs, as_param<Base,const U&>::type rhs) { return !(lhs==rhs); }
+};
+struct concept_interface<equality_comparable<T,U>,Base,U> requires(!is_placeholder<T>) : Base {
+  friend bool operator==(const T& lhs, const derived<Base>::type& rhs) { return call(equality_comparable<T,U>{}, lhs, rhs); }
+  friend bool operator!=(const T& lhs, const derived<Base>::type& rhs) { return !(lhs==rhs); }
+};
+struct less_than_comparable<T=_self,U=T> { static bool apply(const T& lhs, const U& rhs) { return lhs < rhs; } };
+struct concept_interface<less_than_comparable<T,T>,Base,T> : Base {
+  friend bool operator<(const derived<Base>::type& lhs, as_param<Base,const T&>::type rhs)
+  { if constexpr (is_relaxed<concept_of<Base>::type>()) {
+      if (check_match(f,lhs,rhs)) return unchecked_call(f,lhs,rhs);
+      else return typeid_of((const derived<T>::type&)lhs).before(typeid_of((const derived<U>::type&)rhs));
+    } else return call(f,lhs,rhs); }
+  friend bool operator>=(const derived<Base>::type& lhs, as_param<Base,const T&>::type rhs);
+  friend bool operator>(as_param<Base,const T&>::type lhs, const derived<Base>::type& rhs);
+  friend bool operator<=(as_param<Base,const T&>::type lhs, const derived<Base>::type& rhs);
+};
+struct concept_interface<less_than_comparable<T,U>,Base,T> : Base {
+  friend bool operator<(const derived<Base>::type& lhs, as_param<Base,const U&>::type rhs)
+  { return call(less_than_comparable<T,U>{}, lhs, rhs); }
+  friend bool operator>=(const derived<Base>::type& lhs, as_param<Base,const U&>::type rhs);
+  friend bool operator>(as_param<Base,const U&>::type lhs, const derived<Base>::type& rhs);
+  friend bool operator<=(as_param<Base,const U&>::type lhs, const derived<Base>::type& rhs);
+};
+struct concept_interface<less_than_comparable<T,U>,Base,U> requires(is_placeholder<T>) : Base {
+  friend bool operator<(const T& lhs, const derived<Base>::type& rhs)
+  { return call(less_than_comparable<T,U>{}, lhs, rhs); }
+  friend bool operator>=(const T& lhs, const derived<Base>::type& rhs);
+  friend bool operator>(const derived<Base>::type& lhs, const T& rhs);
+  friend bool operator<=(const derived<Base>::type& lhs, const T& rhs);
+};
+struct subscriptable<R,T=_self,N=ptrdiff_t> { static R apply(T& arg, const N& index) { return arg[index]; } };
+struct concept_interface<subscriptable<R,T,N>,Base,remove_const_t<T>> requires(should_be_<non>_const<T,Base>) : Base
+{ rebind_any<Base,R>::type operator[](as_param<Base,const N&>::type index) <const> { return call(subscriptable<R,<const> T,N>{}, *this, index); } };
+
+struct ostreamable<Os=std::ostream,T=_self> { static void apply(Os& out, const T& arg) { out << arg; } };
+struct concept_interface<ostreamable<Os,T>,Base,Os> : Base
+{ friend non_const_this_param<Base>::type& operator<<(non_const_this_param<Base>::type& lhs, as_param<Base,const T&>::type rhs)
+  { call(ostreamable<Os,T>{}, lhs, rhs); return lhs; } };
+struct concept_interface<ostreamable<Os,T>,Base,T> requires(!is_placeholder<Os>) : Base
+{ friend Os& operator<<(Os& lhs, const derived<Base>::type& rhs) { call(ostreamable<Os,T>{}, lhs, rhs); return lhs; } };
+struct istreamable<Is=std::istream,T=_self> { static void apply(Is& in, T& arg) { in >> arg; } };
+struct concept_interface<istreamable<Is,T>,Base,Is> : Base
+{ friend non_const_this_param<Base>::type& operator>>(non_const_this_param<Base>::type& lhs, as_param<Base,const T&>::type rhs)
+  { call(istreamable<Is,T>{}, lhs, rhs); return lhs; } };
+struct concept_interface<istreamable<Is,T>,Base,T> requires(!is_placeholder<Is>) : Base
+{ friend Is& operator>>(Is& lhs, const derived<Base>::type& rhs) { call(istreamable<Is,T>{}, lhs, rhs); return lhs; } };
+
+// iterator
+struct is_placeholder<use_default> : false_{};
+struct detail::iterator_value_type_impl<T> { using type = std::iterator_traits<T>::value_type; };
+struct iterator_value_type<T> { using type = eval_if<is_placeholder<T>, identity<void>, iterator_value_type_impl<T>>::type; };
+struct iterator<Traversal,T=_self,Ref=use_default,Diff=ptrdiff_t,V=deduced<iterator_value_type<T>>::type>;
+struct iterator_reference<Ref,V> { using type = Ref; };
+struct iterator_reference<use_default,V> { using type = V&; };
+struct iterator<no_traversal_tag,T,Ref,Diff,V>
+  : mpl::vector<copy_constructible<T>,constructible<T()>,equality_comparable<T>, dereferenceable<iterator_reference<Ref,V>::type,T>,assignable<T>>
+{ using value_type = V; using reference = iterator_reference<Ref,V>::type; using difference_type = Diff; };
+struct iterator<incrementable_traversal_tag, T,Ref,Diff,V> : mpl::vector<iterator<no_traversal_tag, T,Ref,Diff>, incrementable<T>>
+{ using value_type = V; using reference = iterator_reference<Ref,V>::type; using difference_type = Diff; };
+struct iterator<single_pass_traversal_tag, T,Ref,Diff,V> : mpl::vector<iterator<incrementable_traversal_tag, T,Ref,Diff,V>> {};
+struct iterator<forward_traversal_tag, T,Ref,Diff,V> : mpl::vector<iterator<incrementable_traversal_tag, T,Ref,Diff,V>> {};
+struct iterator<bidirectional_traversal_tag, T,Ref,Diff,V> : mpl::vector<iterator<incrementable_traversal_tag, T,Ref,Diff,V>, decrementable<T>>
+{ using value_type = V; using reference = iterator_reference<Ref,V>::type; using difference_type = Diff; };
+struct iterator<random_access_traversal_tag, T,Ref,Diff,V>
+  : mpl::vector<iterator<bidirectional_traversal_tag, T,Ref,Diff,V>,
+      addable<T,Diff,T>, addable<Diff,T,T>, subtractable<T,Diff,T>, subtractable<T,T,Diff>, subscriptable<iterator_reference<Ref,V>::type,T,Diff>>
+{ using value_type = V; using reference = iterator_reference<Ref,V>::type; using difference_type = Diff; };
+struct forward_iterator<T=_self,Ref=use_default,Diff=ptrdiff_t,V=deduced<iterator_value_type<T>>::type> : iterator<forward_traversal_tag, T,Ref,Diff,V> {};
+struct bidirectional_iterator<T=_self,Ref=use_default,Diff=ptrdiff_t,V=deduced<iterator_value_type<T>>::type> : iterator<bidirectional_traversal_tag, T,Ref,Diff,V> {};
+struct random_access_iterator<T=_self,Ref=use_default,Diff=ptrdiff_t,V=deduced<iterator_value_type<T>>::type> : iterator<random_access_traversal_tag, T,Ref,Diff,V> {};
+struct concept_interface<iterator<no_traversal_tag, T,Ref,Diff,V>,Base,T> : Base {
+  using value_type = rebind_any<Base,V>::type; using reference = rebind_any<Base,iterator_reference<Ref,V>::type>::type;
+  using difference_type = Diff; using pointer = if_<is_reference<reference>, remove_reference_t<reference>*, value_type*>::type;
+};
+struct concept_interface<iterator<forward_traversal_tag, T,Ref,Diff,V>, Base,T> : Base { using iterator_category = std::forward_iterator_tag; };
+struct concept_interface<forward_iterator<T,Ref,Diff,V>, Base,T> : Base { using iterator_category = std::forward_iterator_tag; };
+struct concept_interface<iterator<bidirectional_traversal_tag, T,Ref,Diff,V>, Base,T> : Base { using iterator_category = std::bidirectional_iterator_tag; };
+struct concept_interface<bidirectional_iterator<T,Ref,Diff,V>, Base,T> : Base { using iterator_category = std::bidirectional_iterator_tag; };
+struct concept_interface<iterator<random_access_traversal_tag, T,Ref,Diff,V>, Base,T> : Base { using iterator_category = std::random_access_iterator_tag; };
+struct concept_interface<random_access_iterator<T,Ref,Diff,V>, Base,T> : Base { using iterator_category = std::random_access_iterator_tag; };
+```
 ------
 ### Concept Constraining and Calling
 
@@ -217,11 +589,6 @@ call_result<Op,void(U&&...)>::type call<Op,...U>(const Op& f, U&&...arg)
 { require_match(f,std::forward<U>(arg)...); return unchecked_call(f,std::forward<U>(arg)...); }
 ```
 
-any_cast, any, binding_of, callable, derived, dynamic_any_cast, dynamic_binding, free,
-is_empty, is_subconcept, iterator, member, operators, register_binding, same_type, tuple, typeid_of
-
-detail/: auto_link, const, construct, dynamic_vtable, macro, member11
-
 ------
 ### Common Details
 
@@ -272,6 +639,19 @@ struct detail::make_vtable_impl<stored_arg_pack<T...>> { using type = vtable_sto
 struct detail::vtable_init<Table,...T> { static constexpr Table value = Table{T::value...}; };
 struct detail::make_vtable_init_impl<Table,stored_arg_pack<T...>> { using type = vtable_init<Table,T...>; };
 
+struct detail::dynamic_binding_impl<P> { const std::type_info* type; ctor()=default; constexpr ctor(const std::type_info* t):type{t}{} };
+struct detail::dynamic_binding_element<T> { using type = const std::type_info*; };
+struct detail::append_to_key<Table> {
+  void operator()<P>(P) { key->push_back(((const dynamic_binding_impl<P>*)table)->type)};
+  const Table* table; key_type* key; }
+struct detail::dynamic_vtable<...P> : dynamic_binding_impl<P>... {
+  ctor()=default; constexpr ctor(dynamic_binding_element<P>::type...t): base(t)...{}
+  F::type lookup<F>(F*) const;
+  void init() { *this = dynamic_vtable{&typeid(at<Bindings,P>::type)...}; }
+  void convert_from<Bindings,Src>(const Src& src) { *this = dynamic_vtable(&src.lookup((typeid_<at<Bindings,P>::type>*0)())...); }
+};
+struct detail::make_dynamic_vtable_impl<stored_arg_pack<P...>> { using type = dynamic_vtable<P...>; };
+struct detail::make_dynamic_vtable<PlaceholderList> : make_dynamic_vtable_impl<make_arg_pack<PlaceholderList>::type> {};
 
 struct detail::identity<T> { using type = T; };
 struct detail::rebind_placeholders<T,Bindings> { using type = void; };
@@ -419,6 +799,28 @@ struct detail::make_instantiate_concept_impl<mp_list<T...>> { using apply<F<_>> 
 struct detail::instantiate_concept_rebind_f<Map> { using apply<T> = rebind_placeholders<T,Map>::type; };
 using detail::make_instantiate_concept<C,Map> = make_instantiate_concept_impl<mp_transform<
     instantiate_concept_rebind_f<add_deductions< make_mp_list<Map>, get_placeholder_normalization_map<C>::type >::type>::apply, normalize_concept_t<C>>;
+
+using detail::choose_member_interface<P,Interface<...>,Sig,C,Base,ID>
+  = if_c<is_reference_v<P>, if_c<is_non_const_ref<P>::value,Interface<Sig,C,Base,const ID>,Bae>::type, Interface<Sig,C,Base,ID>>::type;
+struct detail::choose_member_impl<Sig>;
+struct detail::choose_member_impl<R(C::*)(T...)const> { using apply<P,M<_>,S<_,_>> = vector<S<R(T...),const P>>; };
+struct detail::choose_member_impl<R(C::*)(T...)const> { using apply<P,M<_>,S<_,_>> = M<R(P&,T...)>; };
+using detail::choose_member_impl_t<Sig,P,M<_>,Self<_,_>> = choose_member_impl<Sig(dummy::*)>::apply<P,M,Self>;
+struct detail::member_interface_choose<Sig,T,ID> { using apply<Base,C<_,_>,M<...>> = Base; };
+struct detail::member_interface_choose<R(A...),T,T> { using apply<Base,C<_,_>,M<...>> = choose_member_interface<placeholder_of_t<Base>,M,R(A...),C<R(A...),T>,Base,T>; };
+struct detail::member_interface_choose<R(A...),const T,T> { using apply<Base,C<_,_>,M<...>> = M<R(A...),C<R(A...),const T>,Base,const T>; };
+struct detail::member_choose_interface<Sig,T,C<_,_>,M<...>> { using apply<C,Base,ID> = member_interface_choose<Sig,T,ID>::apply<Base,C,M>; };
+
+struct detail::is_non_const_ref<T> : false_{};
+struct detail::is_non_const_ref<T&> : true_{};
+struct detail::is_non_const_ref<const T&> : false_{};
+struct detail::should_be_const<Ph,Base> : or_<is_const<Ph>,is_non_const_ref<placeholder_of<Base>::type>>{};
+struct detail::should_be_non_const<Ph,Base> : and_<not_<is_const<Ph>>,not_<is_reference<placeholder_of<Base>::type>>>{};
+struct detail::non_const_this_param<Base> { using ph = placeholder_of<Base>::type; using t = derived<Base>::type;
+  using type = if_<is_same<ph, remove_cv_ref_t<ph>&>,const t,t>::type; };
+struct detail::uncallable<T>{};
+struct detail::maybe_const_this_param<Ph,Base> { using ph = remove_reference_t<Ph>; using t = derived<Derived>::type;
+  using type = if_<is_reference<Ph>, if_<should_be_non_const<ph,Base>, t&, if_<should_be_const<ph,Base>, const t&, uncallable<t>>::type>::type, t>::type; };
 ```
 
 ------
