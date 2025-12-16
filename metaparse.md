@@ -58,6 +58,32 @@ struct return_<C> { using type = self; struct apply<S,Pos> : accept<C,S,Pos>{}; 
 ### Parser Combinators
 
 ```c++
+struct impl::iterate_impl_unchecked<n,P,Accum,S,Pos> : iterate_impl<n-1,P, mpl::push_back<Accum,get_result<P::apply<S,Pos>>::type>::type>
+	::apply<get_remaining<P::apply<S,Pos>>::type,get_position<P::apply<S,Pos>>::type> {};
+struct impl::iterate_impl<n,P,Accum> { using type=self; struct apply<S,Pos> : mpl::eval_if<is_error<P::apply<S,Pos>>::type, P::apply<S,Pos>, iterate_impl_unchecked<n,P,Accum,S,Pos>>{}; };
+struct impl::iterate_impl<0,P,Accum> : return_<Accum>{};
+struct impl::back_inserter { using type=self; struct apply<T0,T1> : mpl::push_back<T0,T1>{}; };
+struct impl::front_inserter { using type=self; struct apply<T0,T1> : mpl::push_front<T0,T1>{}; };
+struct impl::eval_later_result<R1,R2> : mpl::eval_if<mpl::less<get_position<R2>::type,get_position<R1>::type>::type, R1,R2>{};
+struct impl::any_of_c<...cs> { using type=self; static constexpr bool run(char c_); struct apply<Ch> : mpl::bool_<run(Ch::type::value)>{}; };
+struct impl::any_of_c<> { using type=self; struct apply<_> : mpl::false_{}; };
+struct impl::nth_of_c_skip_remaining<FRes,S,Pos> : return_<FRes>::apply<S,Pos>{};
+struct impl::nth_of_c_skip_remaining<FRes,S,Pos,P,Ps..>{
+private: struct apply_unchecked<NextRes> : nth_of_c_skip_remaining<FRes,get_remaining<NextRes>::type,get_position<NextRes>::type,Ps...>{};
+public: using type = std::conditional< is_error<P::apply<S,Pos>>::type::value, P::apply<S,Pos>, apply_unchecked<P::apply<S,Pos>>>::type::type;
+};
+struct impl::nth_of_c<n,S,Pos,P,Ps...> {
+private: struct apply_unchecked<NextRes> : nth_of_c<n-1, get_remaining<NextRes>::type, get_position<NextRes>::type, Ps...>{};
+public: using type = std::conditional< is_error<P::apply<S,Pos>>::type::value, P::apply<S,Pos>, apply_unchecked<P::apply<S,Pos>>>::type::type;
+};
+struct impl::nth_of_c<0,S,Pos,P,Ps...> {
+private: struct apply_unchecked<NextRes> : nth_of_c_skip_remaining<get_result<NextRes>::type, get_remaining<NextRes>::type, get_position<NextRes>::type, Ps...>{};
+public: using type = std::conditional< is_error<P::apply<S,Pos>>::type::value, P::apply<S,Pos>, apply_unchecked<P::apply<S,Pos>>>::type::type;
+};
+struct impl::push_front_result<Value> { using type=self; struct apply<Seq> : mpl::push_front<Seq,get_result<Value>::type>{}; };
+struct impl::sequence_apply_transformN<T<...>> { using type=self; struct apply<V> { using type=T<V...>; };
+};
+
 /// validation and error reporting
 struct accept_when<P,Pred,Msg> {
 private: struct unchecked { struct apply<S,Pos> : mpl::eval_if<Pred::apply<get_result<P::apply<S,Pos>>::type>::type, P::apply<S,Pos>, reject<Msg,Pos>>{}; };
@@ -110,132 +136,301 @@ private: struct apply_unchecked1<Res,Rem> : accept<BackwardOp::apply<get_result<
 	};
 public: using type=self; struct apply<S,Pos> : mpl::eval_if<is_error<P::apply<S,Pos>>::type, StateP::apply<S,Pos>, apply_unchecked<P::apply<S,Pos>>>{};
 };
-iterate
-iterate_c
-repeated
-repeated1
-repeated_reject_incomplete
-repeated_reject_incomplete1
-repeated_one_of
-repeated_one_of1
+
+struct iterate<P,N> : iterate_c<P,N::type::value>{};
+struct iterate_c<P,n> : iterate_impl<n,P,mpl::deque<>>{};
+
+struct repeated<P> : foldl<P,mpl::vector<>, impl::back_inserter>{};
+struct repeated1<P> : foldl1<P,mpl::vector<>, impl::back_inserter>{};
+struct repeated_reject_incomplete<P> : foldl_reject_incomplete<P,mpl::vector<>, impl::back_inserter>{};
+struct repeated_reject_incomplete1<P> : foldl_reject_incomplete1<P,mpl::vector<>, impl::back_inserter>{};
+using repeated_one_of<...Ps> = repeated<one_of<Ps...>>;
+using repeated_one_of1<...Ps> = repeated1<one_of<Ps...>>;
 
 // selection
-if_
-one_of
-one_of_c
-optional
-repated_one_of
-repated_one_of1
+struct if_<P,T,F> { using type=self; struct apply<S,Pos> : accept<mpl::if_<is_error<P::apply<S,Pos>>,F,T>::type, S,Pos>{}; };
+struct one_of<P,Ps...> {
+	using type=self;
+	struct apply<S,Pos> : eval_if< is_error<P::apply<S,Pos>>::type, eval_if< is_error<one_of<Ps...>::apply<S,Pos>>::type,
+								eval_later_result< P::apply<S,Pos>, one_of<Ps...>::apply<S,Pos>>, one_of<Ps...>::apply<S,Pos>>, P::apply<S,Pos>>{};
+};
+struct one_of<>: fail<none_of_the_expected_cases_found>{};
+struct one_of_c<...cs> : accept_when<one_char, any_of_c<cs...>, none_of_the_expected_cases_found>{};
+struct optional<P,Def=void> { using type=self; struct apply<S,Pos> : mpl::if_<is_error<P::apply<S,Pos>>, accept<Def,S,Pos>, P::apply<S,Pos>::type>{}; };
 
 //sequence
-first_of
-last_of
-middle_of
-nth_of
-nth_of_c
-sequence
-sequence_apply
+struct first_of<...Ps> { using type=self; struct apply<S,Pos> : impl::nth_of_c<0,S,Pos,Ps...>{}; };
+struct first_of<> : fail<index_out_of_range<0,-1,0>>{};
+struct last_of<...Ps> { using type=self; struct apply<S,Pos> : impl::nth_of_c<sizeof...(Ps)-1,S,Pos,Ps...>{}; };
+struct last_of<> : fail<index_out_of_range<0,-1,0>>{};
+struct middle_of<P1,P2,P3> {
+	using type=self;
+	struct apply<S,Pos> : impl::nth_of_c<1,P1,P2,transform_error_message<P3,error::unpaired<get_line<Pos>::type::value, get_col<Pos>::type::value>>>::apply<S,Pos>{};
+};
+struct nth_of<K,...Ps> : impl::nth_of_c<K::type::value,Ps...>{};
+struct nth_of_c<n,...Ps> {
+	using type=self;
+	struct apply<S,Pos> : std::conditional<(0<=n && n<sizeof...(Ps)), mpl::nth_of_c<n,S,Pos,Ps...>, fail<index_out_of_range<0,sizeof...(Ps)-1,n>>::apply<S,Pos>>::type{};
+};
+struct nth_of_c<n> : fail<index_out_of_range<0,-1,n>>{};
+struct sequence<> : return_<mpl::vector<>>{};
+struct sequence<P,Ps...> {
+private: struct apply_unchecked<Res> : transform<sequence<Ps...>, impl::push_front_result<Res>>::apply<get_remaining<Res>::type, get_position<Res>::type>{};
+public: using type=self; struct apply<S,Pos> : mpl::eval_if<is_error<P::apply<S,Pos>>::type, P::apply<S,Pos>, apply_unchecked<P::apply<S,Pos>>>{};
+};
+struct sequence_applyN<T<...>,...Ps> : transform<sequence<Ps...>, sequence_apply_transformN<T>>{}; // N from 1 upto LIMIT_SEQUENCE_SIZE
 
 // result transformation (semantic action)
-always
-always_c
-transform
+struct always<P,Result> {
+private: struct apply_unchecked<Res> : accept<Result,get_remaining<Res>::type,get_position<Res>::type>{};
+public: using type=self; struct apply<S,Pos> : mpl::eval_if<is_error<P::apply<S,Pos>>::type, P::apply<S,Pos>, apply_unchecked<P::apply<S,Pos>>>{};
+};
+struct always_c<ch,Result> : always<lit_c<Ch>,Result>{};
+struct transform<P,T> {
+private: struct no_error<S,Pos> : accept<T::apply<get_result<P::apply<S,Pos>>::type>::type, get_remaining<P::apply<S,Pos>>, get_position<P::apply<S,Pos>>>{};
+public: using type=self; struct apply<S,Pos> : unless_error<P::apply<S,Pos>, no_error<S,Pos>>{};
+};
 ```
 
-#### Miscellaneous
+------
+### Grammar
 
 ```c++
-grammar
-look_ahead
-token
+namespace grammar_util {
+struct repeated_apply_impl<op,FState> { using type=self; struct apply<G>: repeated<FState::apply<G>::type>{}; };
+struct repeated_apply_impl<'+',FState> { using type=self; struct apply<G>: repeated1<FState::apply<G>::type>{}; };
+struct build_repeated { using type=self; struct apply<FState,T>: repeated_apply_impl<T::type::value, FState>{}; };
+struct build_sequence { using type=self;
+	struct apply_impl<FState,FP> { using type=self; struct apply<G>: sequence<FState::apply<G>::type, FP::apply<G>::type>{}; };
+	struct apply<FState,FP>: apply_impl<FState,FP>{};
+};
+struct build_selection { using type=self;
+	struct apply_impl<FState,FP> { using type=self; struct apply<G>: one_of<FState::apply<G>::type, FP::apply<G>::type>{}; };
+	struct apply<FState,FP>: apply_impl<FState,FP>{};
+};
+struct get_parser<G,Name> { using P=mpl::at<G::rules,Name>::type::apply<G>;
+	struct impl<Actions> : transform<P::type, Actions::type>{};
+	using type = mpl::eval_if<mpl::has_key<G::actions,Name>::type, impl<mpl::at<G::actions,Name>>, P>::type;
+};
+struct build_name { using type=self;
+	struct apply_impl<Name> { using type=self; struct apply<G> : get_parser<G,Name>{}; };
+	struct apply<Name> : apply_impl<Name>{};
+};
+struct build_char { using type=self;
+	struct apply_impl<Ch> { using type=self; struct apply<G> : lit<Ch>{}; };
+	struct apply<Ch> : apply_impl<Ch>{};
+};
+using repeated_token = token<lit_c<'*'>>;
+using repeated1_token = token<lit_c<'+'>>;
+using or_token = token<lit_c<'|'>>;
+using open_bracket_token = token<lit_c<'('>>;
+using close_bracket_token = token<lit_c<')'>>;
+using define_token = token<keyword<string<':',':','='>>>;
+using char_token = middle_of<lit_c<'\''>,
+	one_of< last_of< lit_c<'\\'>,
+				one_of< always<lit_c<'n'>,mpl::char_<'\n'>>, always<lit_c<'r'>,mpl::char_<'\r'>>, always<lit_c<'t'>,mpl::char_<'\t'>>, lit_c<'\\'>, lit_c<'\''> >>,
+			one_char_except_c<'\''>>,
+	token<lit_c<'\''>>>;
+using name_token = token<foldr1<one_of<alphanum, lit_c<'_'>>, string<>, impl::front_inserter>>;
+using bracket_expression = middle_of<open_bracket_token, expression, close_bracket_token>;
+using name_expression = one_of<transform<char_token,build_char>, transform<name_token,build_name>, bracket_expression>;
+using repeated_expression = foldl_start_with_parser<one_of<repeated_token,repeated1_token>, name_expression, build_repeated>;
+using seq_expression = foldl_start_with_parser<repeated_expression,repeated_expression, build_sequence>;
+struct expression : foldl_start_with_parser<last_of<or_token,seq_expression>, seq_expression,build_selection>{};
+using rule_definition = sequence<name_token, define_token, expression>;
+using parser_parser = build_parser<entire_input<rule_definition>>;
+
+struct build_native_parser<P> { using type=self; struct apply<G> { using type=P; }; };
+struct build_parsed_parser<S> {
+	using p=parser_parser::apply<S>::type; using name = mpl::front<p>::type; using exp = mpl::back<p>::type;
+	struct the_parser { using type=self; struct apply<G>: exp::apply<G>{}; };
+	using type = mpl::pair<name,the_parser>;
+};
+using name_parser = build_parser<name_token>;
+struct rebuild<S> : name_parser::apply<S>{};
+
+struct no_action;
+struct grammar_builder<Start,Rules,Actions> {
+	using type=grammar_builder; using rules=Rules; using actions=Actions;
+	struct apply<S,Pos> : get_parser<grammar_builder,rebuild<Start>::type>::type::apply<S,Pos>{};
+	struct import<Name,P> : add_import<grammar_builder,rebuild<Name>::type,P>{};
+	struct rule<Def,Action=no_action> :add_rule<grammar_builder, build_parsed_parser<Def>, Action>{};
+};
+struct add_rule<grammar_builder<Start,Rules,Actions>,P,no_action> : grammar_builder<Start,mpl::insert<Rules,P::type>::type,Actions>{};
+struct add_rule<grammar_builder<Start,Rules,Actions>,P,F>
+	: grammar_builder<Start,mpl::insert<Rules,P::type>::type,mpl::insert<Actions,mpl::pair<P::name,mpl::lambda<F>::type>>::type>{};
+struct add_import<grammar_builder<Start,Rules,Actions>,Name,P> : grammar_builder<Start,mpl::insert<Rules,mpl::pair<Name,build_native_parser<P>>>::type,Actions>{};
+}
+
+struct grammar<Start=string<'S'>> : grammar_builder<Start,mpl::map<>,mpl::map<>>{};
+
+struct look_ahead<P> {
+private: struct no_error<S,Pos> : accept<get_result<P::apply<S,Pos>>::type,S,Pos>{};
+public: using type=self; struct apply<S,Pos> : mpl::eval_if<is_error<P::apply<S,Pos>>::type, P::apply<S,Pos>, no_error<S,Pos>>{};
+};
+struct token<P> : first_of<P,repeated<space>>{};
 ```
 
 ------
 ### Compile-time Data Structures and Values
 
-#### Result of parsing
-
 ```c++
-accept
-get_message
-get_position
-get_remaining
-get_result
-is_error
-reject
-```
+// result of parsing
+struct accept<Result,Remaining,Pos> { using tag=accept_tag; using type=self; using result=Result; using remaining=Remaining; using source_position = Pos; };
+struct get_message<T> : get_message_impl<T::type::tag>::apply<T::type>{};
+struct get_position<T> : get_position_impl<T::type::tag>::apply<T::type>{};
+struct get_remaining<T> : get_remaining_impl<T::type::tag>::apply<T::type>{};
+struct get_result<T> : get_result_impl<T::type::tag>::apply<T::type>{};
+struct is_error<T=mpl::na> : is_same<fail_tag,mpl::tag<T::type>::type>{};
+struct is_error<mpl::na> { using type=self; struct apply<T=mpl::na> : is_error<T>{}; };
+struct reject<Msg,Pos> { using tag=fail_tag; using type=self; using source_position=Pos; using message=Msg; };
 
-#### Source position
+// source position
+struct get_col<T> : get_col_impl<T::type::tag>::apply<T::type>{};
+struct get_line<T> : get_line_impl<T::type::tag>::apply<T::type>{};
+struct get_prev_char<T> : get_prev_char_impl<T::type::tag>::apply<T::type>{};
+struct next_char<P,Ch> : next_char_impl<mpl::tag<P::type>::type>::apply<P::type,Ch::type>{};
+struct next_line<P,Ch> : next_line_impl<mpl::tag<P::type>::type>::apply<P::type,Ch::type>{};
+struct source_position<Line,Col,PrevChar> { using tag=source_position_tag; using type=source_position; using line=Line; using col=Col; using prev_char=PrevChar; };
+struct mpl::equal_to_impl<source_position_tag,source_position_tag>; // line, col, prev_char
+struct mpl::not_equal_to_impl<source_position_tag,source_position_tag>;
+struct mpl::less_impl<source_position_tag,source_position_tag>; // and less_equal_impl, greater_impl, greater_equal_impl,
 
-```c++
-get_col
-get_line
-get_prev_char
-next_char
-next_line
-source_position
-source_position_tag
-start
+using start = source_position<mpl::int_<1>, mpl::int_<1>, mpl::char_<0>>;
 ```
 
 ------
 ### String
 
 ```c++
-string
-string_tag
-#define STRING
-#define STRING_VALUE
+struct impl::empty_string<Ignore=int> { using type=self; static constexpr char value[1]={0}; };
+struct impl::size<string<cs...>> : int_<sizeof...(cs)>{};
+struct impl::push_front_c<string<cs...>,c> : string<c,cs...>{};
+struct impl::push_back_c<string<cs...>,c> : string<cs...,c>{};
+struct impl::pop_front<string<c,cs...>> : string<cs...>{};
+struct impl::pop_back<string<c>> : mpl::clear<string<c>>{};
+struct impl::pop_back<string<c,cs...>> : push_front_c<pop_back<string<cs...>>::type,c>{};
+constexpr T impl::string_at<maxLen,len,T>(const T (&s)[len], int n) { return n >= len-1 ? T{} : s[n]; }
+
+struct string<...cs> { using type=self; using tag=string_tag; };
+
+struct string_tag { using type=self; };
+struct mpl::push_back_impl<string_tag>;
+struct mpl::pop_back_impl<string_tag>;
+struct mpl::push_front_impl<string_tag>;
+struct mpl::pop_front_impl<string_tag>;
+struct mpl::clear_impl<string_tag>;
+struct mpl::begin_impl<string_tag>;
+struct mpl::end_impl<string_tag>;
+struct mpl::equal_to_impl<string_tag,string_tag>;
+struct mpl::equal_to_impl<string_tag,T>;
+struct mpl::equal_to_impl<T,string_tag>;
+struct mpl::c_str<string<cs...>>;
+
+#define STRING(...) string<__VA_ARGS__>
+#define STRING_AT impl::string_at<LIMIT_STRING_SIZE>
+#define STRING_VALUE(s) (STRING(s){})
 ```
 
 ------
 ### Errors
 
 ```c++
-digit_expected
-end_of_input_expected
-expected_to_fail
-index_out_of_range
-letter_expected
-literal_expected
-none_of_the_expected_cases_found
-unexpected_character
-unexpected_end_of_input
-unpaired
-whitespace_expected
+namespace error;
+DEFINE_ERROR(digit_expected, "Digit expected");
+DEFINE_ERROR(end_of_input_expected, "End of input expected");
+DEFINE_ERROR(expected_to_fail, "Parser expected to fail");
+struct index_out_of_range<from,to,n> { using type=self; static std::string get_value(); }; // "index (<n>) out of range [<from>-<to>]"
+DEFINE_ERROR(letter_expected, "Letter expected");
+struct literal_expected<c> { using type=self; static std::string get_value(); }; // "Expected: <c>"
+DEFINE_ERROR(none_of_the_expected_cases_found, "None of the expected cases found");
+DEFINE_ERROR(unexpected_character, "Unexpected character");
+DEFINE_ERROR(unexpected_end_of_input, "Unexpected end of input");
+struct unpaired<line,col,Msg=mpl::na> { using type=self; static std::string get_value(); }; // "<Msg::get_value()> (see <line>:<col>)"
+struct unpaired<line,col,mpl::na> { using type=self; struct apply:self<line,col,Msg>{}; };
+DEFINE_ERROR(whitespace_expected, "Whitespace expected");
 ```
 
 ------
 ### Tags
 
 ```c++
-accept_tag
-fail_tag
-source_position_tag
+struct accept_tag { using type=self; };
+struct get_position_impl<accept_tag> { struct apply<A> : A::source_position{}; };
+struct get_remaining_impl<accept_tag> { struct apply<A> : A::remaining{}; };
+struct get_result_impl<accept_tag> { struct apply<A> { using type=A::result; }; };
+
+struct fail_tag { using type=self; };
+struct get_message_impl<fail_tag> { struct apply<A> { using type=A::message; }; };
+struct get_position_impl<fail_tag> { struct apply<A> : A::source_position{}; };
+
+struct source_position_tag {using type=self;};
+struct get_col_impl<source_position_tag> { struct apply<P> : P::col{}; };
+struct get_line_impl<source_position_tag> { struct apply<P> : P::line{}; };
+struct get_prev_char_impl<source_position_tag> { struct apply<P> : P::prev_char{}; };
+struct next_char_impl<source_position_tag> { struct apply<P,Ch> : source_position<get_line<P>::type, mpl::int_<get_col<P>::type::value+1>,Ch>; };
+struct next_line_impl<source_position_tag> { struct apply<P,Ch> : source_position<mpl::int_<get_line<P>::type::value+1>, mpl::int_<1>, Ch>; };
 ```
 
 ------
 ### Utilities
 
 ```c++
-build_parser
-debug_parsing_error
-#define DEFINE_ERROR(name,msg) struct { using type = name; static std::string get_value() { return msg; } }
-#define VERSION
-unless_error
+struct x__________________PARSING_FAILED__________________x<line,col,Msg> {}; // fail
+struct parsing_failed<P,S> : x__________________PARSING_FAILED__________________x<
+	get_line<get_position<P::apply<S,start>>>::type::value,
+	get_col<get_position<P::apply<S,start>>>::type::value,
+	get_message<P::apply<S,start>>::type>{};
+struct build_parser<P> { using type=self;
+	struct apply<S> : mpl::eval_if<is_error<P::aply<S,start>>::type, parsing_failed<P,S>, get_result<P::apply<S,start>>>{};
+};
+struct debug_parsing_error<P,S> {
+private: struct display_error<Result> { static void run(); }; // "Parsing failed:\nline <line>, col <col>: <message>\n"
+	struct display_no_error<Result> { static void run(); }; // "Parsing was successful. Remaining string is: <remaining>\n"
+	struct display<Result> : mpl::if_<is_error<Result>::type, display_error<Result>, display_no_error<Result>>::type{};
+public: using type=self;
+	ctor() { using runner = display<P::apply<S,start>::type>;
+		std::cout << "Compile-time parsing results\n-----------------------\nInput text:\n";
+		std::cout << mpl::c_str<S>::type::value << "\n\n";
+		runner::run();
+		std::exit(0);
+	}
+};
+class debug_parsing_error<build_parser<P>,S> : debug_parsing_error<P,S>{};
+struct unless_error<T,NotErrorCase> : mpl::eval_if<is_error<T>::type, T,NotErrorCase>{};
 
-digit_to_int
-digit_to_int_c
-int_to_digit
-int_to_digit_c
-in_range
-in_range_c
-is_digit
-is_lcase_letter
-is_letter
-is_ucase_letter
-is_whitespace
-is_whitespace_c
+#define DEFINE_ERROR(name,msg) struct { using type = name; static std::string get_value() { return msg; } }
+#define VERSION BOOST_VERSION_NUMBER(1, 0, 0)
+
+namespace util {
+struct digit_to_int_c<c> : digit_expected{};
+struct digit_to_int_c<'0'> : mpl::int_<0>{}; // up to '9'
+struct digit_to_int<D=mpl::na> : digit_to_int_c<D::type::value>{};
+struct digit_to_int<mpl::na> { using type=self; struct apply<D=mpl::na> : digit_to_int<D>{}; };
+struct int_to_digit_c<n>;
+struct int_to_digit_c<0> : mpl::char_<'0'>{}; // up to 9
+struct int_to_digit<N=mpl::na> : int_to_digit_c<N::type::value>{};
+struct int_to_digit<mpl::na> { using type=self; struct apply<N=mpl::na> : int_to_digit<N>{}; };
+struct in_range<LB=mpl::na,UB=mpl::na,Item=mpl::na> : mpl::bool_<mpl::less_equal<LB,Item>::type::value && mpl::less_equal<Item,UB>::type::value>{};
+struct in_range<LB,UB,mpl::na> { using type=self; struct apply<Item=mpl::na> : in_range<LB,UB,Item>{}; };
+struct in_range<LB,mpl::na,mpl::na> { using type=self; struct apply<UB=mpl::na,Item=mpl::na> : in_range<LB,UB,Item>{}; };
+struct in_range<mpl::na,mpl::na,mpl::na> { using type=self; struct apply<LB=mpl::na,UB=mpl::na,Item=mpl::na> : in_range<LB,UB,Item>{}; };
+struct in_range_c<T,T lb, T ub> { using type=self; struct apply<Item> : mpl::bool_<(lb<=Item::type::value && Item::type::value<=ub)>{}; };
+struct is_digit<C=mpl::na> : in_range_c<char,'0','9'>::apply<C>{};
+struct is_digit<mpl::na> { using type=self; struct apply<C=mpl::na> : is_digit<C>{}; };
+struct is_lcase_letter<C=mpl::na> : in_range_c<char,'a','z'>::apply<C>{};
+struct is_lcase_letter<mpl::na> { using type=self; struct apply<C=mpl::na> : is_lcase_letter<C>{}; };
+struct is_ucase_letter<C=mpl::na> : in_range_c<char,'A','Z'>::apply<C>{};
+struct is_ucase_letter<mpl::na> { using type=self; struct apply<C=mpl::na> : is_ucase_letter<C>{}; };
+struct is_letter<C=mpl::na> : mpl::bool_<(is_lcase_letter<C>::type::value || is_ucase_letter<C>::type::value)>{};
+struct is_letter<mpl::na> { using type=self; struct apply<C=mpl::na> : is_letter<C>{}; };
+struct is_whitespace_c<c> : mpl::false_{};
+struct is_whitespace_c<' '> : mpl::true_{}; // and '\r', '\n', '\t'
+struct is_whitespace<C=mpl::na> : is_whitespace_c<C::type::value>{};
+struct is_whitespace<mpl::na> { using type=self; struct apply<C=mpl::na> : is_whitespace<C>{}; };
+}
+
+struct swap<F> { using type=self; struct apply<A,B> : F::apply<B,A>{}; };
 ```
 
 ------
@@ -254,38 +449,14 @@ is_whitespace_c
 * template metafunction class
 * template metaprogramming value
 
-v1/:
-accept_tag, always_<c>, build_parser, debug_parsing_error, fail_tag, first_of,
-get_{col,line,message,position,prev_char,remaining,result}, grammar, if_, is_error, iterate_<c>,
-last_of, look_ahead, middle_of, next_{char,line}, nth_of_<c>, one_of_<c>, optional,
-reject, repeated_<reject_incomplete|one_of><1>, sequence_<apply>, source_position_<tag>,
-start, string_<tag>, swap, token, unless_error
+------
+### Configuration
 
-v1/error/: {digit|end_of_input|letter|literal|whitespace}_expected, index_out_of_range,
-	none_of_the_expected_cases_found, unexpected_{character|end_of_input}, unpaired
-v1/fwd/: accept, buid_parser, get{line,message,position,prev_char,remaining,result}, next_{char,line}, reject, source_position, string
-v1/impl/: apply_parser, assert_string_length, at_c, {back,front}inserter, has_type, iterate_impl_<unchecked>, no_char, returns, string_iterator_<tag>
-v1/util/: digit_to_int_<c>, in_range_<c>, int_to_digit_<c>, is_digit, is_<lcase|ucase>_letter, is_whitespace_<c>
-v1/util/fwd/iterate_impl
-
-v1/cpp11/: {first,last}_of, nth_of_<c>, one_of_<c>, repeated_one_of<1>, sequence, string
-v1/cpp11/impl/: any_of_c, at_c, concat, empty_string, eval_later_result, nth_of_c_<skip_remaining>,
-	or_c, pop_{back,front}, push_{back,front}_c, push_front_result, size, string_<at>
-v1/cpp11/fwd/string
-
-v1/cpp14/one_of_c, v1/cpp14/impl/any_of_c
-
-accept_tag, always_<c>, build_parser, config, debug_parsing_error, fail_tag, first_of,
-get_{col,line,message,position,prev_char,remaining,result}, grammar, if_, is_error, iterate_<c>,
-last_of, limit_{one_char_except_size,one_of_size,sequence_size,string_size},
-look_ahead, middle_of, next_{char,line}, nth_of_<c>, one_of_<c>, optional,
-reject, repeated_<reject_incomplete|one_of><1>, sequence_<apply>, source_position_<tag>,
-start, string_<tag>, token, unless_error, version
-
-error/: {digit|end_of_input|letter|literal|whitespace}_expected, index_out_of_range,
-	none_of_the_expected_cases_found, unexpected_{character|end_of_input}, unpaired
-util/: digit_to_int_<c>, in_range_<c>, int_to_digit_<c>, is_digit, is_<lcase|ucase>_letter, is_whitespace_<c>
-
+* `STD`: detected standard version.
+* `LIMIT_ONE_CHAR_EXCEPT_SIZE`: default 10. (C++98 preprocessor-based config)
+* `LIMIT_ONE_OF_SIZE`: defualt 20. (C++98 preprocessor-based config)
+* `LIMIT_SEQUENCE_SIZE`: default 5.
+* `LIMIT_STRING_SIZE`: default 32.
 
 ------
 ### Dependency
