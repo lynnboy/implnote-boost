@@ -252,18 +252,329 @@ struct featore_of<tag::droppable<Feature>> : featore_of<Feature>{};
 ### Statistics Accumulators
 
 ```c++
+// PARAMETER_KEYWORD
+struct tag::covariate1; struct tag::covariate2; struct tag::quantile_probability;
+
+struct stats<...Stat> : mpl::vector<Stat...>{};
+struct detail::error_of_tag<Feature> { using type=tag::error_of<Feature>; };
+struct with_error<...Features> : mpl::transform_view<mpl::vector<Feature...>, error_of_tag<_1>>{};
+
+using detail::times2_iterator = transform_iterator<decltype(std::bind(std::multiplies<size_t>{},2,_1)), counting_iterator<size_t>>;
+times2_iterator detail::make_times2_iterator(size_t i) { return make_transform_iterator(make_counting_iterator(i), std::bind(multiplies<size_t>{},2,_1)); }
+struct detail::lvalue_index_iterator<Base> : Base {ctor(){} ctor(Base b):base{b}{} Base::reference operator[](Base::difference_type n) const { return *(*this+n); } };
+
+// modifiers
+struct lazy{}; struct immediate{}; // for mean/variance
+struct right{}; struct left{}; // for order, default is right
+struct absolute{}; struct relative{}; // for tail_variate_means
+struct with_density{}; struct with_p_square_cumulative_distribution{}; struct with_p_square_quantile{}; // for <weighted>_median
+struct with_threshold_value{}; struct with_threshold_probability{}; // for peaks_over_threshold
+struct weighted{}; struct unweighted{}; struct linear{}; struct quadratic{}; // for <weighted>_extended_p_square_quantile
+struct regular{}; struct for_median{}; // for p_square_quantile
+struct kahan{}; // for sum_..._kahan
+
+struct tag::quantile : depends_on<>{ using impl=mpl::print<____MISSING_SPECIFIC_QUANTILE_FEATURE_IN_ACCUMULATOR_SET____>; };
+extractor<tag::quantile> const extract::quantile={};
+struct tag::tail_mean : depends_on<>{ using impl=mpl::print<____MISSING_SPECIFIC_TAIL_MEAN_FEATURE_IN_ACCUMULATOR_SET____>; };
+extractor<tag::tail_mean> const extract::tail_mean={};
+
+// count
+struct impl::count_impl; // size_t cnt={0}; ++cnt;
+struct tag::count : depends_on<>{ using impl=mpl::always<count_impl>; };
+extractor<tag::count> const extract::count={};
+
+// max
+struct impl::max_impl<Sample>; // Sample max_={as_min(args[sample|Sample{}])}; max_assign(max_, args[sample])
+struct tag::max : depends_on<>{ using impl=max_impl<_1>; };
+extractor<tag::max> const extract::max = {};
+// min
+struct impl::min_impl<Sample>; // Sample min_={as_max(args[sample|Sample{}])}; min_assign(min_, args[sample])
+struct tag::min : depends_on<>{ using impl=min_impl<_1>; };
+extractor<tag::min> const extract::min = {};
+
+// sum, sum_of_weights, sum_of_variates
+struct impl::sum_impl<Sample,Tag=tag::sample>; // Sample sum={args[keyword<Tag>::get()|Sample{}]}; sum += args[keyword<Tag>::get()]
+struct tag::sum : depends_on<> { using impl=sum_impl<_1,tag::sample>; };
+struct tag::sum_of_weights : depends_on<> { using is_weight_accumulator=true_; using impl=sum_impl<_2,tag::weight>; };
+struct tag::sum_of_variates<VType,VTag> : depends_on<> { using impl=mpl::always<sum_impl<VType,VTag>>; };
+struct tag::abstract_sum_of_variates : depends_on<> {};
+extractor<tag::sum> const extract::sum = {};
+extractor<tag::sum_of_weights> const extract::sum_of_weights = {};
+extractor<tag::abstract_sum_of_variates> const extract::sum_of_variates = {};
+struct as_weighted_feature<tag::sum> { using type=tag::weighted_sum; };
+struct feature_of<tag::sum_of_variates<VType,VTag>> : feature_of<tag::abstract_sum_of_variates>{};
+// weighted_sum, weighted_sum_of_variates
+struct impl::weighted_sum_impl<Sample,Weight,Tag>; // auto weighted_sum={args[keyword<Tag>::get()|Sample{}]*one<Weight>::value};
+                                                   // weighted_sum += args[keyword<Tag>::get()] * args[weight]
+struct tag::weighted_sum : depends_on<> { using impl=weighted_sum_impl<_1,_2,tag::sample>; };
+struct tag::weighted_sum_of_variates<VType,VTag> : depneds_on<> { using impl=weighted_sum_impl<VType,_2,VTag>; };
+struct tag::abstract_weighted_sum_of_variates : depends_on<>{};
+extractor<tag::weighted_sum> const extract::weighted_sum = {};
+extractor<tag::abstract_weighted_sum_of_variates> const extract::weighted_sum_of_variates = {};
+struct featore_of<tag::weighted_sum> : feature_of<tag::sum>{};
+struct feature_of<tag::weighted_sum_of_variates<VType,VTag>> : feature_of<tag::abstract_weighted_sum_of_variates>{};
+
+// mean, immediate_mean, mean_of_weights, immediate_mean_of_weights, mean_of_variates, immediate_mean_of_variates
+struct impl::mean_impl<Sample,SumFeature=tag::sum>; // fdiv(sum(args),count(args))
+struct impl::immediate_mean_impl<Sample,Tag=tag::sample>; // auto mean={fdiv(args[sample|Sample{}],one<size_t>::value)};
+                                                          // size_t cnt=count(args); mean=fdiv(mean*(cnt-1)+args[keyword<Tag>::get()], cnt)
+struct tag::mean : depends_on<count,sum> { using impl=mean_impl<_1,sum>; };
+struct tag::immediate_mean : depends_on<count> { using impl=immediate_mean_impl<_1,tag::sample>; };
+struct tag::mean_of_weights : depends_on<count,sum_of_weights> { using is_weight_accumulator=true_; using impl=mean_impl<_2,sum_of_weights>; };
+struct tag::immediate_mean_of_weights : depneds_on<count> { using is_weight_accumulator=true_; using impl=immediate_mean_impl<_2,tag::weight>; };
+struct tag::mean_of_variates<VType,VTag> : depneds_on<count,sum_of_variates<VType,VTag>>
+{ using impl=mpl::always<mean_impl<VType,sum_of_variates<VType,VTag>>>; };
+struct tag::immediate_mean_of_variates<VType,VTag> : depneds_on<count> { using impl=mpl::always<immediate_mean_impl<VType,VTag>>; };
+extractor<tag::mean> const extract::mean = {};
+extractor<tag::mean_of_weights> const extract::mean_of_weights = {};
+mpl::apply<AccSet,tag::mean_of_variates<VType,VTag>>::type::result_type extract::mean_of_variates<AccSet,VType,VTag>(AccSet const& acc)
+{ return extract_result<tag::mean_of_variates<VType,VTag>>(acc); }
+struct as_feature<tag::mean(lazy)> { using type=tag::mean; };
+struct as_feature<tag::mean(immediate)> { using type=tag::immediate_mean; };
+struct as_feature<tag::mean_of_weights(lazy)> { using type=tag::mean_of_weights; };
+struct as_feature<tag::mean_of_weights(immediate)> { using type=tag::immediate_mean_of_weights; };
+struct as_feature<tag::mean_of_variates<VType,VTag>(lazy)> { using type=tag::mean_of_variates<VType,VTag>; };
+struct as_feature<tag::mean_of_variates<VType,VTag>(immediate)> { using type=tag::immediate_mean_of_variates<VType,VTag>; };
+struct feature_of<tag::immediate_mean> : feature_of<tag::mean>{};
+struct feature_of<tag::immediate_mean_of_weights> : feature_of<tag::mean_of_weights> {};
+struct feature_of<tag::immediate_mean_of_variates<VType,VTag>> : feature_of<tag::mean_of_variates<VType,VTag>>{};
+struct as_weighted_feature<tag::mean> { using type=tag::weighted_mean; };
+struct feature_of<tag::weighted_mean> : feature_of<tag::mean>{};
+struct as_weighted_feature<tag::immediate_mean> { using type=tag::immediate_weighted_mean; };
+struct feature_of<tag::immediate_weighted_mean> : feature_of<tag::immediate_mean>{};
+struct as_weighted_feature<tag::mean_of_variates<VType,VTag>> { using type=tag::weighted_mean_of_variates<VType,VTag>; };
+struct feature_of<tag::weighted_mean_of_variates<VType,VTag>> : feature_of<tag::mean_of_variates<VType,VTag>> {};
+struct as_weighted_feature<tag::immediate_mean_of_variates<VType,VTag>> { using type=tag::immediate_weighted_mean_of_variates<VType,VTag>; };
+struct feature_of<tag::immediate_weighted_mean_of_variates<VType,VTag>> : feature_of<tag::immediate_mean_of_variates<VType,VTag>> {};
+// weighted_mean, immediate_weighted_mean, weighted_mean_of_variates, immediate_weighted_mean_of_variates
+struct impl::weighted_mean_impl<Sample,Weight,Tag>; // fdiv(some_weighted_sum(args),sum_of_weights(args))
+struct impl::immediate_weighted_mean_impl<Sample,Weight,Tag>; // auto mean={fdiv(args[keyword<Tag>::get()|Sample{}]*one<Weight>, one<Weight>)};
+                                                // Weight w_sum=sum_of_weights(args), w=args[weight]; mean = fdiv(mean*(w_sum-w) + args[keyword<Tag>::get()]*w, w_sum);
+struct tag::weighted_mean : depends_on<sum_of_weights,weighted_sum> { using impl=weighted_mean_impl<_1,_2,tag::sample>; };
+struct tag::immediate_weighted_mean : depneds_on<sum_of_weights> { using impl=immediate_weighted_mean_impl<_1,_2,tag::sample>; };
+struct tag::weighted_mean_of_variates<VType,VTag> : depneds_on<sum_of_weights,weighted_sum_of_variates<VType,VTag>> { using impl=weighted_mean_impl<VType,_2,VTag>; };
+struct tag::immediate_weighted_mean_of_variates<VType,VTag> : depneds_on<sum_of_weights> { using impl=immediate_weighted_mean_impl<VType,_2,VTag>; };
+extractor<tag::mean> const extract::weighted_mean = {};
+mpl::apply<AccSet,tag::weighted_mean_of_variates<VType,VTag>>::type::result_type extract::weighted_mean_of_variates<AccSet,VType,VTag>(AccSet const& acc)
+{ return extract_result<tag::weighted_mean_of_variates<VType,VTag>>(acc); }
+struct as_feature<tag::weighted_mean(lazy)> { using type=tag::weighted_mean; };
+struct as_feature<tag::weighted_mean(immediate)> { using type=tag::immediate_weighted_mean; };
+struct as_feature<tag::weighted_mean_of_variates<VType,VTag>(lazy)> { using type=tag::weighted_mean_of_variates<VType,VTag>; };
+struct as_feature<tag::weighted_mean_of_variates<VType,VTag>(immediate)> { using type=tag::immediate_weighted_mean_of_variates<VType,VTag>; };
+
+// covariance
+struct impl::covariance_impl<Sample,VType,VTag>; // auto cov={outer_product(fdiv(args[sample|Sample{}],1), fdiv(args[keyword<VTag>::get()|VType{}],1))};
+        // size_t cnt=count(args); if(cnt>1) cov = cov*(cnt-1)/cnt + outer_product(some_mean_of_variates(args)-args[keyword<VTag>::get()], mean(args)-args[sample])/(cnt-1)
+struct tag::covariance<VType,VTag> : depneds_on<count,mean,mean_of_variates<VType,VTag>> { using impl=covariance_impl<_1,VType,VTag>; };
+struct tag::abstract_covariance : depends_on<>{};
+extractor<tag::abstract_covariance> const extract::covariance = {};
+struct featore_of<tag::covariance<VType,VTag>> : featore_of<tag::abstract_covariance>{};
+struct as_weighted_feature<tag::covariance<VType,VTag>> { using type=tag::weighted_covariance<VType,VTag>; };
+struct feature_of<tag::weighted_covariance<VType,VTag>> : feature_of<tag::covariance<VType,VTag>>{};
+// weighted_covariance
+struct impl::weighted_covariance_impl<Sample,Weight,VType,VTag>; // auto cov={outer_product(fdiv(args[sample|Sample{}],1)*one<Weight>, fdiv(args[keyword<VTag>::get()|VType{}],1)*one<Weight>)}
+        // size_t cnt=count(args); if(cnt>1) cov = cov*(sum_of_weights(args)-args[weight])/sum_of_weights(args) +
+        //      outer_product(some_weighted_mean_of_variates(args)-args[keyword<VTag>::get()], weighted_mean(args)-args[sample]) * args[weight] / (sum_of_weights(args)-args[weight])
+struct tag::weighted_covariance<VType,VTag> : depneds_on<count,sum_of_weights,weighted_mean,weighted_mean_of_variates<VType,VTag>> { using impl=weighted_covariance_impl<_1,_2,VType,VTag>; };
+extractor<tag::abstract_covariance> const extract::weighted_covariance = {};
+
+// density
+struct tag::density_cache_size; struct tag::density_num_bins; // PARAMETER_NESTED_KEYWORD(num_bins)
+struct impl::density_impl<Sample>; // INIT: size_t cache_size=args[density_cache_size], num_bins=args[density_num_bins];
+        //  std::vector<f> cache{cache_size}, samples_in_bin{num_bins+2,0}, bin_positions{num_bins+2}; vector<pair<f,f>> histogram{num_bins+2,{fdiv(args[sample],1),fdiv(args[sample]),1}}; bool is_dirty{true};
+        // ACC: is_dirty=true; size_t cnt=count(args); if (cnt <= cache_size>) cache[cnt-1]=args[sample];
+        //  if (cnt==cache_size):
+        //      f minimum=fdiv(min(args),1), maximum=fdiv(max(args),1), bin_size=fdiv(maximum-minimum,num_bins);
+        //      for (i=0;i<num_bins+2;++i) bin_positions[i]=minimum+(i-1)*bin_size;
+        //      for (auto e: cache) ++samples_in_bin[/*find pos in bin*/]
+        //  else if (cnt > cache_size) ++samples_in_bin[/*find pos in bin*/]
+        // RES: if (is_dirty) {is_dirty=false; for (i=0; i<num_bins+2;++i) histogram[i]={bin_positions[i],fdiv(samples_in_bin[i],cnt)}; } return make_iterator_range(histogram)
+struct tag::density : depneds_on<count,min,max>, density_cache_size, density_num_bins{ using impl=density_impl<_1>; };
+extractor<tag::density> const extract::density = {};
+struct as_weighted_feature<tag::density> { using type=tag::weighted_density; };
+struct feature_of<tag::weighted_density> : feature_of<tag::density> {};
+// weighted_density
+struct impl::weighted_density_impl<Sample,Weight>; // similar to density_impl, cache element is std::pair{args[sample],args[weight]}
+    // ACC: `++` => `+= e.second`; RES: div by `sum_of_weights(args)`
+struct tag::weighted_density : depneds_on<count,sum_of_weights,min,max>, density_cache_size, density_num_bins{ using impl=weighted_density_impl<_1,_2>; };
+extractor<tag::density> const extract::weighted_density = {};
+
+// error_of
+struct impl::this_feature_has_no_error_calculation<Feature> : false_{};
+struct impl::error_of_impl<Sample,Feature>; // just 0
+struct tag::error_of<Feature> : depneds_on<Feature> { using impl=error_of_impl<_1,Feature>; };
+mpl::apply<AccSet,tag::error_of<F>>::type::result_type extract::error_of<AccSet,F>(AccSet const& acc) { return extract_result<tag::error_of<F>>(acc); }
+struct as_feature<tag::error_of<Feature>> { using type=tag::error_of<as_feature<Feature>::type>; };
+struct as_weighted_feature<tag::error_of<Feature>> { using type=tag::error_of<as_weighted_feature<Feature>::type>; };
+// error_of<mean>, error_of<immediate_mean>
+struct impl::error_of_mean_impl<Sample,Variance>; // sqrt(fdiv(variance(args),count(args)-1))
+struct tag::error_of<mean> : depends_on<lazy_variance,count> { using impl=error_of_mean_impl<_1,lazy_variance>; };
+struct tag::error_of<immediate_mean> : depends_on<variance,count> { using impl=error_of_mean_impl<_1,variance>; };
+
+// moment
+struct impl::moment_impl<n,Sample>; // Sample sum=args[sample]; sum+=pow(args[sample],n); return fdiv(sum,count(args))
+struct tag::moment<n> : depends_on<count> { using impl=moment_impl<mpl::int_<n>,_1>; };
+mpl::apply<AccSet,tag::moment<n>>::type::result_type extract::moment<AccSet,n>(AccSet const& acc) { return extract_result<tag::moment<n>>(acc); }
+struct as_weighted_feature<tag::moment<n>> { using type=tag::weighted_moment<n>; };
+struct feature_of<tag::weighted_moment<n>> : feature_of<tag::moment<n>> {};
+// weighted_moment
+struct impl::weighted_moment_impl<n,Sample,Weight>; // auto sum={args[sample]*one<Weight>}; sum+=args[weight]*pow(args[sample],n); return fdiv(sum,sum_of_weights(args))
+struct tag::weighted_moment<n> : depends_on<count,sum_of_weights> { using impl=weighted_moment_impl<mpl::int_<n>,_1,_2>; };
+mpl::apply<AccSet,tag::weighted_moment<n>>::type::result_type extract::weighted_moment<AccSet,n>(AccSet const& acc) { return extract_result<tag::weighted_moment<n>>(acc); }
+
+// p_square_cumulative_distribution
+struct tag::p_square_cumulative_distribution_num_cells; // PARAMETER_NESTED_KEYWORD(num_cells)
+struct impl::p_square_cumulative_distribution_impl<Sample>;
+    // INIT: size_t num_cells=args[pscd_num_cells],b=num_cells; std::vector<f> h{b+1}, actual_p{b+1}, desired_p{b+1}, p_inc{b+1}; vector<pair<f,f>> histogram{b+1}; bool is_dirty{true};
+    //  for (i=0;i<b+1;++i) { actual_p[i]=i+1, desired_p[i]=i+1, p_inc[i]=fdiv(i,b); }
+    // ACC: is_dirty=true; size_t cnt=count(args), k=1;
+    //  if (cnt < b+1) {h[cnt-1]=args[sample]; if(cnt==b+1) sort(h); }
+    //  else: /* find cell k: h[k-1] <= args[sample] < h[k] */
+    //      for (i : [k..b+1]) ++actual_p[i];  for (i : [1..b+1]) desired_p[i] += p_inc[i];
+    //      /* adjust heights of [1..b] if necessary */
+    // RES: if (is_dirty) {is_dirty=false; for (i=0; i<num_bins+2;++i) histogram[i]={h[i],fdiv(actual_p[i],cnt)}; } return make_iterator_range(histogram)
+struct tag::p_square_cumulative_distribution : depneds_on<count>, p_square_cumulative_distribution_num_cells
+{ using impl=p_square_cumulative_distribution_impl<_1>; };
+extractor<tag::p_square_cumulative_distribution> const p_square_cumulative_distribution = {};
+struct as_weighted_feature<tag::p_square_cumulative_distribution> { using type=tag::weighted_p_square_cumulative_distribution; };
+struct feature_of<tag::weighted_p_square_cumulative_distribution> : feature_of<tag::p_square_cumulative_distribution> {};
+// weighted_p_square_cumulative_distribution
+struct impl::weighted_p_square_cumulative_distribution_impl<Sample,Weight>; // similar to p_square_cumulative_distribution_impl, no p_inc
+    // ACC: `actual_p[i]+=args[weight]`; `desired_p[i] = actual_p[i] + fdiv((i-1)*(sum_of_weights(args)-actual_p[0]),b)`  RES: div by `sum_of_weights(args)`
+struct tag::weighted_p_square_cumulative_distribution : depends_on<count,sum_of_weights>, p_square_cumulative_distribution_num_cells
+{ using impl=weighted_p_square_cumulative_distribution_impl<_1,_2>; };
+extractor<tag::weighted_p_square_cumulative_distribution> const weighted_p_square_cumulative_distribution = {};
+
+// p_square_quantile, p_square_quantile_for_median
+struct impl::p_square_quantile_impl<Sample,Impl>; // INIT: f p={is_same<Impl,for_median>?0.5:args[quantile_probaility|0.5]};
+    //  array<f,5> h={}, actual_p={1,2,3,4,5}, desired_p{1,1+2*p,1+4*p,3+2*p,5}, p_inc{0,p/2,p,(1+p)/2,1};
+    // ACC: cnt=count(args);
+    //  if (cnt <= 5) { h[cnt-1]=args[sample]; if (cnt==5) sort(height); }
+    //  else: k=1; /* find k => h[k-1]<=args[sample]<h[k]
+    //      for (i : [k..5]) ++actual_p[i];     for (i : [0..5]) desired_p[i] += p_inc[i];
+    //      for (i : [1..4]): adjust h[i]
+    // RES: return h[2]
+struct tag::p_square_quantile : depneds_on<count> { using impl=p_square_quantile_impl<_1,regular>; };
+struct tag::p_square_quantile_for_median : depneds_on<count> { using impl=p_square_quantile_impl<_1,for_median>; };
+extractor<tag::p_square_quantile> const p_square_quantile = {};
+extractor<tag::p_square_quantile_for_median> const p_square_quantile_for_median = {};
+struct as_weighted_feature<tag::p_square_quantile> { using type=tag::weighted_p_square_quantile; };
+struct feature_of<tag::weighted_p_square_quantile> : feature_of<tag::p_square_quantile> {};
+// weighted_p_square_quantile, weighted_p_square_quantile_for_median
+struct impl::weighted_p_square_quantile_impl<Sample,Weight,Impl>; // similar to p_square_quantile_impl, no p_inc
+    // ACC: `actual_p[i]+=args[weight]`, a0=actual_p[0]; sum=sum_of_weights(args); desired_p = {actual_p[0], (sum-a0)*p/2+a0, (sum-a0)*p+a0, (sum-a0)*(1+p)/2+a0, sum}
+struct tag::weighted_p_square_quantile : depneds_on<count,sum_of_weights> { using impl=weighted_p_square_quantile_impl<_1,_2,regular>; };
+struct tag::weighted_p_square_quantile_for_median : depneds_on<count,sum_of_weights> { using impl=weighted_p_square_quantile_impl<_1,_2,for_median>; };
+extractor<tag::weighted_p_square_quantile> const weighted_p_square_quantile = {};
+extractor<tag::weighted_p_square_quantile_for_median> const weighted_p_square_quantile_for_median = {};
+
+// extended_p_square
+struct tag::extended_p_square_probabilities; // PARAMETER_NESTED_KEYWORD(probabilitites)
+struct impl::extended_p_square_impl<Sample>; // INIT: vector<f> p={args[extended_p_square_probabilities]}, h={2*p.size()+3}, actual_p={h.size()}, desired_p={h.size()}, p_inc={h.size()}
+    //  num_q=p.size(), num_m=h.size(); actual_p={iota(1,num_m)}; p_inc=...; desired_p[i]=1+2*(num_q+1)*p_inc[i]
+    // ACC: cnt=count(args);
+    //  if (cnt <= num_m) { h[cnt-1]=args[sample]; if (cnt==num_m) sort(h); }
+    //  else: k=1; /* find k => h[k-1]<=args[sample]<h[k]
+    //      for (i : [k..num_m]) ++actual_p[i];     for (i : [0..5]) desired_p[i] += p_inc[i];
+    //      for (i : [1..num_m-1]): adjust h[i]
+    // RES: return {make_permutation_iterator(h.begin(),make_times2_iterator(1)), make_permutation_iterator(h.begin(),make_times2_iterator(num_p+1))}
+struct tag::extended_p_square : depneds_on<count>, extended_p_square_probabilities
+{ using impl=extended_p_square_impl<_1>; };
+extractor<tag::extended_p_square> const extract::extended_p_square = {};
+struct as_weighted_feature<tag::extended_p_square> { using type=tag::weighted_extended_p_square type; };
+struct feature_of<tag::weighted_extended_p_square> : feature_of<tag::extended_p_square> {};
+// weighted_extended_p_square
+struct impl::weighted_extended_p_square_impl<Sample,Weight>; // similar to extended_p_square_impl, no p_inc
+    // ACC: `actual_p[i]+=args[weight]`, update desired_p (interpolate)
+struct tag::weighted_extended_p_square : depneds_on<count,sum_of_weights>, extended_p_square_probabilities
+{ using impl=weighted_extended_p_square_impl<_1,_2>; };
+extractor<tag::weighted_extended_p_square> const extract::weighted_extended_p_square = {};
+
+// extended_p_square_quantile, extended_p_square_quantile_quadratic, weighted_extended_p_square_quantile, weighted_extended_p_square_quantile_quadratic
+struct impl::extended_p_square_quantile_impl<Sample,Impl1,Impl2>; // INIT: vector<f> ps=args[extended_p_square_probabilitites], p=0
+    // RES: h = some_extended_p_square(args); p = args[quantile_probability]
+    //  if (p< ps[0]||p> ps[ps.size()-1]) return quiet_NaN || throw_exception()
+    //  dist=distance(ps.begin(),lower_bound(ps, p)); return h[dist]; // or linear/quadratic interpolate
+struct tag::extended_p_square_quantile : depends_on<extended_p_square> { using impl=extended_p_square_quantile_impl<_1,unweighted,linear>; };
+struct tag::extended_p_square_quantile_quadratic : depends_on<extended_p_square> { using impl=extended_p_square_quantile_impl<_1,unweighted,quadratic>; };
+struct tag::weighted_extended_p_square_quantile : depends_on<extended_p_square> { using impl=extended_p_square_quantile_impl<_1,weighted,linear>; };
+struct tag::weighted_extended_p_square_quantile_quadratic : depends_on<extended_p_square> { using impl=extended_p_square_quantile_impl<_1,weighted,quadratic>; };
+extractor<tag::extended_p_square_quantile> const extract::extended_p_square_quantile = {};
+extractor<tag::extended_p_square_quantile_quadratic> const extract::extended_p_square_quantile_quadratic = {};
+extractor<tag::weighted_extended_p_square_quantile> const extract::weighted_extended_p_square_quantile = {};
+extractor<tag::weighted_extended_p_square_quantile_quadratic> const extract::weighted_extended_p_square_quantile_quadratic = {};
+struct as_feature<tag::extended_p_square_quantile(linear)> { using type=tag::extended_p_square_quantile; };
+struct as_feature<tag::extended_p_square_quantile(quadratic)> { using type=tag::extended_p_square_quantile_quadratic; };
+struct as_feature<tag::weighted_extended_p_square_quantile(linear)> { using type=tag::weighted_extended_p_square_quantile; };
+struct as_feature<tag::weighted_extended_p_square_quantile(quadratic)> { using type=tag::weighted_extended_p_square_quantile_quadratic; };
+struct feature_of<tag::extended_p_square_quantile> : feature_of<tag::quantile>{};
+struct feature_of<tag::extended_p_square_quantile_quadratic> : feature_of<tag::quantile>{};
+struct as_weighted_feature<tag::extended_p_square_quantile> { using type=tag::weighted_extended_p_square_quantile; };
+struct feature_of<tag::weighted_extended_p_square_quantile> : feature_of<tag::extended_p_square_quantile>{};
+struct as_weighted_feature<tag::extended_p_square_quantile_quadratic> { using type=tag::weighted_extended_p_square_quantile_quadratic; };
+struct feature_of<tag::weighted_extended_p_square_quantile_quadratic> : feature_of<tag::extended_p_square_quantile_quadratic>{};
+
+// median
+struct tag::median; struct impl::median_impl<Sample>;
+struct tag::with_density_median; struct impl::with_density_median_impl<Sample>;
+struct tag::with_p_square_cumulative_distribution_median;  struct impl::with_p_square_cumulative_distribution_median_impl<Sample>;
+struct tag::weighted_median; struct impl::weighted_median_impl<Sample>;
+struct tag::with_density_weighted_median; struct impl::with_density_weighted_median_impl<Sample>;
+struct tag::with_p_square_cumulative_distribution_weighted_median; struct impl::with_p_square_cumulative_distribution_weighted_median_impl<Sample,Weight>;
+
+struct tag::kurtosis; struct impl::kurtosis_impl<Sample>;
+struct tag::min; struct impl::min_impl<Sample>;
+struct tag::peaks_over_threadhold<LeftRight>;
+struct tag::peaks_over_threadhold_prob<LeftRight>; struct impl::peaks_over_threadhold_prob_impl<Sample,LeftRight>;
+struct tag::pot_tail_mean<LeftRight>; struct impl::pot_tail_mean_impl<Sample,Impl,LeftRight>;
+struct tag::pot_tail_mean_prob<LeftRight>;
+struct tag::pot_quantile<LeftRight>; struct impl::pot_quantile_impl<Sample,Impl,LeftRight>;
+struct tag::pot_quantile_prob<LeftRight>;
+struct tag::skewness; struct impl::skewness_impl<Sample>;
+struct tag::sum_kahan; struct impl::sum_kahan_impl<Sample,Tag>;
+struct tag::sum_of_weights_kahan;
+struct tag::sum_of_variates_kahan<VType,VTag>;
+struct tag::tail<LeftRight>; struct impl::tail_impl<Sample,LeftRight>;
+struct tag::coherent_tail_mean<LeftRight>; struct impl::coherent_tail_mean_impl<Sample,LeftRight>;
+struct tag::non_coherent_tail_mean<LeftRight>; struct impl::non_coherent_tail_mean_impl<Sample,LeftRight>;
+struct tag::tail_quantile<LeftRight>; struct impl::tail_quantile_impl<Sample,LeftRight>;
+struct tag::tail_variate<VType,VTag,LeftRight>; struct impl::tail_variate_impl<VType,VTag,LeftRight>;
+struct tag::tail_weights<LeftRight>;
+struct tag::right_tail_variate<VType,VTag,LeftRight>;
+struct tag::left_tail_variate<VType,VTag,LeftRight>;
+struct tag::tail_variate_means<LeftRight,VType,VTag>; struct impl::tail_variate_means_impl<Sample,Impl,LeftRight,VTag>;
+struct tag::absolute_tail_variate_means<LeftRight,VType,VTag>;
+struct tag::relative_tail_variate_means<LeftRight,VType,VTag>;
+struct tag::lazy_variance; struct impl::lazy_variance_impl<Sample,MeanFeature>;
+struct tag::variance; struct impl::variance_impl<Sample,MeanFeature,Tag>;
+struct tag::weighted_kurtosis; struct impl::weighted_kurtosis_impl<Sample,Weight>;
+struct tag::weighted_peaks_over_threshold<LeftRight>; struct impl::weighted_peaks_over_threshold_impl<Sample,Weight,LeftRight>;
+struct tag::weighted_peaks_over_threshold_prob<LeftRight>; struct impl::weighted_peaks_over_threshold_probe_impl<Sample,Weight,LeftRight>;
+struct tag::weighted_pot_tail_mean<LeftRight>;
+struct tag::weighted_pot_tail_mean_prob<LeftRight>;
+struct tag::weighted_pot_quantile<LeftRight>;
+struct tag::weighted_pot_quantile_prob<LeftRight>;
+struct tag::weighted_skewness; struct impl::weighted_skewness_impl<Sample,Weight>;
+struct tag::weighted_tail_quantile<LeftRight>; struct impl::weighted_tail_quantile_impl<Sample,Weight,LeftRight>;
+struct tag::non_coherent_weighted_tail_mean<LeftRight>; struct impl::non_coherent_weighted_tail_mean_impl<Sample,Weight,LeftRight>;
+struct tag::weighted_tail_variate_means<LeftRight,VType,VTag>; struct impl::weighted_tail_variate_means_impl<Sample,Weight,Impl,LeftRight,VType>;
+struct tag::absolute_weighted_tail_variate_means<LeftRight,VType,VTag>;
+struct tag::relative_weighted_tail_variate_means<LeftRight,VType,VTag>;
+struct tag::lazy_weighted_variance; struct impl::lazy_weighted_variance_impl<Sample,Weight,MeanFeature>;
+struct tag::weighted_variance; struct impl::weighted_variance_impl<Sample,Weight,MeanFeature,Tag>;
+    struct impl::weighted_sum_kahan_impl<Sample,Weight,Tag>;
+struct tag::rolling_window_plus1; struct impl::rolling_window_plus1_impl<Sample>;
+struct tag::rolling_window; struct impl::rolling_window_impl<Sample>;
+struct tag::rolling_sum; struct impl::rolling_sum_impl<Sample>;
+struct tag::rolling_count; struct impl::rolling_count_impl<Sample>;
+struct tag::rolling_mean; struct impl::rolling_mean_impl<Sample>;
 ```
 
-statistics_<fwd>
-statistics/parameters/quantile_probability
-statistics/variates/covariate
-statistics/: count, covariance, density, error_of_<mean>, extended_p_square_<quantile>,
-	kurtosis, max, mean, median, min, moment, p_square_{cumul_dist,cumulative_distribution,quantile},
-	peaks_over_threadhold, pot_quantile, pot_tail_mean, rolling_{count,mean,moment,sum,variance,window},
-	skewness, stats, sum_<kakan>, tail_<mean,quantile>, tail_variate_<means>, timers2_iterator,
-	variance, weighted_{covariance,density,extended_p_square,kurtosis,mean,median,moment},
-	weighted_p_source_{cumul_dist,cumulative_distribution,quantile}, weighted_peaks_over_threshold,
-	weighted_{skewness,sum_kahan,sum,variance}, weighted_tail_{mean,quantile,variant_means}, with_error
+statistics/: kurtosis, median, moment, peaks_over_threadhold, pot_quantile, pot_tail_mean,
+    rolling_{count,mean,moment,sum,variance,window},
+	skewness, sum_kakan, tail_<mean,quantile>, tail_variate_<means>, variance,
+    weighted_{kurtosis,median,moment}, weighted_peaks_over_threshold,
+	weighted_{skewness,sum_kahan,variance}, weighted_tail_{mean,quantile,variant_means}
 
 numeric/: functional_<fwd>
 numeric/functional/: complex, valarray, vector
