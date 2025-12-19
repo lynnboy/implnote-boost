@@ -710,47 +710,244 @@ extractor<tag::abstract_relative_tail_variate_means> const extract::relative_wei
 struct as_feature<tag::weighted_tail_variate_means<LR,VType,VTag>(absolute)> { using type=tag::absolute_weighted_tail_variate_means<LR,VType,VTag>; };
 struct as_feature<tag::weighted_tail_variate_means<LR,VType,VTag>(relative)> { using type=tag::relative_weighted_tail_variate_means<LR,VType,VTag>; };
 
-// peaks_over_threadhold
-struct tag::peaks_over_threadhold<LR>;
-struct tag::peaks_over_threadhold_prob<LR>; struct impl::peaks_over_threadhold_prob_impl<Sample,LR>;
-// weighted_peaks_over_threadhold
-struct tag::weighted_peaks_over_threshold<LR>; struct impl::weighted_peaks_over_threshold_impl<Sample,Weight,LR>;
-struct tag::weighted_peaks_over_threshold_prob<LR>; struct impl::weighted_peaks_over_threshold_probe_impl<Sample,Weight,LR>;
-
-// variance, lazy_variance
-struct tag::lazy_variance; struct impl::lazy_variance_impl<Sample,MeanFeature>;
-struct tag::variance; struct impl::variance_impl<Sample,MeanFeature,Tag>;
-// weighted_variance, lazy_weighted_variance
-struct tag::lazy_weighted_variance; struct impl::lazy_weighted_variance_impl<Sample,Weight,MeanFeature>;
-struct tag::weighted_variance; struct impl::weighted_variance_impl<Sample,Weight,MeanFeature,Tag>;
+// peaks_over_threshold
+struct tag::pot_threshold_value; struct tag::pot_threshold_probability; // PARAMETER_NESTED_KEYWORD(threshold_value), PARAMETER_NESTED_KEYWORD(threshold_probability)
+struct impl::peaks_over_threshold_impl<Sample,LR>;
+    // INIT: Nu=0, sign=(is_same<LR,left>?-1:1), sigma2=fdiv(args[sample],1), mu=sign*sigma2, th=sign*args[pot_threshold_value], fit_parameters=(0,0,0), is_dirty=true
+    // ACC: is_dirty=true; if (sign*args[sample] > th) { mu+=args[sample]; sigma2+=args[sample]^2; ++Nu;}
+    // RET: if (is_dirty):
+    //          is_dirty=false; cnt=count(args); mu=sign*fdiv(mu,Nu); sigma2=fdiv(sigma2,Nu)-mu^2; th_p=fdiv(cnt-Nu,cnt);
+    //          tmp=fdiv((mu-th)^2, sigma2); xi=(1.tmp)/2; beta_hat=(mu-th)/2*(1+tmp); beta_bar=beta_hat*pow(1-th_p,xi); u_bar=th-beta_bar*((1-th_p)^(-xi)-1)/xi;
+    //          fit_parameters=(u_bar,beta_bar,xi);
+    //      return fit_parameters
+struct impl::peaks_over_threshold_prob_impl<Sample,LR>; // INIT: sign, sigma2, mu, th_p, fit_parameters, is_dirty ( as_above );  ACC: is_dirty=true
+    // RET: if (is_dirty):
+    //          is_dirty=false; cnt=count(args); th_p=is_same<LR,left>?th_p:1-th_p; n=ceil(cnt*th_p)
+    //          if (n>= tail.size()) return (quiet_NaN,quiet_NaN,quiet_NaN) || throw_exception
+    //          u=sign*tail[n-1]; for (int i=0; i<n; ++i) { mu+=tail[i]; sigma2+=tail[i]^2; }  mu=sign*fdiv(mu,n);  sigma2=fdiv(sigma2,n)-mu^2
+    //          tmp=fdiv((mu-u)^2,sigma2); xi=(1-tmp)/2; beta_hat=(mu-u)/2*(1+tmp) beta_bar=beta_hat*(1-th_p)^xi; ubar=u-beta_bar*((1-th_p)^(-xi)-1)/xi
+    //          fit_parameters=(u_bar,beta_bar,xi);
+    //      return fit_parameters
+struct tag::peaks_over_threshold<LR> : depneds_on<count>, pot_threshold_value { using impl=peaks_over_threshold_impl<_1,LR>; };
+struct tag::peaks_over_threshold_prob<LR> : depends_on<count,tail<LR>>, pot_threshold_probability { using impl=peaks_over_threshold_prob_impl<_1,LR>; };
+struct tag::abstract_peaks_over_threshold : depends_on<>{};
+extractor<tag::abstract_peaks_over_threshold> const extract::peaks_over_threshold = {};
+struct as_feature<tag::peaks_over_threshold<LR>(with_threshold_value)> { using type=tag::peaks_over_threshold<LR>; };
+struct as_feature<tag::peaks_over_threshold<LR>(with_threshold_probability)> { using type=tag::peaks_over_threshold_prob<LR>; };
+struct feature_of<tag::peaks_over_threshold<LR>> : feature_of<tag::abstract_peaks_over_threshold>{};
+struct feature_of<tag::peaks_over_threshold_prob<LR>> : feature_of<tag::abstract_peaks_over_threshold>{};
+struct as_weighted_feature<tag::peaks_over_threshold<LR>> { using type=tag::weighted_peaks_over_threshold<LR>; };
+struct feature_of<tag::weighted_peaks_over_threshold<LR>> : feature_of<tag::peaks_over_threshold<LR>>{};
+struct as_weighted_feature<tag::peaks_over_threshold_prob<LR>> { using type=tag::weighted_peaks_over_threshold_prob<LR>; };
+struct feature_of<tag::weighted_peaks_over_threshold_prob<LR>> : feature_of<tag::peaks_over_threshold_prob<LR>>{};
+// weighted_peaks_over_threshold
+struct impl::weighted_peaks_over_threshold_impl<Sample,Weight,LR>; // similar to peaks_over_threshold_impl. INIT: wsum=fdiv(args[weight],1)
+    // ACC: mu+=args[weight]*args[sample], sigma+=args[weight]*args[sample]^2, wsum+=args[weight]
+    // RET: mu=sign*fdiv(mu,wsum); sigma2=fdiv(sigma2,wsum)-mu^2; th_p=fdiv(sum_of_weights-wsum,sum_of_weights)
+struct impl::weighted_peaks_over_threshold_probe_impl<Sample,Weight,LR>; // similar to peaks_over_threshold_prob_impl.
+    // RET: if (is_dirty):
+    //          is_dirty=false; th_p=is_same<LR,left>?th_p:1-th_p; th=sum_of_weights*th_p; n=0,sum=0
+    //          while (sum<th):
+    //              if (n<tail_weights.size()) { mu+=tail_weights[n]*tail[n]; sigma2+=tail_weights[n]*tail[n]^2; sum+=tail_weights[n]; n++ }
+    //              else return (quiet_NaN,quiet_NaN,quiet_NaN) || throw_exception
+    //          u=sign*tail[n-1]; mu=sign*fdiv(mu,sum);  sigma2=fdiv(sigma2,sum)-mu^2
+    //          tmp=fdiv((mu-u)^2,sigma2); xi=(1-tmp)/2; beta_hat=(mu-u)/2*(1+tmp) beta_bar=beta_hat*(1-th_p)^xi; ubar=u-beta_bar*((1-th_p)^(-xi)-1)/xi
+    //          fit_parameters=(u_bar,beta_bar,xi);
+    //      return fit_parameters
+struct tag::weighted_peaks_over_threshold<LR> : depneds_on<sum_of_weights>, pot_threshold_value { using impl=weighted_peaks_over_threshold_impl<_1,_2,LR>; };
+struct tag::weighted_peaks_over_threshold_prob<LR> : depneds_on<sum_of_weights,tail_weights<LR>>, pot_threshold_probability
+{ using impl=weighted_peaks_over_threshold_probe_impl<_1,_2,LR>; };
+extractor<tag::abstract_peaks_over_threshold> const extract::weighted_peaks_over_threshold = {};
+struct as_feature<tag::weighted_peaks_over_threshold<LR>(with_threshold_value)> { using type=tag::weighted_peaks_over_threshold<LR>; };
+struct as_feature<tag::weighted_peaks_over_threshold<LR>(with_threshold_probability)> { using type=tag::weighted_peaks_over_threshold_prob<LR>; };
 
 // pot_quantile, pot_quantile_prob, weighted_pot_quantile, weighted_pot_quantile_prob
-struct tag::pot_quantile<LR>; struct impl::pot_quantile_impl<Sample,Impl,LR>;
-struct tag::pot_quantile_prob<LR>;
-struct tag::weighted_pot_quantile<LR>;
-struct tag::weighted_pot_quantile_prob<LR>;
+struct impl::pot_quantile_impl<Sample,Impl,LR>; // sign=is_same<LR,left>?-1:1; p=args[quantile_probability]; p=is_same<LR,left>?p:1-p
+    // [u,beta,xi]=some_peaks_over_threshold(args); return sign*( u+beta/xi*(p^(-xi)-1) )
+struct tag::pot_quantile<LR> : depneds_on<peaks_over_threshold<LR>> { using impl=pot_quantile_impl<_1,unweighted,LR>; };
+struct tag::pot_quantile_prob<LR> : depneds_on<peaks_over_threshold_prob<LR>> { using impl=pot_quantile_impl<_1,unweighted,LR>; };
+struct tag::weighted_pot_quantile<LR> : depneds_on<weighted_peaks_over_threshold<LR>> { using impl=pot_quantile_impl<_1,weighted,LR>; };
+struct tag::weighted_pot_quantile_prob<LR> : depneds_on<weighted_peaks_over_threshold_prob<LR>> { using impl=pot_quantile_impl<_1,weighted,LR>; };
+struct as_feature<tag::pot_quantile<LR>(with_threshold_value)> { using type=tag::pot_quantile<LR>; };
+struct as_feature<tag::pot_quantile<LR>(with_threshold_probability)> { using type=tag::pot_quantile_prob<LR>; };
+struct as_feature<tag::weighted_pot_quantile<LR>(with_threshold_value)> { using type=tag::weighted_pot_quantile<LR>; };
+struct as_feature<tag::weighted_pot_quantile<LR>(with_threshold_probability)> { using type=tag::weighted_pot_quantile_prob<LR>; };
+struct feature_of<tag::pot_quantile<LR>> : feature_of<tag::quantile>{};
+struct feature_of<tag::pot_quantile_prob<LR>> : feature_of<tag::quantile>{};
+struct as_weighted_feature<tag::pot_quantile<LR>> { using type=tag::weighted_pot_quantile<LR>; };
+struct feature_of<tag::weighted_pot_quantile<LR>> : feature_of<tag::pot_quantile<LR>>{};
+struct as_weighted_feature<tag::pot_quantile_prob<LR>> { using type=tag::weighted_pot_quantile_prob<LR>; };
+struct feature_of<tag::weighted_pot_quantile_prob<LR>> : feature_of<tag::pot_quantile_prob<LR>>{};
 
 // pot_tail_mean, pot_tail_mean_prob, weighted_pot_tail_mean, weighted_pot_tail_mean_prob
-struct tag::pot_tail_mean<LR>; struct impl::pot_tail_mean_impl<Sample,Impl,LR>;
-struct tag::pot_tail_mean_prob<LR>;
-struct tag::weighted_pot_tail_mean<LR>;
-struct tag::weighted_pot_tail_mean_prob<LR>;
+struct impl::pot_tail_mean_impl<Sample,Impl,LR>; // sign=is_same<LR,left>?-1:1; p=args[quantile_probability]; p=is_same<LR,left>?p:1-p
+    // [beta,xi]=some_peaks_over_threshold(args); return some_pot_quantile(args) - sign*( beta/(xi-1)*p^(-xi) )
+struct tag::pot_tail_mean<LR> : depneds_on<peaks_over_threshold<LR>,pot_quantile<LR>> { using impl=pot_tail_mean_impl<_1,unweighted,LR>; };
+struct tag::pot_tail_mean_prob<LR> : depneds_on<peaks_over_threshold_prob<LR>,pot_quantile<LR>> { using impl=pot_tail_mean_impl<_1,unweighted,LR>; };
+struct tag::weighted_pot_tail_mean<LR> : depneds_on<weighted_peaks_over_threshold<LR>,weighted_pot_quantile<LR>> { using impl=pot_tail_mean_impl<_1,weighted,LR>; };
+struct tag::weighted_pot_tail_mean_prob<LR> : depneds_on<weighted_peaks_over_threshold_prob<LR>,weighted_pot_quantile<LR>> { using impl=pot_tail_mean_impl<_1,weighted,LR>; };
+struct as_feature<tag::pot_tail_mean<LR>(with_threshold_value)> { using type=tag::pot_tail_mean<LR>; };
+struct as_feature<tag::pot_tail_mean<LR>(with_threshold_probability)> { using type=tag::pot_tail_mean_prob<LR>; };
+struct as_feature<tag::weighted_pot_tail_mean<LR>(with_threshold_value)> { using type=tag::weighted_pot_tail_mean<LR>; };
+struct as_feature<tag::weighted_pot_tail_mean<LR>(with_threshold_probability)> { using type=tag::weighted_pot_tail_mean_prob<LR>; };
+struct feature_of<tag::pot_tail_mean<LR>> : feature_of<tag::tail_mean>{};
+struct feature_of<tag::pot_tail_mean_prob<LR>> : feature_of<tag::tail_mean>{};
+struct as_weighted_feature<tag::pot_tail_mean<LR>> { using type=tag::weighted_pot_tail_mean<LR>; };
+struct feature_of<tag::weighted_pot_tail_mean<LR>> : feature_of<tag::pot_tail_mean<LR>>{};
+struct as_weighted_feature<tag::pot_tail_mean_prob<LR>> { using type=tag::weighted_pot_tail_mean_prob<LR>; };
+struct feature_of<tag::weighted_pot_tail_mean_prob<LR>> : feature_of<tag::pot_tail_mean_prob<LR>>{};
 
-// rolling_window, rolling_window_plus1, rolling_sum, rolling_count, rolling_mean
-struct tag::rolling_window_plus1; struct impl::rolling_window_plus1_impl<Sample>;
-struct tag::rolling_window; struct impl::rolling_window_impl<Sample>;
-struct tag::rolling_sum; struct impl::rolling_sum_impl<Sample>;
-struct tag::rolling_count; struct impl::rolling_count_impl<Sample>;
-struct tag::rolling_mean; struct impl::rolling_mean_impl<Sample>;
+// variance, lazy_variance
+struct impl::lazy_variance_impl<Sample,MeanFeature>; // moment<2> - mean^2
+struct impl::variance_impl<Sample,MeanFeature,Tag>; // INIT: variance=fdiv(args[sample],1);
+    // ACC: cnt=count(args) if (cnt>1) { tmp=args[keyword<Tag>::get()]-mean(args); variance=fdiv(variance*(cnt-1),cnt) + fdiv(tmp^2, cnt-1); }
+struct tag::lazy_variance : depneds_on<moment<2>,mean>; { using impl=lazy_variance_impl<_1,mean>; };
+struct tag::variance : depends_on<count,immediate_mean> { using impl=variance_impl<_1,mean,sample>; };
+extractor<tag::lazy_variance> const extract::lazy_variance = {};
+extractor<tag::variance> const extract::variance = {};
+struct as_feature<tag::variance(lazy)> { using type=tag::lazy_variance; };
+struct as_feature<tag::variance(immediate)> { using type=tag::variance; };
+struct feature_of<tag::lazy_variance> : feature_of<tag::variance>{};
+struct as_weighted_feature<tag::variance> { using type=tag::weighted_variance; };
+struct feature_of<tag::weighted_variance> : feature_of<tag::variance>{};
+struct as_weighted_feature<tag::lazy_variance> { using type=tag::lazy_weighted_variance; };
+struct feature_of<tag::lazy_weighted_variance> : feature_of<tag::lazy_variance>{};
+// weighted_variance, lazy_weighted_variance
+struct impl::lazy_weighted_variance_impl<Sample,Weight,MeanFeature>; // weighted_moment<2> - mean^2
+struct impl::weighted_variance_impl<Sample,Weight,MeanFeature,Tag>; // INIT: weighted_variance=fdiv(args[sample],1);
+    // ACC: cnt=count(args) if (cnt>1) { tmp=args[keyword<Tag>::get()]-mean(args); wsum=sum_of_weights(args), w=args[weight];
+    //          weighted_variance=fdiv(weighted_variance*(wsum-w),wsum) + fdiv(tmp^2*w, wsum-w); }
+struct tag::lazy_weighted_variance : depends_on<weighted_moment<2>, weighted_mean> { using impl=lazy_weighted_variance_impl<_1,_2,weighted_mean>; };
+struct tag::weighted_variance : depneds_on<count,immediate_weighted_mean> { using impl=weighted_variance_impl<_1,_2,immediate_weighted_mean,sample>; };
+extractor<tag::lazy_weighted_variance> const extract::lazy_weighted_variance = {};
+extractor<tag::weighted_variance> const extract::weighted_variance = {};
+struct as_feature<tag::weighted_variance(lazy)> { using type=tag::lazy_weighted_variance; };
+struct as_feature<tag::weighted_variance(immediate)> { using type=tag::weighted_variance; };
+
+// rolling_window, rolling_window_plus1
+struct tag::rolling_window_size; // PARAMETER_NESTED_KEYWORD(window_size)
+struct impl::rolling_window_plus1_impl<Sample>; // INIT: circular_buffer<Sample> buffer{args[rolling_window_size]+1}; ACC: buffer.push_back(args[sample])
+bool impl::is_rolling_window_plus1_full<Args>(Args const& args) { return find_accumulator<tag::rolling_window_plus1>(args[accumulator]).full(); }
+struct impl::rolling_window_impl<Sample>; // rolling_window_plus1(args).advance_begin(is_rolling_window_plus1_full(args))
+struct tag::rolling_window_plus1 : depends_on<>, tag::rolling_window_size { using impl=rolling_window_plus1_impl<_1>; };
+struct tag::rolling_window : depneds_on<rolling_window_plus1> { using impl=rolling_window_impl<_1>; };
+extractor<tag::rolling_window_plus1> const extract::rolling_window_plus1 = {};
+extractor<tag::rolling_window> const extract::rolling_window = {};
+// rolling_count
+struct impl::rolling_count_impl<Sample>; // rolling_window_plus1(args).size() - is_rolling_window_plus1_full(args)
+struct tag::rolling_count : depends_on<rolling_window_plus1> { using impl=rolling_count_impl<_1>; };
+extractor<tag::rolling_count> const extract::rolling_count = {};
+// rolling_sum
+struct impl::rolling_sum_impl<Sample>; // INIT: sum=args[sample]; ACC: if (is_rolling_window_plus1_full(args)) sum-=rolling_window_plus1[0]; sum+=args[sample]
+struct tag::rolling_sum : depends_on<rolling_window_plus1> { using impl=rolling_sum_impl<_1>; };
+extractor<tag::rolling_sum> const extract::rolling_sum = {};
+// rolling_meanm immediate_rolling_mean, lazy_rolling_mean
+struct impl::lazy_rolling_mean_impl<Sample>; // fdiv(rolling_sum,rolling_count)
+struct impl::immediate_rolling_mean_impl<Sample>; // INIT: mean=fdiv(args[sample],1);
+    // if (is_rolling_window_plus1_full(args)) mean += fdiv(args[sample]-rolling_window_plus1[0], rolling_count);
+    // else mean += fdiv(args[sample]-mean, rolling_count)
+struct tag::lazy_rolling_mean : depends_on<rolling_sum,rolling_count> { using impl=lazy_rolling_mean_impl<_1>; };
+struct tag::immediate_rolling_mean : depends_on<rolling_window_plus1,rolling_count> { using impl=immediate_rolling_mean_impl<_1>; };
+struct tag::rolling_mean : immediate_rolling_mean{};
+extractor<tag::lazy_rolling_mean> const extract::lazy_rolling_mean = {};
+extractor<tag::immediate_rolling_mean> const extract::immediate_rolling_mean = {};
+extractor<tag::rolling_mean> const extract::rolling_mean = {};
+struct as_feature<tag::rolling_mean(lazy)> { using type=tag::lazy_rolling_mean; };
+struct as_feature<tag::rolling_mean(immediate)> { using type=tag::immediate_rolling_mean; };
+struct feature_of<tag::immediate_rolling_mean> : feature_of<tag::rolling_mean>{};
+struct feature_of<tag::lazy_rolling_mean> : feature_of<tag::rolling_mean>{};
+// rolling_moment
+struct impl::rolling_moment_impl<N,Sample>; // INIT: sum=args[sample];
+    // ACC: if (is_rolling_window_plus1_full(args)) sum-=rolling_window_plus1[0]^n; sum+=args[sample]^n // RET: fdiv(sum,rolling_count)
+struct tag::rolling_moment<n> : depends_on<rolling_window_plus1,rolling_count> { using impl=rolling_moment_impl<mpl::int_<n>,_1>; };
+mpl::apply<AccSet,tag::rolling_moment<n>>::type::result_type extract::rolling_moment<AccSet,n>(AccSet const& acc)
+{ return extract_result<tag::rolling_moment<n>>(acc); }
 ```
 
-statistics/: peaks_over_threadhold, pot_quantile, pot_tail_mean,
-    rolling_{count,mean,moment,sum,variance,window}, variance,
-    weighted_peaks_over_threshold, weighted_variance
+------
+### Numeric Operators
 
-numeric/: functional_<fwd>
-numeric/functional/: complex, valarray, vector
-numeric/detail/: function{1,2,3,4,_n}, pod_singleton
+```c++
+namespace op{ using mpl::_; using mpl::_1; using mpl::_2; }
+namespace functional { using namespace operators;
+struct tag<T> { using type=void; };
+struct static_<T>;
+struct are_integral<A0,A1> : mpl::and_<is_integral<A0>,is_integral<A1>>{};
+struct left_ref<L,R> { using type=L&; };
+T& detail::lvalue_of<T>();
+}
+
+// Binary Operators (Name,Op): (plus,+), (minus,-), (multiplies,*), (divides,/), (modulus,%),
+//      (greater,>), (greater_equal,>=), (less,<), (less_equal,<=), (equal_to,==), (not_equal_to,!=),
+//      (assign,=), (plus_assign,+=), (minus_assign,-=), (multiplies_assign,*=), (divides_assign,/=), (modulus_assign,%=),
+namespace functional{ struct result_of_<Name><L,R,En=void>; struct <Name>_base<L,R,En_void>; struct <Name><L,R,LTag=tag<L>::type,RTag=tag<R>::type>; }
+namespace op{ struct <Name>; } namespace { extern op::<Name> const &Name; }
+
+// Unary Operators (Name,Op): (unary_plus,+), (unary_minus,-), (complement,~), (logical_not,!)
+namespace functional{ struct <Name>_base<Arg,En_void>; struct <Name><Arg,ArgTag=tag<Arg>::type>; }
+namespace op{ struct <Name>; } namespace { extern op::<Name> const &Name; }
+
+lazy_disable_if<is_const<From>, mpl::if_<is_same<To,From>, To&, To>>::type promote<To,From>(From& from);
+mpl::if_<is_same<To const,From const>,To const&, To const>::type promote<To,From>(From const& from);
+struct default_<T>;
+struct one<T>;
+struct zero<T>;
+struct one_or_default<T>;
+struct zero_or_default<T>;
+
+// Binary Primitives (Name,act): (promote,promote), (min_assign,l=min(l,r)), (max_assign,l=max(l,r)), (fdiv,divides<double,double>),
+namespace functional{ struct result_of_<Name><L,R,En=void>; struct <Name>_base<L,R,En_void>; struct <Name><L,R,LTag=tag<L>::type,RTag=tag<R>::type>; }
+namespace op{ struct <Name>; } namespace { extern op::<Name> const &Name; }
+
+// Unary Primitives (Name,act): (as_min,std::numeric_limits<>::min), (as_max,std::numeric_limits<>::max), (as_zero,zero<>::value), (as_one,one<>::value)
+namespace functional{ struct <Name>_base<Arg,En_void>; struct <Name><Arg,ArgTag=tag<Arg>::type>; }
+namespace op{ struct <Name>; } namespace { extern op::<Name> const &Name; }
+
+// Operators for stdlib types
+namespace operators{
+std::complex<T> operator*<T,U>(std::complex<T> ri, U const& u) requires !(is_same<T,U>||is_same<std::complex<T>,U>)
+std::complex<T> operator/<T,U>(std::complex<T> ri, U const& u) requires !(is_same<T,U>||is_same<std::complex<T>,U>)
+
+std::vector<multiplies<L,R>::result_type> operator*<L,R>(std::vector<L> const& l, R const& r) requires is_scalar<R>;
+std::vector<multiplies<L,R>::result_type> operator*<L,R>(L const& l, std::vector<R> const& r) requires is_scalar<L>;
+std::vector<multiplies<L,R>::result_type> operator*<L,R>(std::vector<L> const& l, std::vector<R> const& r);
+std::vector<divides<L,R>::result_type> operator/<L,R>(std::vector<L> const& l, R const& r) requires is_scalar<R>;
+std::vector<divides<L,R>::result_type> operator/<L,R>(std::vector<L> const& l, std::vector<R> const& r);
+std::vector<plus<L,R>::result_type> operator+<L,R>(std::vector<L> const& l, std::vector<R> const& r);
+std::vector<minus<L,R>::result_type> operator-<L,R>(std::vector<L> const& l, std::vector<R> const& r);
+std::vecotr<L>& operator+=<L>(std::vector<L>& l, std::vector<L> const& r);
+std::vector<unary_minus<Arg>::result_type> operator-(std::vector<Arg> const& arg);
+
+std::valarray<multiplies<L,R>::result_type> operator*<L,R>(std::valarray<L> const& l, R const& r) requires is_scalar<R>&&!is_same<L,R>;
+std::valarray<divides<L,R>::result_type> operator/<L,R>(std::valarray<L> const& l, R const& r) requires is_scalar<R>&&!is_same<L,R>;
+std::valarray<plus<L,R>::result_type> operator+<L,R>(std::valarray<L> const& l, std::valarray<R> const& r) requires !is_same<L,R>;
+}
+
+namespace function {
+struct std_vector_tag; struct tag<std::vector<T,A>>{ using type=std_vector_tag; };
+struct min_assign<L,R,std_vector_tag,std_vector_tag>;
+struct max_assign<L,R,std_vector_tag,std_vector_tag>;
+struct fdiv<L,R,std_vector_tag,void>;
+struct promote<To,From,std_vector_tag,std_vector_tag>;
+struct promote<T,T,std_vector_tag,std_vector_tag>;
+struct as_min<T,std_vector_tag>;
+struct as_max<T,std_vector_tag>;
+struct as_zero<T,std_vector_tag>;
+struct as_one<T,std_vector_tag>;
+
+struct std_valarray_tag; struct tag<std::valarray<T>> { using type=std_valarray_tag; };
+struct min_assign<L,R,std_valarray_tag,std_valarray_tag>;
+struct max_assign<L,R,std_valarray_tag,std_valarray_tag>;
+struct fdiv<L,R,std_valarray_tag,void>;
+struct promote<To,From,std_valarray_tag,std_valarray_tag>;
+struct promote<T,T,std_valarray_tag,std_valarray_tag>;
+struct as_min<T,std_valarray_tag>;
+struct as_max<T,std_valarray_tag>;
+struct as_zero<T,std_valarray_tag>;
+struct as_one<T,std_valarray_tag>;
+}
+struct one<std::complex<T>>;
+```
 
 ------
 ### Configuration
