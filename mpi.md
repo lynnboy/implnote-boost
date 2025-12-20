@@ -35,6 +35,12 @@ struct allocator<T> {
 struct allocator<void>{ using <const>_pointer=<const>void*; using value_type=void; struct rebind<U>{using other=allocator<U>;}; };
 bool operator{==|!=}<T1,T2>(const allocator<T1>&, const allocator<T2>&) noexcept; // always equal
 
+// inplace
+struct inplace_t<T> { T& buffer; ctor(T& inout):buffer{inout}{} };
+struct inplace_t<T*> { T* buffer; ctor(T* inout):buffer{inout}{} };
+inplace_t<T> inplace<T>(T& input) { return {inout}; }
+inplace_t<T*> inplace<T>(T* input) { return {inout}; }
+
 // datatypes
 struct detail::mpi_datatype_primitive {
   ctor(); ctor(void const*orig); // MPI_Get_address(orig) to origin
@@ -83,7 +89,7 @@ MPI_Datatype get_mpi_datatype<T>() { return get_mpi_datatype(T{}); }
 //    (std::pair<short,int>,MPI_SHORT_INT,builtin), (std::pair<int,int>,MPI_2INT,builtin),
 //    (wchar_t,MPI_WCHAR,builtin), (long long,MPI_LONG_LONG_INT,builtin), (unsigned long long,MPI_UNSIGNED_LONG_LONG,builtin),
 //    (signed char,MPI_SIGNED_CHAR,builtin),
-//    (serialization::library_version_type,get_mpi_data_type(uint_least16_t{}),integer),
+//    (serialization::library_version_type,get_mpi_datatype(uint_least16_t{}),integer),
 //    (archive::version_type, get_mpi_datatype(uint_least8_t()), integer),
 //    (archive::class_id_type, get_mpi_datatype(int_least16_t()), integer),
 //    (archive::class_id_reference_type, get_mpi_datatype(int_least16_t()), integer),
@@ -147,6 +153,108 @@ private: bool i_initialized, abort_on_exception; static const int num_reserved_t
 };
 ```
 
+#### Request
+
+```c++
+struct serialized_irecv_data<T> { size_t m_count; packed_iarchive m_ia; T& m_value; };
+struct serialized_irecv_data<packed_iarchive> { size_t m_count; packed_iarchive& m_ia; };
+struct serialized_array_irecv_data<T> { size_t m_count; packed_iarchive m_ia; T* m_value; int m_nb; };
+struct dynamic_array_irecv_data<T,A> { size_t m_count; std::vector<T,A>& m_values; };
+struct serialized_irecv_data<const skeleton_proxy<T>>
+{ size_t m_count; packed_skeleton_iarchive m_isa; packed_iarchive& m_ia; skeleton_proxy<T> m_proxy; };
+struct serialized_irecv_data<skeleton_proxy<T>> : self<const skeleton_proxy<T>>{};
+
+struct detail::dynamic_primitive_array_data<A> { A& m_buffer; };
+struct detail::serialized_data<T> { packed_iarchive m_archive; T& m_value; };
+struct detail::serialized_data<packed_iarchive> { packed_iarchive& m_archive; };
+struct detail::serialized_data<const skeleton_proxy<T>> { skeleton_proxy<T> m_proxy; packed_skeleton_iarchive m_archive; };
+struct detail::serialized_data<skeleton_proxy<T>> : self<const skeleton_proxy<T>>{};
+struct detail::serialized_array_data<T> { packed_iarchive m_archive; T* m_values; int m_nb; };
+
+// request
+struct request {
+  ctor();
+  static request make_trivial_send<T>(communicator const& comm, int dest, int tag, T const& value); // MPI_Isend
+  static request make_trivial_send<T>(communicator const& comm, int dest, int tag, T const* values, int n);
+  static request make_packed_send(communicator const& comm, int dest, int tag, void const* values, size_t n);
+  static request make_bottom_send(communicator const& comm, int dest, int tag, MPI_Datatype tp);
+  static request make_empty_send(communicator const& comm, int dest, int tag);
+
+  static request make_trivial_recv<T>(communicator const& comm, int dest, int tag, T& value); // MPI_Irecv
+  static request make_trivial_recv<T>(communicator const& comm, int dest, int tag, T* values, int n);
+  static request make_bottom_recv(communicator const& comm, int dest, int tag, MPI_Datatype tp);
+  static request make_empty_recv(communicator const& comm, int dest, int tag);
+
+  static request make_dynamic(); // dynamic_handler
+  // use probe_handler<XXX_data<>> on newer version, else use legacy_XXX_handler<>
+  static request make_serialized<T>(communicator const& comm, int source, int tag, T& value); // 
+  static request make_serialized_array<T>(communicator const& comm, int source, int tag, T* values, int n);
+  static request make_dynamic_primitive_array_recv<T,A>(communicator const& comm, int source, int tag, std::vector<T,A>& values);
+  static request make_dynamic_primitive_array_send<T,A>(communicator const& comm, int source, int tag, std::vector<T,A> const& values);
+
+  status wait() { return m_handler ? m_handler->wait() : {}; }
+  optional<status> test() { return active() ? m_handler->test() : {}; }
+  void cancel() { if (m_handler) { m_handler->cancel(); } m_preserved.reset(); }
+  optional<MPI_Request&> trivial() { return m_handler ? m_handler->trivial() : {}; }
+  bool active() const { return m_handler && m_handler->active(); }
+  void preserve(shared_ptr<void> d);
+
+  struct handler { virtual ~dtor() =0;
+    virtual status wait() =0;
+    virtual optional<status> test() =0;
+    virtual void cancel() =0;
+    virtual bool active() const =0;
+    virtual optional<MPI_Request&> trivial() =0;
+  };
+private:
+  struct legacy_handler : handler {
+    void cancel(); // MPI_Cancel the 2 requests
+    bool active() const;
+    optional<MPI_Request&> trivial();
+    MPI_Request m_requests[2]; communicator m_comm; int m_source, m_tag;
+  };
+  struct trivial_handler : handler {
+    status wait(); // MPI_Wait
+    optional<status> test(); // MPI_Test
+    void cancel();
+    bool active() const;
+    optional<MPI_Request&> trivial();
+  private: MPI_Request m_request;
+  };
+  struct dynamic_handler : handler {
+    status wait(); // MPI_Waitall
+    optional<status> test(); // MPI_Testall
+    void cancel();
+    bool active() const;
+    optional<MPI_Request&> trivial();
+  private: MPI_Request m_request[2];
+  };
+  struct legacy_serialized_handler<T> : legacy_handler, protected serialized_irecv_data<T> {
+    status wait(); // if req[1] is null, MPI_Wait then MPI_Irecv; MPI_Wait req[1]
+    optional<status> test(); // if req[1] is null, MPI_Wait then MPI_Irecv; MPI_Test req[1]
+  };
+  struct legacy_serialized_array_handler<T> : legacy_handler, protected serialized_array_irecv_data<T> {
+    status wait(); // if req[1] is null, MPI_Wait then MPI_Irecv; MPI_Wait req[1]
+    optional<status> test(); // if req[1] is null, MPI_Wait then MPI_Irecv; MPI_Test req[1]
+  };
+  struct legacy_dynamic_primitive_array_handler<T,A> : legacy_handler, protected dynamic_array_irecv_data<T,A> {
+    status wait(); // if req[1] is null, MPI_Wait then MPI_Irecv; MPI_Wait req[1]
+    optional<status> test(); // if req[1] is null, MPI_Wait then MPI_Irecv; MPI_Test req[1]
+  };
+  struct probe_handler<Data> : handler, protected Data {
+    bool active() const { return m_source != MPI_PROC_NULL; }
+    optional<MPI_Request&> trivial() { return none; }
+    void cancel() { m_source = MPI_PROC_NULL; }
+    status wait(); // MPI_Mprobe, then unpack
+    optional<status> test(); // MPI_Improbe, then unpack
+  protected: communicator const& m_comm; int m_source, m_tag;
+    status unpack(MPI_Message& msg, status& status); // MPI_Get_count, MPI_Mrecv
+  };
+
+  shared_ptr<handler> m_handler; shared_ptr<void> m_preserved;
+};
+```
+
 #### Serialization
 
 ```c++
@@ -166,20 +274,110 @@ struct detail::mpi_datatype_oarchive : public mpi_datatype_primitive, public ign
     else { base::save_orerride(t); }
   }
 };
+
+struct packed_iprimitive {
+  using buffer_type = std::vector<char,allocator<char>>;
+  ctor(buffer_type& b, MPI_Comm const& comm, int position=0);
+  void const* address() const { return buffer_.data(); }
+  const size_t& size() const { return size_=buffer_.size(); }
+  void resize(size_t s) { buffer_.resize(s); }
+  void load_binary(void* address, size_t count);
+  void load_array<T>(serialization::array_wrapper<T> const& x, unsigned);
+  using use_array_optimization = is_mpi_datatype<_1>;
+  void load<T>(T& t);
+  void load<Ch>(std::basic_string<Ch>& s); // size and Ch array
+private: buffer_type& buffer_; mutable size_t size_; MPI_Comm comm; int position;
+  void load_impl(void* p, MPI_Datatype t, int l); // MPI_Unpack
+};
+struct packed_oprimitive {
+  using buffer_type = std::vector<char,allocator<char>>;
+  ctor(buffer_type& b, MPI_Comm const& comm);
+  void const* address() const { return buffer_.data(); }
+  const size_t& size() const { return size_=buffer_.size(); }
+  const size_t* size_ptr() const { return &size(); }
+  void save_binary(void const* address, size_t count);
+  void save_array<T>(serialization::array_wrapper<T> const& x, unsigned);
+  using use_array_optimization = is_mpi_datatype<_1>;
+  void save<T>(const T& t);
+  void save<Ch>(const std::basic_string<Ch>& s); // size and Ch array
+private: buffer_type& buffer_; mutable size_t size_; MPI_Comm comm;
+  void save_impl(void const* p, MPI_Datatype t, int l); // MPI_Unpack
+};
+
+struct binary_buffer_iprimitive {
+  using buffer_type = std::vector<char,allocator<char>>;
+  ctor(buffer_type& b, MPI_Comm const&, int position=0);
+  void <const>* address() <const> { return buffer_.data(); }
+  const size_t& size() const { return size_=buffer_.size(); }
+  void resize(size_t s) { buffer_.resize(s); }
+  void load_binary(void* address, size_t count);
+  void load_array<T>(serialization::array_wrapper<T> const& x, unsigned);
+  using use_array_optimization = is_bitwise_serializable<_1>;
+  void load<T>(serialization::array_wrapper<T> const& x) { load_array(x,0); }
+  void load<T>(T& t);
+  void load<Ch>(std::basic_string<Ch>& s); // size and Ch array
+private: buffer_type& buffer_; mutable size_t size_; int position;
+  void load_impl(void* p, int l); // memcpy from buffer_
+};
+struct binary_buffer_oprimitive {
+  using buffer_type = std::vector<char,allocator<char>>;
+  ctor(buffer_type& b, MPI_Comm const&);
+  void const* address() const { return buffer_.data(); }
+  const size_t& size() const { return size_=buffer_.size(); }
+  const size_t* size_ptr() const { return &size(); }
+  void save_binary(void const* address, size_t count);
+  void save_array<T>(serialization::array_wrapper<T> const& x, unsigned);
+  void save<T>(serialization::array_wrapper<T> const& x) { save_array(x,0); }
+  using use_array_optimization = is_bitwise_serializable<_1>;
+  void save<T>(const T& t);
+  void save<Ch>(const std::basic_string<Ch>& s); // size and Ch array
+private: buffer_type& buffer_; mutable size_t size_;
+  void save_impl(void const* p, int l); // buffer_.insert
+};
+
+using iprimitive = binary_buffer_iprimitive; // HOMOGENEOUS
+struct packed_iarchive : public iprimitive, archive::detail::common_iarchive<self> {
+  ctor(MPI_Comm const& comm, buffer_type& b, unsigned flags=no_header, int position=0);
+  ctor(MPI_Comm const& comm, size_t s=0, unsigned flags=no_header); // use internal_buffer_
+  void load_override<T>(T& x) {
+    if constexpr (apply<use_array_optimization,remove_const_t<T>>()) iprimitive::load(x);
+    else common_iarchive<self>::load_override(x);
+  }
+  void load_override(archive::class_id_optional_type&){}
+  void load_override(archive::class_id_type& t); // *This()>>t
+  void load_override(archive::version_type& t); // *This()>>t
+  void load_override(archive::class_id_reference_type& t); // *This()>>t
+  void load_override(archive::class_name_type& t); // *This()>>str
+private: buffer_type internal_buffer_;
+};
+using iprimitive = packed_iprimitive; // Otherwise
+struct packed_oarchive : public oprimitive, archive::detail::common_oarchive<self> {
+  ctor(MPI_Comm const& comm, buffer_type& b, unsigned flags=no_header);
+  ctor(MPI_Comm const& comm, unsigned flags=no_header); // use internal_buffer_
+  void save_override<T>(T const& x) {
+    if constexpr (apply<use_array_optimization,T>()) oprimitive::save(x);
+    else common_oarchive<self>::save_override(x);
+  }
+  void save_override(const archive::class_id_optional_type&){}
+  void save_override(const archive::class_id_type& t); // *This()<<t
+  void save_override(const archive::version_type& t); // *This()<<t
+  void save_override(const archive::class_name_type& s); // *This()<<s
+private: buffer_type internal_buffer_;
+};
 ```
 
 
 collectives/: all_to_all, broadcast, <all>_gather<v>, <all>_reduce, scan, scatter<v>
-detail/: binary_buffer_{i,o}primitive, broadcast_sc, communicator_sc, computation_tree,
-	content_oarchive, forward_{i,o}primitive, forward_skeleton_{i,o}archive, ignore_{i,o}primitive,
-	offsets, packed_{i,o}primitive, point_to_point, request_dhandlers, text_skeleton_oarchive
+detail/: broadcast_sc, communicator_sc, computation_tree, content_oarchive,
+  forward_{i,o}primitive, forward_skeleton_{i,o}archive, ignore_{i,o}primitive,
+	offsets, point_to_point, text_skeleton_oarchive
 python/: config, serialize, skeleton_and_content
 
-<cartesian,graph>_communicator, collectives_<fwd>, group, inplace, intercommunicator, nonblocking,
-operations, packed_{i,o}archive, python, request skeleton_and_content_<fwd,types>
+<cartesian,graph>_communicator, collectives_<fwd>, group, intercommunicator, nonblocking,
+operations, python, skeleton_and_content_<fwd,types>
 
 src/: broadcast, <cartesian,graph>_communicator, computation_tree, content_oarchive, intercommunicator,
-  offsets, packed_{i,o}archive, packed_skeleton_{i,o}archive, point_to_point, request, text_skeleton_oarchive
+  offsets, packed_skeleton_{i,o}archive, point_to_point, text_skeleton_oarchive
 
 ------
 ### Dependency
