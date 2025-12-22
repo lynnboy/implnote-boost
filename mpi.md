@@ -151,9 +151,118 @@ struct environment : noncopyable {
   static std::string library_version(); // MPI_Get_library_version
 private: bool i_initialized, abort_on_exception; static const int num_reserved_tags=1;
 };
+
+// operations
+struct is_mpi_op<Op,T> : mpl::false_{};
+struct is_commutative<Op,T> : mpl::false_{};
+struct maximum<T>; // functor of max()
+struct minimum<T>; // functor of min()
+struct bitwise_and<T>; // x&y
+struct bitwise_or<T>; // x|y
+struct logical_xor<T>; // (x||y)&&!(x&&y)
+struct bitwise_xor<T>; // x^y
+struct is_mpi_op<maximum<T>,T> : mpl::or_<is_mpi_integer_datatype<T>,is_mpi_floating_point_datatype<T>>{ static MPI_Op op() { return MPI_MAX;} };
+struct is_mpi_op<minimum<T>,T> : mpl::or_<is_mpi_integer_datatype<T>,is_mpi_floating_point_datatype<T>>{ static MPI_Op op() { return MPI_MIN;} };
+struct is_mpi_op<std::plus<T>,T> : mpl::or_<is_mpi_integer_datatype<T>,is_mpi_floating_point_datatype<T>,is_mpi_complex_datatype<T>>{ static MPI_Op op() { return MPI_SUM;} };
+struct is_mpi_op<std::multiplies<T>,T> : mpl::or_<is_mpi_integer_datatype<T>,is_mpi_floating_point_datatype<T>,is_mpi_complex_datatype<T>>{ static MPI_Op op() { return MPI_PROD;} };
+struct is_mpi_op<std::logical_and<T>,T> : mpl::or_<is_mpi_integer_datatype<T>,is_mpi_logical_datatype<T>>{ static MPI_Op op() { return MPI_LAND;} };
+struct is_mpi_op<std::logical_or<T>,T> : mpl::or_<is_mpi_integer_datatype<T>,is_mpi_logical_datatype<T>>{ static MPI_Op op() { return MPI_LOR;} };
+struct is_mpi_op<logical_xor<T>,T> : mpl::or_<is_mpi_integer_datatype<T>,is_mpi_logical_datatype<T>>{ static MPI_Op op() { return MPI_LXOR;} };
+struct is_mpi_op<bitwise_and<T>,T> : mpl::or_<is_mpi_integer_datatype<T>,is_mpi_byte_datatype<T>>{ static MPI_Op op() { return MPI_BAND;} };
+struct is_mpi_op<bitwise_or<T>,T> : mpl::or_<is_mpi_integer_datatype<T>,is_mpi_byte_datatype<T>>{ static MPI_Op op() { return MPI_BOR;} };
+struct is_mpi_op<bitwise_xor<T>,T> : mpl::or_<is_mpi_integer_datatype<T>,is_mpi_byte_datatype<T>>{ static MPI_Op op() { return MPI_BXOR;} };
+struct detail::user_op<Op,T> {
+  ctor(); // MPI_Op_create
+  ~dtor(); // MPI_Op_free
+  MPI_Op& get_mpi_op() { return mpi_op; }
+private: MPI_Op mpi_op;
+  static void perform(void* vinvec, void* voutvec, int* plen, MPI_Datatype*) { std::transform(invec,invec+*plen, outvec, outvec, Op{}); }
+};
 ```
 
-#### Request
+#### Collective Operations
+
+```c++
+void detail::size2offsets(int const* sizes, int* offsets, int n);
+void detail::sizes2offsets(std::vector<int> const& sizes, std::vector<int>& offsets);
+void detail::offsets2skipped(int const* sizes, int const* offsets, int* skipped, int n);
+int* detail::make_offsets(communicator const& comm, int const* sizes, int const* displs, int root = -1);
+int* detail::make_skipped_slots(communicator const& comm, int const* sizes, int const* displs, int root = -1);
+
+struct detail::computation_tree {
+  ctor(int rank, int size, int root, int branching_factor=-1);
+  int branching_factor() const { return branching_factor_; }
+  int level() const { return level_; }
+  int level_index(int n) const;
+  int parent() const;
+  int child_begin() const;
+  static int default_branching_factor = 3;
+protected: int rank, size, root, branching_factor_, level_;
+};
+
+void all_gather<T>(const communicator& comm, const T& in_value, std::vector<T>& out_values);
+void all_gather<T>(const communicator& comm, const T& in_value, T* out_values);
+void all_gather<T>(const communicator& comm, const T* in_values, int n, std::vector<T>& out_values);
+void all_gather<T>(const communicator& comm, const T* in_values, int n, T* out_values);
+void all_gatherv<T>(const communicator& comm, const T& in_value, T* out_values, const std::vector<int>& sizes);
+void all_gatherv<T>(const communicator& comm, const T* in_values, T* out_values, const std::vector<int>& sizes);
+void all_gatherv<T>(const communicator& comm, std::vector<T> const& in_values,  std::vector<T>& out_values, const std::vector<int>& sizes);
+void all_gatherv<T>(const communicator& comm, const T& in_value, T* out_values, const std::vector<int>& sizes, const std::vector<int>& displs);
+void all_gatherv<T>(const communicator& comm, const T* in_values, T* out_values, const std::vector<int>& sizes, const std::vector<int>& displs);
+void all_gatherv<T>(const communicator& comm, std::vector<T> const& in_values, std::vector<T>& out_values, const std::vector<int>& sizes, const std::vector<int>& displs);
+
+void all_reduce<T,Op>(const communicator& comm, const T* value, int n, T* out_value, Op op);
+void all_reduce<T,Op>(const communicator& comm, const T& value, T& out_value, Op op);
+T    all_reduce<T,Op>(const communicator& comm, const T& value, Op op);
+void all_reduce<T,Op>(const communicator& comm, inplace_t<T*> value, int n, Op op);
+void all_reduce<T,Op>(const communicator& comm, inplace_t<T> value, Op op);
+
+void all_to_all<T>(const communicator& comm, const std::vector<T>& in_values, std::vector<T>& out_values);
+void all_to_all<T>(const communicator& comm, const T* in_values, T* out_values);
+void all_to_all<T>(const communicator& comm, const std::vector<T>& in_values, int n, std::vector<T>& out_values);
+void all_to_all<T>(const communicator& comm, const T* in_values, int n, T* out_values);
+
+void broadcast<T>(const communicator& comm, T& value, int root);
+void broadcast<T>(const communicator& comm, T* values, int n, int root);
+void broadcast<T>(const communicator& comm, skeleton_proxy<T>& value, int root);
+void broadcast<T>(const communicator& comm, const skeleton_proxy<T>& value, int root);
+
+void gather<T>(const communicator& comm, const T& in_value, std::vector<T>& out_values, int root);
+void gather<T>(const communicator& comm, const T& in_value, T* out_values, int root);
+void gather<T>(const communicator& comm, const T& in_value, int root);
+void gather<T>(const communicator& comm, const T* in_values, int n, std::vector<T>& out_values, int root);
+void gather<T>(const communicator& comm, const T* in_values, int n, T* out_values, int root);
+void gather<T>(const communicator& comm, const T* in_values, int n, int root);
+void gatherv<T>(const communicator& comm, const std::vector<T>& in_values, T* out_values, const std::vector<int>& sizes, const std::vector<int>& displs, int root);
+void gatherv<T>(const communicator& comm, const T* in_values, int in_size, T* out_values, const std::vector<int>& sizes, const std::vector<int>& displs, int root);
+void gatherv<T>(const communicator& comm, const std::vector<T>& in_values, int root);
+void gatherv<T>(const communicator& comm, const T* in_values, int in_size, int root);
+void gatherv<T>(const communicator& comm, const T* in_values, int in_size, T* out_values, const std::vector<int>& sizes, int root);
+void gatherv<T>(const communicator& comm, const std::vector<T>& in_values, T* out_values, const std::vector<int>& sizes, int root);
+
+void scatter<T>(const communicator& comm, const std::vector<T>& in_values, T& out_value, int root);
+void scatter<T>(const communicator& comm, const T* in_values, T& out_value, int root);
+void scatter<T>(const communicator& comm, T& out_value, int root);
+void scatter<T>(const communicator& comm, const std::vector<T>& in_values, T* out_values, int n, int root);
+void scatter<T>(const communicator& comm, const T* in_values, T* out_values, int n, int root);
+void scatter<T>(const communicator& comm, T* out_values, int n, int root);
+void scatterv<T>(const communicator& comm, const std::vector<T>& in_values, const std::vector<int>& sizes, const std::vector<int>& displs, T* out_values, int out_size, int root);
+void scatterv<T>(const communicator& comm, const T* in_values, const std::vector<int>& sizes, const std::vector<int>& displs, T* out_values, int out_size, int root);
+void scatterv<T>(const communicator& comm, T* out_values, int out_size, int root);
+void scatterv<T>(const communicator& comm, const T* in_values, const std::vector<int>& sizes, T* out_values, int root);
+void scatterv<T>(const communicator& comm, const std::vector<T>& in_values, const std::vector<int>& sizes, T* out_values, int root);
+
+void reduce<T,Op>(const communicator& comm, const T& in_value, T& out_value, Op op, int root);
+void reduce<T,Op>(const communicator& comm, const T& in_value, Op op, int root);
+void reduce<T,Op>(const communicator& comm, const T* in_values, int n, T* out_values, Op op, int root);
+void reduce<T,Op>(const communicator& comm, const T* in_values, int n, Op op, int root);
+
+void scan<T,Op>(const communicator& comm, const T& in_value, T& out_value, Op op);
+T    scan<T,Op>(const communicator& comm, const T& in_value, Op op);
+void scan<T,Op>(const communicator& comm, const T* in_values, int n, T* out_values, Op op);
+```
+
+#### Request & Non-blocking
 
 ```c++
 struct serialized_irecv_data<T> { size_t m_count; packed_iarchive m_ia; T& m_value; };
@@ -253,6 +362,22 @@ private:
 
   shared_ptr<handler> m_handler; shared_ptr<void> m_preserved;
 };
+
+std::pair<status,FwdIt> wait_any<FwdIt>(FwdIt first, FwdIt last); // MPI_Waitany
+optional<std::pair<status,FwdIt>> test_any<FwdIt>(FwdIt first, FwdIt last); // item.test()
+OutIt wait_all<FwdIt,OutIt>(FwdIt first, FwdIt last, OutIt out); // MPI_Waitall
+void wait_all<FwdIt>(FwdIt first, FwdIt last); // MPI_Waitall
+optional<OutIt> test_all<FwdIt,OutIt>(FwdIt first, FwdIt last, OutIt out); // MPI_Testall
+bool test_all<FwdIt>(FwdIt first, FwdIt last); // MPI_Testall
+std::pair<OutIt,BidiIt> wait_some<BidiIt,OutIt>(BidiIt first, BidiIt last, OutIt out); // MPI_Waitsome
+BidiIt wait_some<BidiIt>(BidiIt first, BidiIt last); // MPI_Waitsome
+std::pair<OutIt,BidiIt> test_some<BidiIt,OutIt>(BidiIt first, BidiIt last, OutIt out); // item.test()
+BidiIt test_some<BidiIt>(BidiIt first, BidiIt last); // item.test()
+
+void detail::packed_archive_send(communicator const& comm, int dest, int tag, const packed_oarchive& ar); // MPI_Send for size and buffer
+request detail::packed_archive_isend(communicator const& comm, int dest, int tag, const packed_oarchive& ar); // request::make_packed_send
+request detail::packed_archive_isend(communicator const& comm, int dest, int tag, const packed_iarchive& ar); // request::make_packed_send
+void detail::packed_archive_recv(communicator const& comm, int dest, int tag, const packed_iarchive& ar, MPI_Status& status); // MPI_Mprobe, MPI_Get_count, MPI_Mrecv
 ```
 
 #### Serialization
@@ -366,18 +491,318 @@ private: buffer_type internal_buffer_;
 };
 ```
 
+#### Communicators
 
-collectives/: all_to_all, broadcast, <all>_gather<v>, <all>_reduce, scan, scatter<v>
-detail/: broadcast_sc, communicator_sc, computation_tree, content_oarchive,
-  forward_{i,o}primitive, forward_skeleton_{i,o}archive, ignore_{i,o}primitive,
-	offsets, point_to_point, text_skeleton_oarchive
-python/: config, serialize, skeleton_and_content
+```c++
+const int any_source = MPI_ANY_SOURCE, any_tag = MPI_ANY_TAG;
+enum comm_create_kind { comm_duplicate, comm_take_ownership, comm_attach };
 
-<cartesian,graph>_communicator, collectives_<fwd>, group, intercommunicator, nonblocking,
-operations, python, skeleton_and_content_<fwd,types>
+struct group {
+  ctor();
+  ctor(const MPI_Group& in_group, bool adopt);
+  optional<int> rank() const;
+  int size() const;
+  OutIt translate_ranks<InIt,OutIt>(InIt first, InIt last, const group& to_group, OutIt out); // MPI_Group_translate_ranks
+  operator bool() const { return group_ptr; }
+  operator MPI_Group() const; // *group_ptr or MPI_GROUP_EMPTY
+  group include<InIt>(InIt first, InIt last); // MPI_Group_incl
+  group exclude<InIt>(InIt first, InIt last); // MPI_Group_excl
+protected: shared_ptr<MPI_Group> group_ptr;
+  struct group_free {}; // functor of if (MPI_Finalized) MPI_Group_free
+};
+bool operator==(const group& g1, const group& g2);
+bool operator!=(const group& g1, const group& g2) { return !(g1==g2); }
+group operator|(const group& g1, const group& g2);
+group operator&(const group& g1, const group& g2);
+group operator-(const group& g1, const group& g2);
 
-src/: broadcast, <cartesian,graph>_communicator, computation_tree, content_oarchive, intercommunicator,
-  offsets, packed_skeleton_{i,o}archive, point_to_point, text_skeleton_oarchive
+struct communicator {
+  ctor();
+  ctor(const MPI_Comm& comm, comm_create_kind kind); // MPI_Comm_dup for comm_duplicate
+  ctor(const communicator& comm, const group& subgroup); // MPI_Comm_create
+  int rank() const; // MPI_Comm_rank
+  int size() const; // MPI_Comm_size
+  group group() const; // MPI_Comm_group
+
+  void send<T>(int dest, int tag, const T& value) const;
+  void send<T,A>(int dest, int tag, const std::vector<T,A>& values) const;
+  void send<T>(int dest, int tag, const skeleton_proxy<T>& proxy) const;
+  void send<T>(int dest, int tag, const T* values, int n) const;
+  void send(int dest, int tag) const; // MPI_Send
+  status recv<T>(int source, int tag, T& value) const;
+  status recv<T,A>(int source, int tag, std::vector<T,A>& values) const;
+  status recv<T>(int source, int tag, const skeleton_proxy<T>& proxy) const;
+  status recv<T>(int source, int tag, skeleton_proxy<T>& value) const;
+  status recv<T>(int source, int tag, T* values, int n) const;
+  status recv(int source, int tag) const; // MPI_Recv
+
+  status sendrecv<T>(int dest, int stag, const T& sval, int src, int rtag, T& rval) const;
+
+  request isend<T>(int dest, int tag, const T& value) const;
+  request isend<T>(int dest, int tag, const skeleton_proxy<T>& proxy) const;
+  request isend<T>(int dest, int tag, const T* values, int n) const;
+  request isend<T,A>(int dest, int tag, const std::vector<T,A>& values) const;
+  request isend(int dest, int tag) const;
+  request irecv<T>(int source, int tag, T& value) const;
+  request irecv<T>(int source, int tag, T* values, int n) const;
+  request irecv<T>(int source, int tag, std::vector<T,A>& values) const;
+  request irecv(int source, int tag) const;
+
+  status probe(int source=any_source, int tag=any_tag) const; // MPI_Probe
+  optional<status> iprobe(int source=any_source, int tag=any_tag) const; // MPI_Iprobe
+
+  void barrier() const; // MPI_Barrier
+  operator bool() const { return comm_ptr; }
+  operator MPI_Comm() const;
+
+  communicator split(int color, int key) const; // MPI_Comm_split
+  communicator split(int color) const;
+  optional<intercommunicator> as_intercommunicator() const; // MPI_Comm_test_inter
+  optional<graph_communicator> as_graph_communicator() const;
+  bool has_graph_topology() const;// MPI_Topo_test for MPI_GRAPH
+  optional<cartesian_communicator> as_cartesian_communicator() const;
+  bool has_cartesian_topology() const; // MPI_Topo_test for MPI_CART
+  void abort(int errcode) const; // MPI_Abort
+protected: shared_ptr<MPI_Comm> comm_ptr;
+  struct comm_free {}; // functor for if (MPI_Finalized) MPI_Comm_free
+  status sendrecv_impl<T>(int dest, int stag, const T& sval, int src, int rtag, T& rval, mpl::{true|false}_) const; // MPI_Sendrecv
+  void send_impl<T>(int dest, int tag, const T& value, mpl::{true|false}_) const; // MPI_Send for MPI datatypes, or send packed_oarchive
+  void array_send_impl<T>(int dest, int tag, const T* values, int n, mpl::{true|false}_) const;
+  request isend_impl<T>(int dest, int tag, const T& value, mpl::{true|false}_) const;
+  request array_isend_impl<T>(int dest, int tag, const T* values, int n, mpl::{true|false}_) const; // make_trivial_send or isend packed_oarchive
+  status recv_impl<T>(int source, int tag, T& value, mpl::{true|false}_) const; // MPI_Recv or recv packed_iarchive
+  status array_recv_impl<T>(int source, int tag, T* values, int n, mpl::{true|false}_) const;
+  request irecv_impl<T>(int source, int tag, T& value, mpl::{true|false}_) const; // make_trivial_recv or make_serialized
+  request array_irecv_impl<T>(int source, int tag, T* values, int n, mpl::{true|false}_) const; // make_trivial_recv or make_serialized_array
+  void send_vector(int dest, int tag, const std::vector<T,A>& value, mpl::{true|false}_) const;
+  status recv_vector(int source, int tag, std::vector<T,A>& value, mpl::{true|false}_) const;
+  request isend_vector<T,A>(int dest, int tag, const std::vector<T,A>& values, mpl::{true|false}_) const; // make_dynamic_primitive_array_send
+  request irecv_vector<T,A>(int source, int tag, std::vector<T,A>& values, mpl::{true|false}_) const; // make_dynamic_primitive_array_recv
+};
+bool operator==(const communicator& comm1, const communicator& comm2);
+bool operator!=(const communicator& comm1, const communicator& comm2) { return !(comm1==comm2); }
+
+struct intercommunicator : public communicator {
+  ctor(const MPI_Comm& comm, comm_create_kind kind);
+  ctor(const communicator& local, int local_leader, const communicator& peer, int remote_leader); // MPI_Intercomm_create
+  int local_size() const { return size(); }
+  group local_group() const { return group(); }
+  int local_rank() const { return rank(); }
+  int remote_size() const; // MPI_Comm_remote_size
+  group remote_group() const; // MPI_Comm_remote_group
+  communicator merge(bool high) const; // MPI_Intercomm_merge
+private: explicit ctor(const shared_ptr<MPI_Comm>& comm_ptr);
+};
+
+struct graph_communicator : public communicator {
+  ctor(const MPI_Comm& comm, comm_create_kind kind);
+  ctor<Graph>(const communicator& comm, const Graph& graph, bool reorder=false);
+  ctor<Graph,RankMap>(const communicator& comm, const Graph& graph, RankMap rank, bool reorder=false);
+protected:
+  void setup_graph<Graph,RankMap>(const communicator& comm, const Graph& graph, RankMap rank, bool reorder); // MPI_Graph_create
+private: explicit ctor(const shared_ptr<MPI_Comm>& comm_ptr);
+};
+struct detail::comm_out_edge_iterator : public iterator_facade<self, std::pair<int,int>, random_access_traversal_tag, const std::pair<int,int>& int>;
+struct detail::comm_adj_iterator : public iterator_facade<self, int, random_access_traversal_tag, int, int>;
+struct detail::comm_edge_iterator : public iterator_facade<self, std::pair<int,int>, forward_traversal_tag, const std::pair<int,int>&, int>;
+int source(const std::pair<int,int>& edge, const graph_communicator&);
+int target(const std::pair<int,int>& edge, const graph_communicator&);
+std::pair<comm_out_edge_iterator,comm_out_edge_iterator> out_edges(int vertex, const graph_communicator& comm); // MPI_Graph_neighbors
+int out_degree(int vertex, const graph_communicator& comm);// MPI_Graph_neighbors_count
+std::pair<comm_adj_iterator,comm_adj_iterator> adjacent_vertices(int vertex, const graph_communicator& comm); // MPI_Graph_neighbors
+std::pair<counting_iterator<int>,counting_iterator<int>> vertices(const graph_communicator& comm) { return make_pair(0,comm.size()); }
+int num_vertices(const graph_communicator& comm) { return comm.size(); }
+std::pair<comm_edge_iterator,comm_edge_iterator> edges(const graph_communicator& comm); // MPI_Graphdims_get, MPI_Graph_get
+int num_edges(const graph_communicator& comm); // MPI_Graphdims_get
+identity_property_map get(vertex_index_t, const graph_communicator&) { return {}; }
+inline int get(vertex_index_t, const graph_communicator&, int vertex) { return vertex; }
+struct graph_traits<graph_communicator> {
+  using vertex_descriptor=int; using edge_descriptor=std::pair<int,int>;
+  using directed_category=directed_tag; using edge_parallel_category=disallow_parallel_edge_tag;
+  struct traversal_category : public  incidence_graph_tag, adjacency_graph_tag, vertex_list_graph_tag, edge_list_graph_tag {};
+  static vertex_descriptor null_vertex() { return -1; }
+  using out_edge_iterator = comm_out_edge_iterator; using degree_size_type=int;
+  using adjacency_iterator=comm_adj_iterator;
+  using vertex_iterator=counting_iterator<int>; using vertices_size_type=int;
+  using edge_iterator = comm_edge_iterator; using edges_size_type=int;
+};
+struct property_map<graph_communicator,vertex_index_t> { using <const>_type = identity_property_map; };
+
+struct cartesian_dimension {
+  int size; bool periodic;
+  ctor(int sz=0, bool p=false);
+private: void serialize<Archive>(Archive& ar, unsigned);
+};
+struct is_mpi_datatype<cartesian_dimension> : mpl::true_{};
+bool operator{==|!=}(cartesian_dimension const& d1, cartesian_dimension const& d2);
+std::ostream& operator<<(std::ostream& out, cartesian_dimension const& d);
+class cartesian_topology : private std::vector<cartesian_dimension> {
+  ctor()=delete; ctor(self {const&|&&})=default; self& operator=(self {const&|&&})=default; ~dtor()=default;
+  ctor(int ndim); ctor(std::vector<cartesian_dimension> const& dims);
+  explicit ctor<InitArr>(InitArr dims); explicit ctor(std::initializer_list<cartesian_dimension> dims);
+  explicit ctor<ndim>(cartesian_dimension (&dims)[ndim]);
+  ctor<DimRg,PerRg>(DimRg const& dim_rg, PerRg const& period_rg);
+  ctor<DimIt,PerIt>(DimIt dit, PerIt pit, int n);
+  std::vector<cartesian_dimension> <const>& stl() <const> { return *this; }
+  void split(std::vector<int>& dims, std::vector<bool>& periodics) const;
+};
+bool operator{==|!=}(cartesian_topology const& t1, cartesian_topology const& t2);
+std::ostream& operator<<(std::ostream& out, cartesian_topology const& t);
+struct cartesian_communicator : public communicator {
+  ctor(const MPI_Comm& comm, comm_create_kind kind);
+  ctor(const communicator& comm, const cartesian_topology& dims, bool reorder=false); // MPI_Cart_create
+  ctor(const cartesian_communicator& comm, const std::vector<int>& keep); // MPI_Cart_sub
+  int ndims() const; // MPI_Cartdim_get
+  int rank(const std::vector<int>& coords) const; // MPI_Cart_rank
+  std::pair<int,int> shifted_ranks(int dim, int disp) const; // MPI_Cart_shift
+  std::vector<int> coordinates(int rk) const; // MPI_Cart_coords
+  void topology(cartesian_topology& dims, std::vector<int>& coords) const; // MPI_Cart_get
+  cartesian_topology topology() const;
+private: explicit ctor(const shared_ptr<MPI_Comm>& comm_ptr);
+};
+std::vector<int>& cartesian_dimensions(int nb_proc, std::vector<int>& dims); // MPI_Dims_create
+```
+
+#### Skeleton and Content
+
+```c++
+struct detail::forward_skeleton_iarchive<Ar,ImplAr> : archive::detail::common_iarchive<Ar> {
+  ctor():base{no_header}, implementation_archive(ar){}
+protected: ImplAr& implementation_archive;
+  void load_override<T>(T& t) { archive::load(*This(), t); }
+  void load_override(std:;string& t) { serialization::collection_size_type length; load_override(length); s.resize(length); }
+  void load_override(#Type const&) { implementation_archive >> t; }
+      // archive::{class_id_<optional,reference>_type,version_type,object_id_type,object_reference_type,tracking_type,class_name_type}
+      // serialization::{collection_size_type,library_version_type,item_version_type}
+};
+struct detail::forward_skeleton_oarchive<Ar,ImplAr> : archive::detail::common_oarchive<Ar> {
+  using implementation_archive_type=ImplAr;
+  ctor(ImplAr& ar) : base(no_header), implementation_archive{ar}{}
+protected: ImplAr& implementation_archive;
+  void save_override<T>(T const& t) { archive::save(*This(), t); }
+  void save_override(std::string const& t) { save_override(serialization::collection_size_type(t.size())); }
+  void save_override<T>(T const& t) { implementation_archive << t; }
+      // for T in: archive::{class_id_<optional,reference>_type,version_type,object_id_type,object_reference_type,tracking_type,class_name_type}
+      // serialization::{collection_size_type,library_version_type,item_version_type}
+};
+
+struct detail::ignore_iprimitive {
+  void load_binary(void*, size_t){}
+  void load_array<T>(serialization::array_wrapper<T>&, unsigned){}
+  using use_array_optimization=is_mpi_datatype<_1>;
+protected: void load<T>(T&){}
+};
+struct detail::ignore_oprimitive {
+  void save_binary(const void*, size_t){}
+  void save_array<T>(serialization::array_wrapper<T> const&, unsigned){}
+  using use_array_optimization=is_mpi_datatype<_1>;
+protected: void save<T>(const T&){}
+};
+
+struct skeleton_proxy<T> { ctor(T& x):object{x}{} T& object; };
+const skeleton_proxy<T> skeleton<T>(T& x) { return {x}; }
+struct detail::mpi_datatype_holder : noncopyable {
+  ctor(){} ctor(MPI_Datatype t, bool committed=true);
+  void commit() { CHECK_RESULT(MPI_Type_commit,(&d)); is_committed=true; }
+  ~dtor(); // if (MPI_Finalized) MPI_Type_free
+private: MPI_Datatype d; bool is_committed=false;
+};
+
+struct content {
+  ctor(){} ctor(MPI_Datatype d, bool committed=true) : holder{new mpi_datatype_holder{d,committed}}{}
+  const content& operator=(MPI_Datatype d) { holder.reset(new mpi_datatype_holder{d}); return *this; }
+  MPI_Datatype get_mpi_datatype() const { return holder->get_mpi_datatype(); }
+  void commit() { holder->commit(); }
+private: shared_ptr<mpi_datatype_holder> holder;
+};
+const content get_content<T>(const T& x);
+
+struct packed_skeleton_iarchive : public ignore_iprimitive, forward_skeleton_iarchive<self,packed_iarchive> {
+  ctor(MPI_Comm const& comm, unsigned flags=no_header) :base{skeleton_archive_}, skeleton_archive_{comm,flags}{}
+  explicit ctor(packed_iarchive& ar) : base{ar}, skeleton_archive_{MPI_COMM_WORLD,no_header}{}
+  <const> packed_iarchive& get_skeleton() <const> { return implementation_archive; }
+private: packed_iarchive skeleton_archive_;
+};
+struct packed_skeleton_oarchive : public ignore_oprimitive, forward_skeleton_oarchive<self,packed_oarchive> {
+  ctor(MPI_Comm const& comm, unsigned flags=no_header) :base{skeleton_archive_}, skeleton_archive_{comm,flags}{}
+  explicit ctor(packed_oarchive& ar) : base{ar}, skeleton_archive_{MPI_COMM_WORLD,no_header}{}
+  <const> packed_oarchive& get_skeleton() <const> { return implementation_archive; }
+private: packed_oarchive skeleton_archive_;
+};
+
+struct detail::content_oarchive : public mpi_datatype_primitive, public ignore_skeleton_oarchive<self> {
+  content get_content() { if (!committed) { c=get_mpi_datatype(); committed=true;} return c; }
+private: bool committed={false}; content c;
+};
+const content detail::get_content<T>(const T& x) { content_oarchive ar; ar<<x; return ar.get_content(); }
+
+struct text_skeleton_oarchive : public ignore_oprimitive, forward_skeleton_oarchive<self,archive::text_oarchive> {
+  ctor(std::ostream& s, unsigned flags=0) base{skeleton_archive_}, skeleton_archive_{s,flags}{}
+private: text_oarchive skeleton_archive_;
+};
+```
+
+#### Python
+
+```c++
+namespace python {
+void register_serialized<T>(const T& value=T{}, PyTypeObject* type=0);
+void register_skeleton_and_content<T>(const T& value=T{}, PyTypeObject* type=0);
+}
+
+// serialization
+namespace ::boost::python{
+struct pickle {
+  static object dumps(object obj, int protocol=-1);
+  static object loads(object s);
+private:
+  static void initialize_data();
+  static struct data_t* data;
+};
+struct has_direct_serialization<IAr,OAr> : mpl::false_{};
+struct output_archiver<IAr>{};
+struct input_archiver<OAr>{};
+struct detail::direct_serialization_table<IAr,OAr> {
+  using saver_t = function<void(OAr&, const object&, unsigned)>;
+  using loader_t = function<void(IAr&, object&, unsigned)>;
+  using savers_t = std::map<PyTypeobject*,std::pair<int,saver_t>>;
+  using loaders_t = std::map<int,loader_t>;
+  saver_t saver(const object& obj, int& descriptor);
+  loader_t loader(int descriptor);
+  void register_type<T>(const T& value=T{}, PyTypeObject* type=0);
+  void register_type<T>(const saver_t& saver, const loader_t& loader, const T& value=T{}, PyTypeObject* type=0);
+protected:
+  struct default_saver<T>; // ar << extract<T>(obj)();
+  struct default_loader<T>; // ar >> extract<T&>(obj)(); OR ar>>value; obj=object(value)
+  savers_t savers; loaders_t loaders;
+};
+direct_serialization_table<IAr,OAr>& detail::get_direct_serialization_table<IAr,OAr>();
+void register_serialized<IAr,OAr,T>(const T& value=T{}, PyTypeObject* type=0);
+void save<Ar>(Ar& ar, const object& obj, unsigned ver);
+void load<Ar>(Ar& ar, object& obj, unsigned ver);
+void serialize<Ar>(Ar& ar, object& obj, unsigned ver);
+}
+
+// skeleton_and_content
+namespace python {
+struct content : mpi::content {
+  ctor(const base& base, python::object object);
+  <const> base& base() <const> { return *this; }
+  python::object object;
+};
+struct skeleton_proxy_base { python::object object; };
+struct skeleton_proxy<T> : public skeleton_proxy_base {};
+object detail::skeleton_proxy_base_type;
+struct detail::skeleton_saver<T>; // packed_skeleton_oarchive{ar} << extract<T&>(obj.attr("object"))();
+struct detail::skeleton_loader<T>; // packed_skeleton_iarchive{ar} >> extract<T&>(obj.attr("object"))();
+struct detail::skeleton_content_handler{ function<object(const object&)> get_skeleton_proxy, get_content; };
+struct detail::do_get_skeleton_proxy<T>; // object{skeleton_proxy<T>{value}};
+struct detail::do_get_content<T>; // content{get_content(extract<T&>(value_obj)()), value_obj}
+bool detail::skeleton_and_content_handler_registered(PyTypeObject* type);
+bool detail::register_skeleton_and_content_handler(PyTypeObject*, const skeleton_content_handler&);
+void register_skeleton_and_content<T>(const T& value, PyTypeObject* type);
+}
+```
 
 ------
 ### Dependency
