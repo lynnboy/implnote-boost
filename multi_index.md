@@ -182,6 +182,183 @@ struct detail::hashed_index_node_impl<Alloc> : hashed_index_base_node_impl<Alloc
 private: base_pointer next_;
 };
 struct detail::default_assigner { void operator()<T>(T& x, const& val) { x=val; } };
+struct detail::unlink_undo_assigner<Node> {
+  using <base>_pointer = Node::<base>_pointer;
+  void operator()(<base>_pointer& x, <base>_pointer& val);
+  void operator()(); // undo
+  struct <base>_pointer_track { <base>_pointer* x; <base>_pointer val; };
+  pointer_track pointer_trakcs[3]; int pointer_track_count;
+  base_pointer_track base_pointer_trakcs[2]; int base_pointer_track_count;
+};
+
+struct detail::hashed_unique_tag{}; struct detail::hashed_non_unique_tag{};
+struct detail::hashed_index_node_alg<Node,hashed_unique_tag> {
+  using <const>_base_pointer = Node:<const>_base_pointer; using <const>_pointer=Node::<const>_pointer;
+  static bool is_first_of_bucket(pointer x);
+  static pointer after_<local>(pointer x); static pointer next_to_inspect(pointer x);
+  static void link(pointer x, base_pointer buc, pointer end); static void unlink(pointer x);
+  using unlink_undo = unlink_undo_assigner<Node>;
+  static void unlink<Assigner>(pointer x, Assigner& assign);
+  static void append(pointer x, pointer end);
+  static bool unlink_last(pointer end);
+private: static bool is_last_of_bucket(pointer x);
+};
+struct detail::hashed_index_node_alg<Node,hashed_non_unique_tag> {
+  using <const>_base_pointer = Node:<const>_base_pointer; using <const>_pointer=Node::<const>_pointer;
+  static bool is_first_of_bucket(pointer x); static bool is_first_of_group(pointer x);
+  static pointer after_<local>(pointer x); static pointer next_to_inspect(pointer x);
+  static void link(pointer x, base_pointer buc, pointer end); static void unlink(pointer x);
+  using unlink_undo = unlink_undo_assigner<Node>;
+  static void unlink<Assigner>(pointer x, Assigner& assign);
+  static void link_range(pointer first, pointer last, base_pointer buc, pointer cend);
+  static void append_range(pointer first, pointer last, pointer cend);
+  static bool unlink_last_group(pointer end);
+  static bool unlink_range(pointer first, pointer last);
+private: static bool is_last_of_bucket(pointer x);
+  static void {left|right}_unlink<Assigner>(pointer x, Assigner& assign);
+  static void {left|right}_unlink_{first|last}_of_bucket<A>(pointer, A& assign);
+  static void {right|left}_unlink_{first|last}_of_group<A>(pointer, A& assign);
+  static void unlink_{last_but_one|second}_of_group<A>(pointer, A& assign);
+};
+struct detail::hashed_index_node_trampoline<Super> : hashed_index_node_impl<rebind_alloc_for<Super::allocator_type,char>::type> {
+  using impl_type = base;
+};
+struct detail::hashed_index_node<Super> : Super, hashed_index_node_trampoline<Super> {
+  using <const>_impl_<base>_pointer = base::<const>_<base>_poniter;
+  struct node_alg<Category> { using type = hashed_index_node_alg<impl_type,Category>; };
+  <const>_impl_pointer impl() <const>;
+  static <const> self* from_impl(<const>_impl_pointer x);
+  static void increment_<local> <Category>(self*& x);
+};
+
+struct detail::header_holder<NodeTypePtr,Final> : noncopyable {
+  ctor(); ~dtor(); // allocate_node/deallocate_node
+  NodeTypePtr member;
+};
+
+struct detail::index_access_sequence_terminal{ctor(void*){}};
+struct detail::index_access_sequence_normal<MICont,n> {
+  MICont* p; nth_index<MICont,n>::type& get(); index_access_sequence<MICont,n+1> next();
+};
+struct detail::index_access_sequence_base<MICont,n>
+  : mpl::if_c<(n<mpl::size<MICont::index_type_list>::type::value),
+    index_access_sequence_normal<MICont,n>, index_access_sequence_terminal> {};
+struct detail::index_access_sequence<MICont,n> : index_access_sequence_base<MICont,n>::type {};
+
+struct detail::lvalue_tag{}; struct detail::rvalue_tag{}; struct detail::emplaced_tag{};
+
+class detail::index_base<Value,ISpecList,Alloc> {
+protected:
+  using index_node_type=index_node_base<Value,Alloc>;
+  using final_node_type=multi_index_base_type<Value,ISpecList,Alloc>::type;
+  using final_type = multi_index_container<Value,ISpecList,Alloc>;
+  using ctor_args_list = null_type;
+  using final_allocator_type = rebind_alloc_for<Alloc,Alloc::value_type>::type;
+  using final_node_handle_type = node_handle<final_node_type, final_allocator_type>;
+  using index_type_list=mpl::vector0<>; using <const>_iterator_type_list=mpl::vector0<>;
+  using copy_map_type = copy_map<final_node_type,final_allocator_type>;
+  using index_saver_type = index_saver<index_node_type,final_allocator_type>;
+  using index_loader_type = index_loader<index_node_type, final_node_type, final_allocator_type>;
+private:
+  using value_type=Value; using alloc_traits=allocator_traits<Alloc>; using size_type = alloc_traits::size_type;
+protected:
+  explicit ctor(const ctor_args_list&, const Alloc&);
+  ctor(const self& do_not_copy_elements_tag);
+  void copy_(const self&, const copy_map_type&);
+  final_node_type* insert_(const value_type& v, <index_node_type*>, final_node_type*& x, {lvalue|rvalue|emplaced}_tag);;
+  final_node_type* insert_<MICont>(const value_type&, final_node_type*& x, MICont* p);
+  void extract_<Dst>(index_node_type* Dst){}
+  void clear_(){}
+  void swap_<BoolConstant>(self&,BoolConstant){}
+  void swap_elements_(self&){}
+  bool replace_(const value_type& v, index_node_type* x, {lvalue|rvalue}_tag);
+  bool modify_<rollback>_(index_node_type*){return true;}
+  bool check_rollback_(index_node_type*) const {return true;}
+  void save_<Ar>(Ar&, unsigned, const index_saver_type&)const{}
+  void load_<Ar>(Ar&, unsigned, const index_loader_type&){}
+  bool invariant_() const {return true;}
+
+  <const> final_type& final()<const> {return *(<const>final_type*)this; }
+  static Idx::final_type& final<Idx>(Idx& x) { return (Idx::final_type&)x; }
+  final_node_type* final_header() const {return final().header();}
+  bool final_empty_()const{return final().empty_();}
+  size_type final_size_()const{return final().size_();}
+  size_type final_max_size_()const{return final().max_size_();}
+  std::pair<final_node_type*,bool> final_insert_<rv>_(const value_type& x, <final_node_type* position>);
+  std::pair<final_node_type*,bool> final_insert_ref_<T>(<const>T & x, <final_node_type* position>);
+  std::pair<final_node_type*,bool> final_insert_nh_(final_node_handle_type& nh, <final_node_type* position>);
+  std::pair<final_node_type*,bool> final_transfer_<Idx>(Idx& x, final_node_type* position);
+  std::pair<final_node_type*,bool> final_transfer_<Idx>(Idx& x, final_node_type* position);
+  std::pair<final_node_type*,bool> final_emplace_<...Args>(Args&&...args);
+  std::pair<final_node_type*,bool> final_emplace_hint_<...Args>(final_node_type* position, Args&&...args);
+  final_node_handle_type final_extract_(final_node_type* x);
+  void final_extract_for_transfer_<Dst>(final_node_type* x, Dst dst);
+  void final_erase_(final_node_type* x);
+  void final_delete_node_(final_node_type* x);
+  void final_delete_all_nodes_();
+  void final_clear_();
+  void final_transfer_range_<Idx>(Idx& x, Idx::iterator first, Idx::iterator last);
+  void final_swap_(final_type& x);
+  bool final_replace_<rv>_(const value_type& k, final_node_type* x);
+  bool final_modify_<Modifier,[Rollback]>(Modifier& mod, <Rollback& back>, final_node_type* x);
+  void final_check_invariant_() const;
+};
+
+struct detail::index_loader<Node,FinalNode,Alloc> : noncopyable {
+  ctor(const Alloc& al, size_t size);
+  void add<Ar>(Node* node, Ar& ar, unsigned);
+  void add_track<Ar>(Node* node, Ar& ar, unsigned);
+  void load<Rearranger,Ar>(Rearranger r, Ar& ar, unsigned) const;
+private: auto_space<Node*,Alloc> spc; size_t size_,n; mutable bool sorted;
+};
+struct detail::index_matcher::entry {
+  ctor(void* node_, size_t pos_=0) : node{node_}, pos{pos_}{}
+  void* node; size_t pos; entry* previous; bool ordered;
+  struct less_by_node { bool operator()(const entry& x, const entry& y) const; };// node
+  size_t pile_top; entry* pile_top_entry;
+  struct less_by_pile_top { bool operator()(const entry& x, const entry& y) const; }; // pile_top
+};
+struct detail::index_matcher::algorithm_base<Alloc> : noncopyable {
+protected: ctor(const Alloc& al, size_t size);
+  void add(void* node);
+  void begin_algorithm() const;
+  void add_node_to_algorithm(void* node) const;
+  void finish_algorithm() const;
+  bool is_ordered(void* node) const;
+private: auto_space<entry,Alloc> spc; size_t size_,n_; mutable bool sorted; mutable size_t num_piles;
+};
+struct detail::index_matcher::algorithm<Node,Alloc> : private algorithm_base<Alloc> {
+  ctor(const Alloc& al, size_t size);
+  void add(Node* node);
+  void execute<IdxIt>(IdxIt first, IdxIt last) const;
+  bool is_ordered(Node* node) const;
+};
+struct detail::index_saver<Node,Alloc> : noncopyable {
+  ctor(const Alloc& al, size_t size);
+  void add<Ar>(Node* node, Ar& ar, unsigned);
+  void add_track<Ar>(Node* node, Ar& ar, unsigned);
+  void save<IdxIt,Ar>(IdxIt first, IdxIt last, Ar& ar, unsigned) const;
+private: index_matcher::algorithm<Node,Alloc> alg;
+};
+
+struct detail::pod_value_holder<Value> { using space = aligned_storage<sizeof(Value),alingment_of<Value>::value>::type; };
+struct index_node_base<Value,Alloc>: private pod_value_holder<Value> {
+  using base_type = self; using value_type = Value; using allocator_type = Alloc;
+  <const> value_type = value() <const>;
+  static self* from_value(const value_type* p);
+private: void serialize<Ar>(Ar&, unsigned);
+};
+Node* node_from_value<Node,Value>(const Value* p);
+void detail::load_construct_data<Ar,Value,Alloc>(Ar&, index_node_base<Value,Alloc>*, unsigned) { throw_exception(bad_archive_exception()); };
+
+struct detail::invalidate_iterators
+{ using iterator=void; self& get() {return *this;} self& next() { return *this;} };
+
+struct detail::is_index_list<T> { constexpr static bool value=mpl::is_sequence<T>::value && !mpl::empty<T>::value; };
+struct detail::is_transparent<F,A1,A2>: mpl_true{};
+struct detail::is_transparent_class<F,A1,A2>; struct detail::is_transparent_function<F,A1,A2>;
+struct detail::is_transparent<F,A1,A2> requires (is_class<F>&&!is_final<F>): is_transparent_class<F,A1,A2>{};
+struct detail::is_transparent<F,A1,A2> requires (is_function<remove_pointer_t<F>>): is_transparent_function<remove_pointer_t<F>,A1,A2>{};
 ```
 
 ------
