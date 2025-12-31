@@ -8,6 +8,167 @@
 #### 
 
 ```c++
+namespace detail{
+// and less, greater, hash
+struct key_equal_to<KeyFromValue> { using type=std::equal_to<KeyFromValue::result_type>; };
+struct key_equal_to<tuples::null_type> { using type=tuples::null_type; };
+struct nth_composite_key_equal_to<CompositeKey,n> { using type=key_equal_to<nth_key_from_value<CompositeKey,N>::type>::type; };
+struct generic_operator_equal{bool operator<T,Q>(const T& x, const Q& y) const{return x==y;}};
+using generic_operator_equal_tuple = tuple<generic_operator_equal,...>; // 10 elements
+// and compare_x_x
+struct equal_ckey_ckey_{terminal|normal}<KeyCons1,Value1,KeyCons2,Value2,EqualCons> {static bool compare(const KeyCons1&,const Value1&, const KeyCons2&, const Value2&, const EqualCons&);};
+struct equal_ckey_ckey<KeyCons1,Value1,KeyCons2,Value2,EqualCons> : mpl::if_<..., equal_ckey_ckey_terminal<__>,equal_ckey_ckey_normal<__>>::type{};
+struct equal_ckey_cval_{terminal|normal}<KeyCons,Value,ValCons,,CompareCons>
+{static bool compare(const KeyCons&, const Value&, const ValCons&, const CompareCons&);
+ static bool compare(const ValCons&, const KeyCons&, const Value&, const CompareCons&);};
+struct equal_ckey_cval<KeyCons,Value,ValCons,,CompareCons> : mpl::if_<..., equal_ckey_cval_terminal<__>,equal_ckey_cval_normal<__>>::type{};
+
+struct hash_ckey_{terminal|normal}<KeyCons,Value,HashCons> {static size_t hash(const KeyCons&,const Value&, const HashCons&, size_t carry);};
+struct hash_ckey<KeyCons,Value,HashCons> : mpl::if_<..., hash_ckey_terminal<__>,hash_ckey_normal<__>>::type{};
+struct hash_cval_{terminal|normal}<ValCons,HashCons> {static size_t hash(const ValCons&, const HashCons&, size_t carry);};
+struct hash_cval<ValCons,HashCons> : mpl::if_<..., hash_ckey_terminal<__>,hash_ckey_normal<__>>::type{};
+}
+
+struct composite_key_result<CompositeKey> {
+  using composite_key_type=CompositeKey; using value_type = CompositeKey::value_type;
+  const composite_key_type& composite_key; const value_type& value;
+};
+struct composite_key<Value,...KeyFromValue> : private tuple<KeyFromValue...> {
+  using key_extractor_tuple=base; using value_type=Value; using result_type=composite_key_result<composite_key>;
+  ctor(KeyFromValue...k); ctor(const key_extractor_tuple& x);
+  <const> key_extractor_tuple& key_extractors() <const>;
+  result_type operator()<ChainedPtr>(const ChainedPtr& x) const;
+  result_type operator()(const value_type& x) const;
+  result_type operator()(const reference_wrapper<<const> value_type>& x) const;
+};
+bool operator{==|<}<CompKey1,CompKey2>(const composite_key_result<CompKey1>& x, const composite_key_result<CompKey2>& y);
+bool operator{==|<}<CompKey,...Value>(const composite_key_result<CompKey>& x, const tuple<Value...>& y);
+bool operator{==|<}<CompKey,...Value>(const tuple<Value...>& x, const composite_key_result<CompKey>& y);
+// and !=, >, <=, >=
+
+// and compare key_comps
+struct composite_key_equal_to<...Pred> : private tuple<Pred...> {
+  using key_eq_tuple=base;
+  ctor(const Pred&...k); ctor(const key_eq_tuple& x);
+  <const> key_eq_tuple& key_eqs() <const>;
+  bool operator()<CompKey1,CompKey2>(const composite_key_result<CompKey1>& x, const composite_key_result<CompKey1>& y) const;
+  bool operator()<CompKey,...Value>(const tuple<Value...>& x, const composite_key_result<CompKey>& y) const;
+  bool operator()<CompKey,...Value>(const composite_key_result<CompKey>& x, const tuple<Value...>& y) const;
+};
+struct composite_key_hash<...Hash> : private tuple<Hash...> {
+  using key_hasher_tuple=base;
+  ctor(const Hash&...k); ctor(const key_hasher_tuple& x);
+  <const> key_hasher_tuple& key_hash_functions() <const>;
+  size_t operator()<CompKey>(const composite_key_result<CompKey>& x) const;
+  size_t operator()<...Value>(const tuple<Value...>& x) const;
+};
+// and compare, hash
+struct composite_key_result_equal_to<CompKeyRes> : composite_key_equal_to<nth_composite_key_equal_to<CompKeyRes::composite_key_type,n>::type...>{using base::operator();};
+
+struct detail::<non>_<const>_ref_global_fun_base<Value,Type,Type(*p)(Value)> {
+  using result_type = remove_reference_t<Type>;
+  Type operator()<ChainedPtr>(const ChainedPtr& x) const;
+  bool operator()(Value x) const;
+  bool operator()(const reference_wrapper<remove_reference_t<Value>>& x) const;
+};
+struct global_fun<Value,Type,Type(*p)(Value)> : ...{}; // chose between const_ref, non_const_ref, non_ref
+
+class detail::hashed_index<KeyFromValue,Hash,Pred,SuperMeta,TagList,Cat> : SM::type {
+protected: using index_node_type = hashed_index_node<base::index_node_type>;
+private: using node_alg=index_node_type::node_alg<Cat>::type;
+  using node_impl_type=index_node_type::impl_type; using node_impl_<base>_pointer=node_impl_type::<base>_pointer;
+  using bucket_array_type = bucket_array<base::final_allocator_type>;
+public: using key_type=KeyFromValue::result_type; using value_type=index_node_type::value_type;
+  using key_from_value=KeyFromValue; using hasher=Hash; using key_equal=Pred;
+  using allocator_type = base::final_allocator_type; using alloc_traits=allocator_traits<allocator_type>;
+  using <const>_pointer = alloc_traits::<const>_pointer; using <const>_reference = <const> value_type&;
+  using size_type = alloc_traits::size_type; using difference_type = alloc_traits::difference_type;
+  using ctor_args = tuple<size_type,key_from_value,hasher,key_equal>;
+  using iterator = hashed_index_iterator<index_node_type, bucket_array_type, Cat, hashed_index_global_iterator_tag>;
+  using local_iterator = hashed_index_iterator<index_node_type, bucket_array_type, Cat, hashed_index_local_iterator_tag>;
+  using const_<local>_iterator = <local>_iterator;
+  using node_type = base::final_node_handle_type;
+  using insert_return_type = insert_return_type<iterator,node_type>;
+  using tag_list = TagList;
+protected: using ctor_arg_list = tuples::cons<ctor_args,base::ctor_args_list>;
+  using index_type_list = mpl::push_front<base::index_type_list, hashed_index>::type;
+  using <const>_iterator_type_list = mpl::push_front<base::<const>_iterator_type_list, <const>_iterator>::type;
+private: using value_param_type = call_traits<value_type>::param_type; using key_param_type = call_traits<key_type>::param_type;
+public: self& operator=(const self& x); self& operator=(std::initializer_list<value_type> list);
+  allocator_type get_allocator() const noexcept;
+  bool empty() const noexcept; size_type size() const noexcept; size_type max_size() const noexcept;
+  <const>_iterator {begin|end}() <const> noexcept; const_iterator c{begin|end}() const noexcept;
+  <const>_iterator iterator_to(const value_type& x) <const>;
+  std::pair<iterator,bool> emplace<...Args>(Args&&...args);
+  iterator emplace_hint<...Args>(iterator p, Args&&...args);
+  std::pair<iterator,bool> insert(value_type {const&|&&} x);
+  iterator insert(iterator p, value_type {const&|&&} x);
+  void insert<InIt>(InIt first, InIt last); void insert(std::initializer_list<value_type> list);
+  insert_return_type insert(node_type&& nh); iterator insert(const_iterator p, node_type&& nh);
+  node_type extract(const_iterator p); node_type extract(key_param_type x);
+  iterator erase(iterator p, <iterator last>); size_type erase(key_param_type k);
+  bool replace(iterator p, value_type {const&|&&} x);
+  bool modify<Modifier,[Rollback]>(iterator p, Modifier mod, <Rollback back_>);
+  bool modify_key<Modifier,[Rollback]>(iterator p, Modifier mod, <Rollback back_>);
+  void clear() noexcept;
+  void swap(self& x);
+  void merge<Idx>(Idx{&|&&} x, <Idx::iterator i>, <Idx::iterator last>);
+  key_from_value key_extractor() const; hasher hash_function() const; key_equal key_eq() const;
+
+  iterator find<Key2,[Hash2,Pred2]>(const Key2& k, <const Hash2& hash, const Pred2& eq>) const;
+  size_type count<Key2,[Hash2,Pred2]>(const Key2& k, <const Hash2& hash, const Pred2& eq>) const;
+  bool contains<Key2,[Hash2,Pred2]>(const Key2& k, <const Hash2& hash, const Pred2& eq>) const;
+  std::pair<iterator,iterator> equal_range<Key2,[Hash2,Pred2]>(const Key2& k, <const Hash2& hash, const Pred2& eq>) const;
+  size_type bucket_count() const noexcept; size_type max_bucket_count() const noexcept;
+  size_type bucket_size(size_type n) const; size_type bucket(key_param_type k) const;
+  <const>_local_iterator {begin|end}(size_type n)<const>;   const_local_iterator c{begin|end}(size_type n) const;
+  <const>_local_iterator local_iterator_to(const value_type& x) <const>;
+  float load_factor() const noexcept;
+  float max_load_factor() const noexcept; void max_load_factor(float z);
+  void rehash(size_type n); void reserve(size_type n);
+protected: ctor(const ctor_args_list& args_list, const allocator_type& al);
+  ctor(const self& x); ctor(const self& x, do_not_copy_elements_tag); ~dtor();
+  <const>_iterator make_iterator(index_node_type* node)<const>;
+  <const>_local_iterator make_local_iterator(index_node_type* node)<const>;
+  void copy_(const self& x, const copy_map_type& map);
+  final_node_type* insert_<Variant>(value_param_type v, <index_node_type* p>, final_node_type*& x, Variant variant);
+  void extract_<Dst>(index_node_type* x, Dst dst);
+  void delete_all_nodes_(); void clear_();
+  void swap_<BoolConstant>(self& x, BoolConstant swap_allocators);
+  void swap_elements_<BoolConstant>(self& x, BoolConstant swap_allocators);
+  bool replace_<Variant>(value_param_type v, index_node_type* x, Variant variant);
+  bool modify_(index_node_type* x); bool modify_rollback_(index_node_type* x);
+  bool check_rollback_(index_node_type* x) const;
+  bool equals(const self& x) const;
+  void save_<Ar>(Ar& ar, unsigned ver, const index_saver_type& sm) const;
+  void load_<Ar>(Ar& ar, unsigned ver, const index_loader_type& sm);
+  bool invariant_()const; void check_invariant_()const;
+private: key_from_value key; hasher hash_; key_equal eq_; bucket_array_type buckets; float mlf; size_type max_load;
+};
+bool operator{==|!=}<KFV,H,P,SM,TL,Cat>(const hashed_index<KFV,H,P,SM,TL,Cat>& x, const hashed_index<KFV,H,P,SM,TL,Cat>& y);
+bool swap<KFV,H,P,SM,TL,Cat>(hashed_index<KFV,H,P,SM,TL,Cat>& x, hashed_index<KFV,H,P,SM,TL,Cat>& y);
+
+struct hashed_<non>_unique<A1,A2,A3,A4> {
+  using index_args = hashed_index_args<A1,A2,A3,A4>;
+  using tag_list_type=index_args::tag_list_type::type; using key_from_value_type = index_args::key_from_value_type;
+  using hash_type = index_args::hash_type; using pred_type = index_args::pred_type;
+  struct node_class<Super> { using type=hashed_index_node<Super>; };
+  struct index_class<SuperMeta> { using type = hashed_index<key_from_value_type,hash_type,pred_type,SuperMeta,tag_list_type,hashed_<non>_unique_tag>; };
+};
+
+struct detail::const_identity_base<Type> { using result_type=Type;
+  Type& operator()<ChainedPtr>(const ChainedPtr& x) const;
+  Type& operator()(Type& x) const;
+  Type& operator()(const reference_wrapper<Type>& x)const;
+  Type& operator()(const reference_wrapper<remove_const<Type>>& x)const;
+};
+struct detail::non_const_identity_base<Type> { using result_type=Type;
+  const Type& operator()<ChainedPtr>(const ChainedPtr& x) const;
+  <const> Type& operator()(<const> Type& x) const;
+  <const> Type& operator()(const reference_wrapper<<const> Type>& x)const;
+};
+struct identity<Type>: mpl::if_c<is_const_v<Type>, const_identity_base<Type>, non_const_identity_base<Type>>::type {};
+struct indexed_by<...T> : mpl::vector<T...>{};
 ```
 
 ------
