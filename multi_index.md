@@ -5,7 +5,279 @@
 * commit: `e2b50ef`, 2025-09-19
 
 ------
-#### 
+#### Index
+
+```c++
+struct indexed_by<...T> : mpl::vector<T...>{};
+
+struct detail::sequenced_index<SuperMeta,TagList> : SuperMeta::type {
+protected: using index_node_type = sequenced_index_node<base::index_node_type>;
+private: using node_impl_type = index_node_type::impl_type;
+public: using value_type = index_node_type::value_type; using ctor_args = tuples::null_type;
+    using allocator_type = base::final_allocator_type; using alloc_traits = allocator_traits<allocator_type>;
+    using <const>_reference = <const> value_type&;
+    using iterator = bidir_node_iterator<index_node_type>;, using const_iterator = iterator;
+    using <const>_pointer = alloc_traits::<const>_pointer;
+    using size_type = alloc_traits::size_type; using difference_type = alloc_traits::difference_type;
+    using <const>_reverse_iterator = reverse_iterator<<const>_iterator>;
+    using node_type = base::final_node_handle_type;
+    using insert_return_type = insert_return_type<iterator,node_type>;
+    using tag_list = TagList;
+protected: using ctor_args_list = tuples::cons<ctor_args, base::ctor_args_list>;
+    using index_type_list = mpl::push_front<base::index_type_list, sequenced_index>::type;
+    using <const>_iterator_type_list = mpl::push_front<base::<const>_iterator_type_list, <const>_iterator>::type;
+private: using value_param_type = call_traits<value_type>::param_type;
+public: self& operator=(const self& x); self& operator=(std::initializer_list<value_type> list);
+    void assign<InIt>(InIt first, InIt last); void assign(std::initializer_list<value_type> list);
+    void assign(size_type n, value_param_type value);
+  allocator_type get_allocator() const noexcept;
+  <const>_iterator {begin|end}() <const> noexcept; const_iterator c{begin|end}() const noexcept;
+  <const>_reverse_iterator r{begin|end}() <const> noexcept; const_reverse_iterator cr{begin|end}() const noexcept;
+  <const>_iterator iterator_to(const value_type& x) <const>;
+  bool empty() const noexcept; size_type size() const noexcept; size_type max_size() const noexcept;
+  void resize(size_type n, <value_param_type x>);
+  const_reference {front|back}() const;
+  std::pair<iterator,bool> emplace_{front|back}<...Args>(Args&&... args);
+  std::pair<iterator,bool> push_{front|back}(value_type {const&|&&} x);
+  void pop_{front|back}();
+  std::pair<iterator,bool> emplace<...Args>(iterator p, Args&&... args);
+  std::pair<iterator,bool> insert(iterator p, value_type {const&|&&} x);
+  void insert(iterator p, size_type n, value_param_type x);
+  void insert<InIt>(iterator p, InIt first, InIt last); void insert(iterator p, std::initializer_list<value_type> list);
+  insert_return_type insert(const_iterator p, node_type&& nh);
+  node_type extract(const_iterator p);
+  iterator erase(iterator p, <iterator last>);
+  bool replace(iterator p, value_type {const&|&&} x);
+  bool modify<Modifier,[Rollback]>(iterator p, Modifier mod, <Rollback back_>);
+  void swap(self& x);
+  void clear() noexcept;
+  void splice<Idx>(iterator p, Idx{&|&&} x, <Idx::iterator i>, <Idx::iterator last>);
+  void remove(value_param_type value); void remove_if<Pred>(Pred pred);
+  void unique(); void unique<BPred>(BPred binary_pred);
+  void merge(self& x, <Comp comp>); void merge<Comp>(self& x, Comp comp);
+  void sort(); void sort<Comp>(Comp comp);
+  void reverse() noexcept;
+  void relocate(iterator p, iterator i, <iterator last>);
+  void rearrange<InIt>(InIt first);
+protected: ctor(const ctor_args_list& args_list, const allocator_type& al);
+  ctor(const self& x); ctor(const self& x, do_not_copy_elements_tag); ~dtor();
+  <const>_iterator make_iterator(index_node_type* node)<const>;
+  void copy_(const self& x, const copy_map_type& map);
+  final_node_type* insert_<Variant>(value_param_type v, <index_node_type* p>, final_node_type*& x, Variant variant);
+  void extract_<Dst>(index_node_type* x, Dst dst);
+  void delete_all_nodes_(); void clear_();
+  void swap_<BoolConstant>(self& x, BoolConstant swap_allocators); void swap_elements_(self& x);
+  bool replace_<Variant>(value_param_type v, index_node_type* x, Variant variant);
+  bool modify_(index_node_type* x); bool modify_rollback_(index_node_type* x);
+  bool check_rollback_(index_node_type* x) const;
+  void save_<Ar>(Ar& ar, unsigned ver, const index_saver_type& sm) const;
+  void load_<Ar>(Ar& ar, unsigned ver, const index_loader_type& sm);
+  bool invariant_()const; void check_invariant_()const;
+};
+bool detail::operator{==|!=|<|>|<=|>=}<SM1,TL1,SM2,TL2>(const sequenced_index<SM1,TL1>& x, const sequenced_index<SM1,TL1>& y);
+bool detail::swap<SM,TL>(sequenced_index<SM,TL>& x, sequenced_index<SM,TL>& y);
+
+struct sequenced<TagList=tag<>> {
+    struct node_class<Super> { using type=sequenced_index_node<Super>; };
+    struct index_class<SuperMeta> { using type = sequenced_index<SuperMeta,TagList::type>; };
+};
+
+struct detail::random_access_index<SuperMeta,TagList> : SuperMeta::type {
+protected: using index_node_type = random_access_index_node<base::index_node_type>;
+private: using node_impl_type = index_node_type::impl_type;
+    using ptr_array = random_access_index_ptr_array<base::final_allocator_type>;
+    using node_impl_ptr_pointer = ptr_array::pointer;
+public: using value_type = index_node_type::value_type; using ctor_args = tuples::null_type;
+    using allocator_type = base::final_allocator_type; using alloc_traits = allocator_traits<allocator_type>;
+    using <const>_reference = <const> value_type&;
+    using iterator = rnd_node_iterator<index_node_type>;, using const_iterator = iterator;
+    using <const>_pointer = alloc_traits::<const>_pointer;
+    using size_type = alloc_traits::size_type; using difference_type = alloc_traits::difference_type;
+    using <const>_reverse_iterator = reverse_iterator<<const>_iterator>;
+    using node_type = base::final_node_handle_type;
+    using insert_return_type = insert_return_type<iterator,node_type>;
+    using tag_list = TagList;
+protected: using ctor_args_list = tuples::cons<ctor_args, base::ctor_args_list>;
+    using index_type_list = mpl::push_front<base::index_type_list, random_access_index>::type;
+    using <const>_iterator_type_list = mpl::push_front<base::<const>_iterator_type_list, <const>_iterator>::type;
+private: using value_param_type = call_traits<value_type>::param_type;
+public: self& operator=(const self& x); self& operator=(std::initializer_list<value_type> list);
+    void assign<InIt>(InIt first, InIt last); void assign(std::initializer_list<value_type> list);
+    void assign(size_type n, value_param_type value);
+  allocator_type get_allocator() const noexcept;
+  <const>_iterator {begin|end}() <const> noexcept; const_iterator c{begin|end}() const noexcept;
+  <const>_reverse_iterator r{begin|end}() <const> noexcept; const_reverse_iterator cr{begin|end}() const noexcept;
+  <const>_iterator iterator_to(const value_type& x) <const>;
+  bool empty() const noexcept; size_type size() const noexcept;
+  size_type max_size() const noexcept; size_type capacity() const noexcept;
+  void reserve(size_type n); void shrink_to_fit();
+  void resize(size_type n, <value_param_type x>);
+  const_reference operator[](size_type n) const; const_reference at(size_type n) const;
+  const_reference {front|back}() const;
+  std::pair<iterator,bool> emplace_{front|back}<...Args>(Args&&... args);
+  std::pair<iterator,bool> push_{front|back}(value_type {const&|&&} x);
+  void pop_{front|back}();
+  std::pair<iterator,bool> emplace<...Args>(iterator p, Args&&... args);
+  std::pair<iterator,bool> insert(iterator p, value_type {const&|&&} x);
+  void insert(iterator p, size_type n, value_param_type x);
+  void insert<InIt>(iterator p, InIt first, InIt last); void insert(iterator p, std::initializer_list<value_type> list);
+  insert_return_type insert(const_iterator p, node_type&& nh);
+  node_type extract(const_iterator p);
+  iterator erase(iterator p, <iterator last>);
+  bool replace(iterator p, value_type {const&|&&} x);
+  bool modify<Modifier,[Rollback]>(iterator p, Modifier mod, <Rollback back_>);
+  void swap(self& x);
+  void clear() noexcept;
+  void splice<Idx>(iterator p, Idx{&|&&} x, <Idx::iterator i>, <Idx::iterator last>);
+  void remove(value_param_type value);
+  void remove_if<Pred>(Pred pred);
+  void unique(); void unique<BPred>(BPred binary_pred);
+  void merge(self& x, <Comp comp>); void merge<Comp>(self& x, Comp comp);
+  void sort(); void sort<Comp>(Comp comp);
+  void reverse() noexcept;
+  void relocate(iterator p, iterator i, <iterator last>);
+  void rearrange<InIt>(InIt first);
+protected: ctor(const ctor_args_list& args_list, const allocator_type& al);
+  ctor(const self& x); ctor(const self& x, do_not_copy_elements_tag); ~dtor();
+  <const>_iterator make_iterator(index_node_type* node)<const>;
+  void copy_(const self& x, const copy_map_type& map);
+  final_node_type* insert_<Variant>(value_param_type v, <index_node_type* p>, final_node_type*& x, Variant variant);
+  void extract_<Dst>(index_node_type* x, Dst dst);
+  void delete_all_nodes_(); void clear_();
+  void swap_<BoolConstant>(self& x, BoolConstant swap_allocators); void swap_elements_(self& x);
+  bool replace_<Variant>(value_param_type v, index_node_type* x, Variant variant);
+  bool modify_(index_node_type* x); bool modify_rollback_(index_node_type* x);
+  bool check_rollback_(index_node_type* x) const;
+  void save_<Ar>(Ar& ar, unsigned ver, const index_saver_type& sm) const;
+  void load_<Ar>(Ar& ar, unsigned ver, const index_loader_type& sm);
+  bool invariant_()const; void check_invariant_()const;
+private: ptr_array ptrs;
+};
+bool detail::operator{==|!=|<|>|<=|>=}<SM1,TL1,SM2,TL2>(const random_access_index<SM1,TL1>& x, const random_access_index<SM1,TL1>& y);
+bool detail::swap<SM,TL>(random_access_index<SM,TL>& x, random_access_index<SM,TL>& y);
+
+class detail::hashed_index<KeyFromValue,Hash,Pred,SuperMeta,TagList,Cat> : SM::type {
+protected: using index_node_type = hashed_index_node<base::index_node_type>;
+private: using node_alg=index_node_type::node_alg<Cat>::type;
+  using node_impl_type=index_node_type::impl_type; using node_impl_<base>_pointer=node_impl_type::<base>_pointer;
+  using bucket_array_type = bucket_array<base::final_allocator_type>;
+public: using key_type=KeyFromValue::result_type; using value_type=index_node_type::value_type;
+  using key_from_value=KeyFromValue; using hasher=Hash; using key_equal=Pred;
+  using allocator_type = base::final_allocator_type; using alloc_traits=allocator_traits<allocator_type>;
+  using <const>_pointer = alloc_traits::<const>_pointer; using <const>_reference = <const> value_type&;
+  using size_type = alloc_traits::size_type; using difference_type = alloc_traits::difference_type;
+  using ctor_args = tuple<size_type,key_from_value,hasher,key_equal>;
+  using iterator = hashed_index_iterator<index_node_type, bucket_array_type, Cat, hashed_index_global_iterator_tag>;
+  using local_iterator = hashed_index_iterator<index_node_type, bucket_array_type, Cat, hashed_index_local_iterator_tag>;
+  using const_<local>_iterator = <local>_iterator;
+  using node_type = base::final_node_handle_type;
+  using insert_return_type = insert_return_type<iterator,node_type>;
+  using tag_list = TagList;
+protected: using ctor_args_list = tuples::cons<ctor_args,base::ctor_args_list>;
+  using index_type_list = mpl::push_front<base::index_type_list, hashed_index>::type;
+  using <const>_iterator_type_list = mpl::push_front<base::<const>_iterator_type_list, <const>_iterator>::type;
+private: using value_param_type = call_traits<value_type>::param_type; using key_param_type = call_traits<key_type>::param_type;
+public: self& operator=(const self& x); self& operator=(std::initializer_list<value_type> list);
+  allocator_type get_allocator() const noexcept;
+  bool empty() const noexcept; size_type size() const noexcept; size_type max_size() const noexcept;
+  <const>_iterator {begin|end}() <const> noexcept; const_iterator c{begin|end}() const noexcept;
+  <const>_iterator iterator_to(const value_type& x) <const>;
+  std::pair<iterator,bool> emplace<...Args>(Args&&...args);
+  iterator emplace_hint<...Args>(iterator p, Args&&...args);
+  std::pair<iterator,bool> insert(value_type {const&|&&} x);
+  iterator insert(iterator p, value_type {const&|&&} x);
+  void insert<InIt>(InIt first, InIt last); void insert(std::initializer_list<value_type> list);
+  insert_return_type insert(node_type&& nh); iterator insert(const_iterator p, node_type&& nh);
+  node_type extract(const_iterator p); node_type extract(key_param_type x);
+  iterator erase(iterator p, <iterator last>); size_type erase(key_param_type k);
+  bool replace(iterator p, value_type {const&|&&} x);
+  bool modify<Modifier,[Rollback]>(iterator p, Modifier mod, <Rollback back_>);
+  bool modify_key<Modifier,[Rollback]>(iterator p, Modifier mod, <Rollback back_>);
+  void clear() noexcept;
+  void swap(self& x);
+  void merge<Idx>(Idx{&|&&} x, <Idx::iterator i>, <Idx::iterator last>);
+  key_from_value key_extractor() const; hasher hash_function() const; key_equal key_eq() const;
+
+  iterator find<Key2,[Hash2,Pred2]>(const Key2& k, <const Hash2& hash, const Pred2& eq>) const;
+  size_type count<Key2,[Hash2,Pred2]>(const Key2& k, <const Hash2& hash, const Pred2& eq>) const;
+  bool contains<Key2,[Hash2,Pred2]>(const Key2& k, <const Hash2& hash, const Pred2& eq>) const;
+  std::pair<iterator,iterator> equal_range<Key2,[Hash2,Pred2]>(const Key2& k, <const Hash2& hash, const Pred2& eq>) const;
+  size_type bucket_count() const noexcept; size_type max_bucket_count() const noexcept;
+  size_type bucket_size(size_type n) const; size_type bucket(key_param_type k) const;
+  <const>_local_iterator {begin|end}(size_type n)<const>;   const_local_iterator c{begin|end}(size_type n) const;
+  <const>_local_iterator local_iterator_to(const value_type& x) <const>;
+  float load_factor() const noexcept;
+  float max_load_factor() const noexcept; void max_load_factor(float z);
+  void rehash(size_type n); void reserve(size_type n);
+protected: ctor(const ctor_args_list& args_list, const allocator_type& al);
+  ctor(const self& x); ctor(const self& x, do_not_copy_elements_tag); ~dtor();
+  <const>_iterator make_iterator(index_node_type* node)<const>;
+  <const>_local_iterator make_local_iterator(index_node_type* node)<const>;
+  void copy_(const self& x, const copy_map_type& map);
+  final_node_type* insert_<Variant>(value_param_type v, <index_node_type* p>, final_node_type*& x, Variant variant);
+  void extract_<Dst>(index_node_type* x, Dst dst);
+  void delete_all_nodes_(); void clear_();
+  void swap_<BoolConstant>(self& x, BoolConstant swap_allocators); void swap_elements_(self& x);
+  bool replace_<Variant>(value_param_type v, index_node_type* x, Variant variant);
+  bool modify_(index_node_type* x); bool modify_rollback_(index_node_type* x);
+  bool check_rollback_(index_node_type* x) const;
+  bool equals(const self& x) const;
+  void save_<Ar>(Ar& ar, unsigned ver, const index_saver_type& sm) const;
+  void load_<Ar>(Ar& ar, unsigned ver, const index_loader_type& sm);
+  bool invariant_()const; void check_invariant_()const;
+private: key_from_value key; hasher hash_; key_equal eq_; bucket_array_type buckets; float mlf; size_type max_load;
+};
+bool operator{==|!=}<KFV,H,P,SM,TL,Cat>(const hashed_index<KFV,H,P,SM,TL,Cat>& x, const hashed_index<KFV,H,P,SM,TL,Cat>& y);
+bool swap<KFV,H,P,SM,TL,Cat>(hashed_index<KFV,H,P,SM,TL,Cat>& x, hashed_index<KFV,H,P,SM,TL,Cat>& y);
+
+struct hashed_<non>_unique<A1,A2,A3,A4> {
+  using index_args = hashed_index_args<A1,A2,A3,A4>;
+  using tag_list_type=index_args::tag_list_type::type; using key_from_value_type = index_args::key_from_value_type;
+  using hash_type = index_args::hash_type; using pred_type = index_args::pred_type;
+  struct node_class<Super> { using type=hashed_index_node<Super>; };
+  struct index_class<SuperMeta> { using type = hashed_index<key_from_value_type,hash_type,pred_type,SuperMeta,tag_list_type,hashed_<non>_unique_tag>; };
+};
+
+struct detail::null_augment_policy {
+    struct augmented_interface<OrdIdxImpl> { using type=OrdIdxImpl; };
+    struct augmented_node<OrdIdxNodeImpl> { using type=OrdIdxNodeImpl; }
+    static void {add|remove|copy|rotate_left|rotate_right}<Pointer>(Pointer,Pointer){}
+    static bool invariant<Pointer>(Pointer){return true;}
+};
+struct ordered_<non>_unique<A1,A2=na,A3=na> {
+    using index_args=ordered_index_args<A1,A2,A3>;
+    using tag_list_type = index_args::tag_list_type::type;
+    using key_from_value_type = index_args::key_from_value_type; using compare_type = index_args::compare_type;
+    struct node_class<Super> { using type=ordered_index_node<null_augment_policy,Super>; };
+    struct index_class<SuperMeta> { using type=ordered_index<key_from_value_type,compare_type,SuperMeta,tag_list_type,ordered_<non>_unique_tag,null_augment_policy>; };
+};
+struct detail::ranked_node<OrdIdxNodeImpl> : OrdIdxNodeImpl { using size_type = OrdIdxNodeImpl::size_type; size_type size; };
+struct detail::ranked_index<OrdIdxImpl> : OrdIdxImpl {
+    size_type count<Key2,[Comp2]>(const Key2& x, <const Comp2& comp>) const;
+    iterator nth(size_type n) const;
+    size_type rank(iterator p) const;
+    size_type {find|lower_bound|upper_bound}_rank<Key2,[Comp2]>(const Key2& x, <const Comp2& comp>) const;
+    std::pair<size_type,size_type> equal_range_rank<Key2,[Comp2]>(const Key2& x, <const Comp2& comp>) const;
+    std::pair<size_type,size_type> range_rank<LB,UB>(LB lower, UB upper) const;
+protected: ctor(const self& x); ctor(const self& x, do_not_copy_elements_tag);
+    ctor(const ctor_args_list& args_list, const allocator_type& al);
+};
+struct detail::rank_policy {
+    struct augmented_node<OrdIdxNodeImpl> { using type=ranked_node<OrdIdxNodeImpl>; }
+    struct augmented_interface<OrdIdxImpl> { using type=ranked_index<OrdIdxImpl>; };
+    static void {add|remove|copy|rotate_left|rotate_right}<Pointer>(Pointer,Pointer){}
+    static bool invariant<Pointer>(Pointer){return true;}
+};
+struct ranked_<non>_unique<A1,A2=na,A3=na> {
+    using index_args=ordered_index_args<A1,A2,A3>;
+    using tag_list_type = index_args::tag_list_type::type;
+    using key_from_value_type = index_args::key_from_value_type; using compare_type = index_args::compare_type;
+    struct node_class<Super> { using type=ordered_index_node<null_augment_policy,Super>; };
+    struct index_class<SuperMeta> { using type=ordered_index<key_from_value_type,compare_type,SuperMeta,tag_list_type,ordered_<non>_unique_tag,null_augment_policy>; };
+};
+```
+
+##### Key Extractors
 
 ```c++
 namespace detail{
@@ -65,97 +337,6 @@ struct composite_key_hash<...Hash> : private tuple<Hash...> {
 // and compare, hash
 struct composite_key_result_equal_to<CompKeyRes> : composite_key_equal_to<nth_composite_key_equal_to<CompKeyRes::composite_key_type,n>::type...>{using base::operator();};
 
-struct detail::<non>_<const>_ref_global_fun_base<Value,Type,Type(*p)(Value)> {
-  using result_type = remove_reference_t<Type>;
-  Type operator()<ChainedPtr>(const ChainedPtr& x) const;
-  bool operator()(Value x) const;
-  bool operator()(const reference_wrapper<remove_reference_t<Value>>& x) const;
-};
-struct global_fun<Value,Type,Type(*p)(Value)> : ...{}; // chose between const_ref, non_const_ref, non_ref
-
-class detail::hashed_index<KeyFromValue,Hash,Pred,SuperMeta,TagList,Cat> : SM::type {
-protected: using index_node_type = hashed_index_node<base::index_node_type>;
-private: using node_alg=index_node_type::node_alg<Cat>::type;
-  using node_impl_type=index_node_type::impl_type; using node_impl_<base>_pointer=node_impl_type::<base>_pointer;
-  using bucket_array_type = bucket_array<base::final_allocator_type>;
-public: using key_type=KeyFromValue::result_type; using value_type=index_node_type::value_type;
-  using key_from_value=KeyFromValue; using hasher=Hash; using key_equal=Pred;
-  using allocator_type = base::final_allocator_type; using alloc_traits=allocator_traits<allocator_type>;
-  using <const>_pointer = alloc_traits::<const>_pointer; using <const>_reference = <const> value_type&;
-  using size_type = alloc_traits::size_type; using difference_type = alloc_traits::difference_type;
-  using ctor_args = tuple<size_type,key_from_value,hasher,key_equal>;
-  using iterator = hashed_index_iterator<index_node_type, bucket_array_type, Cat, hashed_index_global_iterator_tag>;
-  using local_iterator = hashed_index_iterator<index_node_type, bucket_array_type, Cat, hashed_index_local_iterator_tag>;
-  using const_<local>_iterator = <local>_iterator;
-  using node_type = base::final_node_handle_type;
-  using insert_return_type = insert_return_type<iterator,node_type>;
-  using tag_list = TagList;
-protected: using ctor_arg_list = tuples::cons<ctor_args,base::ctor_args_list>;
-  using index_type_list = mpl::push_front<base::index_type_list, hashed_index>::type;
-  using <const>_iterator_type_list = mpl::push_front<base::<const>_iterator_type_list, <const>_iterator>::type;
-private: using value_param_type = call_traits<value_type>::param_type; using key_param_type = call_traits<key_type>::param_type;
-public: self& operator=(const self& x); self& operator=(std::initializer_list<value_type> list);
-  allocator_type get_allocator() const noexcept;
-  bool empty() const noexcept; size_type size() const noexcept; size_type max_size() const noexcept;
-  <const>_iterator {begin|end}() <const> noexcept; const_iterator c{begin|end}() const noexcept;
-  <const>_iterator iterator_to(const value_type& x) <const>;
-  std::pair<iterator,bool> emplace<...Args>(Args&&...args);
-  iterator emplace_hint<...Args>(iterator p, Args&&...args);
-  std::pair<iterator,bool> insert(value_type {const&|&&} x);
-  iterator insert(iterator p, value_type {const&|&&} x);
-  void insert<InIt>(InIt first, InIt last); void insert(std::initializer_list<value_type> list);
-  insert_return_type insert(node_type&& nh); iterator insert(const_iterator p, node_type&& nh);
-  node_type extract(const_iterator p); node_type extract(key_param_type x);
-  iterator erase(iterator p, <iterator last>); size_type erase(key_param_type k);
-  bool replace(iterator p, value_type {const&|&&} x);
-  bool modify<Modifier,[Rollback]>(iterator p, Modifier mod, <Rollback back_>);
-  bool modify_key<Modifier,[Rollback]>(iterator p, Modifier mod, <Rollback back_>);
-  void clear() noexcept;
-  void swap(self& x);
-  void merge<Idx>(Idx{&|&&} x, <Idx::iterator i>, <Idx::iterator last>);
-  key_from_value key_extractor() const; hasher hash_function() const; key_equal key_eq() const;
-
-  iterator find<Key2,[Hash2,Pred2]>(const Key2& k, <const Hash2& hash, const Pred2& eq>) const;
-  size_type count<Key2,[Hash2,Pred2]>(const Key2& k, <const Hash2& hash, const Pred2& eq>) const;
-  bool contains<Key2,[Hash2,Pred2]>(const Key2& k, <const Hash2& hash, const Pred2& eq>) const;
-  std::pair<iterator,iterator> equal_range<Key2,[Hash2,Pred2]>(const Key2& k, <const Hash2& hash, const Pred2& eq>) const;
-  size_type bucket_count() const noexcept; size_type max_bucket_count() const noexcept;
-  size_type bucket_size(size_type n) const; size_type bucket(key_param_type k) const;
-  <const>_local_iterator {begin|end}(size_type n)<const>;   const_local_iterator c{begin|end}(size_type n) const;
-  <const>_local_iterator local_iterator_to(const value_type& x) <const>;
-  float load_factor() const noexcept;
-  float max_load_factor() const noexcept; void max_load_factor(float z);
-  void rehash(size_type n); void reserve(size_type n);
-protected: ctor(const ctor_args_list& args_list, const allocator_type& al);
-  ctor(const self& x); ctor(const self& x, do_not_copy_elements_tag); ~dtor();
-  <const>_iterator make_iterator(index_node_type* node)<const>;
-  <const>_local_iterator make_local_iterator(index_node_type* node)<const>;
-  void copy_(const self& x, const copy_map_type& map);
-  final_node_type* insert_<Variant>(value_param_type v, <index_node_type* p>, final_node_type*& x, Variant variant);
-  void extract_<Dst>(index_node_type* x, Dst dst);
-  void delete_all_nodes_(); void clear_();
-  void swap_<BoolConstant>(self& x, BoolConstant swap_allocators);
-  void swap_elements_<BoolConstant>(self& x, BoolConstant swap_allocators);
-  bool replace_<Variant>(value_param_type v, index_node_type* x, Variant variant);
-  bool modify_(index_node_type* x); bool modify_rollback_(index_node_type* x);
-  bool check_rollback_(index_node_type* x) const;
-  bool equals(const self& x) const;
-  void save_<Ar>(Ar& ar, unsigned ver, const index_saver_type& sm) const;
-  void load_<Ar>(Ar& ar, unsigned ver, const index_loader_type& sm);
-  bool invariant_()const; void check_invariant_()const;
-private: key_from_value key; hasher hash_; key_equal eq_; bucket_array_type buckets; float mlf; size_type max_load;
-};
-bool operator{==|!=}<KFV,H,P,SM,TL,Cat>(const hashed_index<KFV,H,P,SM,TL,Cat>& x, const hashed_index<KFV,H,P,SM,TL,Cat>& y);
-bool swap<KFV,H,P,SM,TL,Cat>(hashed_index<KFV,H,P,SM,TL,Cat>& x, hashed_index<KFV,H,P,SM,TL,Cat>& y);
-
-struct hashed_<non>_unique<A1,A2,A3,A4> {
-  using index_args = hashed_index_args<A1,A2,A3,A4>;
-  using tag_list_type=index_args::tag_list_type::type; using key_from_value_type = index_args::key_from_value_type;
-  using hash_type = index_args::hash_type; using pred_type = index_args::pred_type;
-  struct node_class<Super> { using type=hashed_index_node<Super>; };
-  struct index_class<SuperMeta> { using type = hashed_index<key_from_value_type,hash_type,pred_type,SuperMeta,tag_list_type,hashed_<non>_unique_tag>; };
-};
-
 struct detail::const_identity_base<Type> { using result_type=Type;
   Type& operator()<ChainedPtr>(const ChainedPtr& x) const;
   Type& operator()(Type& x) const;
@@ -168,7 +349,140 @@ struct detail::non_const_identity_base<Type> { using result_type=Type;
   <const> Type& operator()(const reference_wrapper<<const> Type>& x)const;
 };
 struct identity<Type>: mpl::if_c<is_const_v<Type>, const_identity_base<Type>, non_const_identity_base<Type>>::type {};
-struct indexed_by<...T> : mpl::vector<T...>{};
+
+struct detail::<non>_<const>_ref_global_fun_base<Value,Type,Type(*p)(Value)> {
+  using result_type = remove_reference_t<Type>;
+  Type operator()<ChainedPtr>(const ChainedPtr& x) const;
+  bool operator()(Value x) const;
+  bool operator()(const reference_wrapper<remove_reference_t<Value>>& x) const;
+};
+struct global_fun<Value,Type,Type(*p)(Value)> : ...{}; // chose between const_ref, non_const_ref, non_ref
+
+struct detail::<non>_const_member_base<Class,Type,Type Class::*mp> {
+    using result_type = Type;
+    Type& operator()<ChainedPtr>(const ChainedPtr& x) const;
+    Type& operator()(const Class& x) const;
+    Type& operator()(const reference_wrapper<<const> Class>& x) const;
+};
+struct member<Class,Type,Type Class::*mp> : mpl::if_c<is_const_v<Type>, const_member_base<__>, non_const_member_base<__>>::type{};
+struct detail::<non>_const_member_offset_base<Class,Type,offset> {
+    using result_type = Type;
+    Type& operator()<ChainedPtr>(const ChainedPtr& x) const;
+    Type& operator()(const Class& x) const;
+    Type& operator()(const reference_wrapper<<const> Class>& x) const;
+};
+struct member_offset<Class,Type,offset> : mpl::if_c<is_const_v<Type>, const_member_offset_base<__>, non_const_offset_base<__>>::type{};
+
+struct detail::<const>_mem_fun_impl<Class,Type,MFPtr,mp> {
+    using result_type = remove_reference_t<Type>;
+    Type operator()<ChainedPtr>(const ChainedPtr& x) const;
+    Type operator()(const Class& x) const;
+    Type operator()(const reference_wrapper<<const> Class>& x) const;
+};
+struct const_mem_fun<Class,Type,Type (Class::*mp)()const> : const_mem_fun_impl<Class,Type,Type(Class::*)()const,mp>{};
+struct cv_mem_fun<Class,Type,Type (Class::*mp)()const volatile> : const_mem_fun_impl<Class,Type,Type(Class::*)()const  volatile,mp>{};
+struct mem_fun<Class,Type,Type (Class::*mp)()> : const_mem_fun_impl<Class,Type,Type(Class::*)(),mp>{};
+struct volatile_mem_fun<Class,Type,Type (Class::*mp)()volatile> : const_mem_fun_impl<Class,Type,Type(Class::*)()volatile,mp>{};
+struct cref_mem_fun<Class,Type,Type (Class::*mp)()const&> : const_mem_fun_impl<Class,Type,Type(Class::*)()const&,mp>{};
+struct cvref_mem_fun<Class,Type,Type (Class::*mp)()const volatile&> : const_mem_fun_impl<Class,Type,Type(Class::*)()const volatile&,mp>{};
+struct ref_mem_fun<Class,Type,Type (Class::*mp)()&> : const_mem_fun_impl<Class,Type,Type(Class::*)()&,mp>{};
+struct vref_mem_fun<Class,Type,Type (Class::*mp)()volatile&> : const_mem_fun_impl<Class,Type,Type(Class::*)()volatile&,mp>{};
+
+struct detail::typed_key_impl<Type Class::*, mptr> requires !is_function_v<Type> { using value_type=Class; using type = member<Class,Type,mptr>; };
+struct detail::typed_key_impl<Type (Class::*)()<const><volatile><&>, mfptr> { using value_type=Class; using type = <c|v><ref>_mem_fun<Class,Type,mfptr>; };
+struct detail::typed_key_impl<Type(*)(Value),fptr> { using value_type=Value; using type=global_fun<Value,Type,fptr>; };
+
+struct detail::remove_noexcept<T>{using type=T;};
+struct detail::remove_noexcept<R(C::*)(Args...)<const><volatile><&|&&>noexcept>{using type=R(C::*)(Args...)<const><volatile><&|&&>;};
+struct detail::remove_noexcept<R(C::*)(Args...,...)<const><volatile><&|&&>noexcept>{using type=R(C::*)(Args...,...)<const><volatile><&|&&>;};
+struct detail::remove_noexcept<R(*)(Args...)noexcept>{using type=R(*)(Args...);};
+struct detail::remove_noexcept<R(*)(Args...,...)noexcept>{using type=R(*)(Args...,...);};
+using detail::remove_noexcept_t<T> = remove_noexcept_t<T>;
+struct detail::key_impl<key> : typed_key_impl<remove_noexcept_t<decltype(key)>,key>{};
+struct detail::least_generic<T0,Ts...> { using type=T0; };
+struct detail::least_generic<T0,T1,Ts...> { using type=least_generic<std::conditional_t<is_convertible_v<const T0&,const T1&>,T0,T1>,Ts...>::type; };
+struct detail::key_impl<keys...> {
+    using value_type = least_generic<std::decay_t<key_impl<keys>::value_type>...>::type;
+    using type = composite_key<value_type, key_impl<keys>::type...>;
+};
+struct detail::composite_key_size<_=composite_key<void,void>>;
+struct detail::composite_key_size<composite_key<Args...>> { static constexpr auto value=sizeof...(Args)-1; };
+struct detail::limited_size_key_impl<...keys> { using type = key_impl<keys...>::type; };
+using key<...keys> = limited_size_key_impl<keys...>::type;
+```
+
+#### Multi Index Container
+
+```c++
+struct detail::unequal_alloc_move_ctor_tag{};
+
+class multi_index_container<Value,ISpecList=indexed_by<ordered_unique<identity<Value>>>,
+    Alloc=std::allocator<Value>,  _alloc=rebind_alloc_for<Alloc,multi_index_node_type<Value,ISpecList,Alloc>::type>::type>
+    : private base_from_member<_alloc>, header_holder<allocator_traits<_alloc>::pointer, self>, multi_index_base_type<__>
+{ using node_allocator=rebind_alloc_for<Alloc,base::index_node_type>::type;
+    using node_alloc_traits=allocator_traits<node_allocator>;
+    using bfm_allocator=base_from_member<node_allocator>;
+    using bfm_header = header_holder<node_pointer, self>;
+    using index_specifier_type_list = ISpecList;
+    using allocator_type = base::final_allocator_type;
+    explicit ctor(<const allocator_type& al>); ctor(const {self&|&&} x, <const allocator_type& al>); ~dtor();
+    explicit ctor(const ctor_args_list& args_list, const allocator_type& al={});
+    ctor<InIt>(InIt first, InIt last, const ctor_args_list& args_list={}, const allocator_type& al={});
+    ctor(std::initializer_list<Value> list, const ctor_args_list& args_list={}, const allocator_type& al={});
+    self& operator=(self {const&|&&} x); self& operator=(std::initializer_list<Value> list);
+    allocator_type get_allocator() const noexcept;
+    struct nth_index<n> { using type = mpl::at_c<index_type_list,n>::type; };
+    <const> nth_index<n>::type& get() <const> noexcept;
+    struct index<Tag> { using iter=mpl::find_if<index_type_list,has_tag<Tag>>::type; using type=mpl::deref<iter>::type; };
+    <const> index<Tag>::type& get() <const> noexcept;
+    struct nth_index_<const>_iterator<n> { using type = nth_index<n>::type::<const>_iterator; };
+    nth_index_<const>_iterator<n>::type project<n,It>(It it) <const>;
+    struct index_<const>_iterator<Tag> { using index<Tag>::type::<const>_iterator; };
+    index_<const>_iterator<Tag>::type project<Tag,It>(It it) <const>;
+protected:
+    ctor(self& x, const allocator_type& al, unequal_alloc_move_ctor_tag);
+    ctor(const self& x, do_not_copy_elements_tag);
+    void copy_construct_from(const self& x);
+    final_node_type* header() const;
+    final_node_type* allocate_node(); void deallocate_node(final_node_type* x);
+    void construct_value(final_node_type* x, Value {const&|&&} v); void destroy_value(final_node_type* x);
+    bool empty_() const; size_type size_() const; size_type max_size_() const;
+    std::pair<final_node_type*,bool> insert_<Variant>(const Value& v, <final_node_type* p>, Variant variant);
+    std::pair<final_node_type*,bool> insert_<rv>_(const Value& v, <final_node_type* p>);
+    std::pair<final_node_type*,bool> insert_ref_<T>(T& t, <final_node_type* p>);
+    std::pair<final_node_type*,bool> insert_ref_(value {const&|&&} x, <final_node_type* p>);
+    std::pair<final_node_type*,bool> insert_nh_(final_node_handle_type& nh, <final_node_type* p>);
+    std::pair<final_node_type*,bool> transfer_<Idx>(Idx& x, final_node_type* n);
+    std::pair<final_node_type*,bool> emplace_<...Args>(Args&&...args);
+    std::pair<final_node_type*,bool> emplace_hint_<...Args>(final_node_type* p, Args&&...args);
+    final_node_handle_type extract_(final_node_type* x);
+    void extract_for_transfer_<Dst>(final_node_type* x, Dst dst);
+    void erase_(final_node_type* x); void delete_node_(final_node_type* x);
+    void delete_all_node_(); void clear_();
+    void transfer_range_<Idx>(Idx& x, Idx::iterator first, Idx::iterator last);
+    void swap_(self& x); void swap_elements(self& x);
+    bool replace_<rv>_(const Value& k, final_node_type* x);
+    bool modify_<Modifier,[Rollback]>(Modifier& mod, <Rollback& back_>, final_node_type* x);
+    void serialize<Ar>(Ar& ar, unsigned ver);
+    void save<Ar>(Ar& ar, unsigned) const; void load<Ar>(Ar& ar, unsigned); 
+    bool invariant_() const; void check_invariant_() const;
+private: size_type node_count;
+};
+
+struct nth_index<MICont,n> { using type = mpl::at_c<MICont::index_type_list,n>::type; };
+<const> nth_index<multi_index_container<Value,ISpecList,Alloc>,n>::type& get<n,Value,ISpecList,Alloc>(<const> multi_index_container<Value,ISpecList,Alloc>& m) noexcept;
+
+struct index<MICont,Tag> { using iter=mpl::find_if<index_type_list,has_tag<Tag>>::type; using type=mpl::deref<iter>::type; };
+<const> index<multi_index_container<Value,ISpecList,Alloc>,Tag>::type& get<Tag,Value,ISpecList,Alloc>(<const> multi_index_container<Value,ISpecList,Alloc>& m) noexcept;
+
+struct nth_index_<const>_iterator<MICont,n> { using type = nth_index<MICont,n>::type::<const>_iterator; };
+nth_index_<const>_iterator<multi_index_container<Value,ISpecList,Alloc>,n>::type& project<n,It,Value,ISpecList,Alloc>(<const> multi_index_container<Value,ISpecList,Alloc>& m, It it);
+
+struct index_<const>_iterator<MICont,Tag> { using type = index<MICont,Tag>::type::<const>_iterator; };
+index_<const>_iterator<multi_index_container<Value,ISpecList,Alloc>,Tag>::type& project<Tag,It,Value,ISpecList,Alloc>(<const> multi_index_container<Value,ISpecList,Alloc>& m, It it);
+
+bool operator{==|!=|<|>|<=|>=} <V1,ISL1,A1,V2,ISL2,A2> (const multi_index_container<V1,ISL1,A1>& x, const multi_index_container<V1,ISL1,A1>& y);
+void swap<V,ISL,A> (multi_index_container<V,ISL,A>& x, multi_index_container<V,ISL,A>& y);
 ```
 
 ------
@@ -918,12 +1232,7 @@ struct value_comparison<Value,KeyFromValue,Compare> {
     bool operator()(call_traits<Value>::param_type x, call_traits<Value>::param_type y) const;
 private; KeyFromValue key; Compare comp;
 };
-
 ```
-
-------
-### Configuration
-
 
 ------
 ### Dependency
