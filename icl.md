@@ -5,10 +5,51 @@
 * commit: `e2b50ef`, 2025-09-19
 
 ------
-#### Index
+#### Concepts
 
-```c++
-```
+##### Naming
+
+* Element set: `std::set`
+* Element map: `icl::map`
+* Interval set: `interval_set`, `separate_interval_set`, `split_interval_set`
+* Interval map: `interval_map`, `split_interval_map`
+
+##### Aspects
+
+* Fundamental
+* Segmental
+
+##### Sets and Maps
+
+* Empty set/map: default constructed
+* Subset relation: `bool T::within(const T& t1, const T& t2) const`
+* Equality: `bool is_element_equal(const T& t1, const T& t2)`
+* Set union: `+=`, `+`
+* Set difference: `-=`, `-`
+* Set intersection: `&=`, `&`
+
+##### Addability, Subtractability, Aggregate on overlap
+
+* `Combine`: `inplace_plus`, `inplace_minus`, `inplace_et`, `inplace_caret`, `inplace_star`,
+    `inplace_slash`, `inplace_max`, `inplace_min`, `inplace_identity`, `inplace_erasure`
+* `inverse` on `inplace_xx`: `plus`<->`minus`, `et`<->`caret`, `star`<->`slash`,
+    `max`<->`min`, `identity`<->`erasure`, Functor<->`erasure`
+
+#### Semantics
+
+##### Orderings & Equivalences
+
+* Lexicographical: `<` (strict weak ordering) `Compare`, induced: `==`
+* Subset ordering, element equality: `contained_in`, `is_element_equal`
+
+##### Sets
+
+* union: `+`, `+=`, `|`, `|=`, associativity, neutrality, commutativity
+* intersection: `&`, `&=`: associativity, commutativity
+* difference: `-`, `-=`: right neutrality, inversion
+* distributivity: distributivity, right distributivity
+* demorgan's
+* symmetric difference
 
 ------
 ### Dependency
