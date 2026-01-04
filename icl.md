@@ -51,6 +51,253 @@
 * demorgan's
 * symmetric difference
 
+##### Maps
+
+* Collectors: Maps of Sets
+* Quantifiers: Maps of Numbers
+
+#### Interfaces
+
+`D`=`DomainT`, `C`=`CodomainT`, `T`=`Traits`, `CP`=`Compare`, `CB`=`Combine`, `Sn`=`Section`, `I`=`IntervalT`, `A`=`Alloc`,
+`SZ`=`size<D>`, `DF`=`difference<D>`, `XL`=`exclusive_less<I<D,CP>>`, `INV`=`inverse<CB>`, `(T,U)`=`std::pair<T,U>`,
+`ES`=element set type, `IS`=interval set type, `S`=set type, `EM`=element map type (`icl::map`), `IM`=interval map type, `M`=map type,
+`SE`=`S::element_type`, `SS`=`IS::segment_type`, `ME`=`M::element_type`, `MS`=`IM::segment_type`,
+`DT`=discrete type (integral, etc), `CT`=continuous type (floating-point etc.)
+
+##### Class templates
+
+* Intervals
+ * static: `right_open_interval`, `left_open_interval`, `open_interval`, `closed_interval`
+ * dynamic: `discrete_interval`, `continuous_interval`
+ * default type:
+  - if `USE_STATIC_BOUNDED_INTERVALS`, `right_open_interval`
+  - else: `discrete_interval` or `continuous_interval`
+* Interval Sets: `interval_set`, `separate_interval_set`, `split_interval_set`
+ * Template Parameters: `D`, `C=std::less`, `I=interval<D,C>::type`, `A=std::allocator`
+* Map: `icl::map`
+ * Template Parameters: `D`, `C`, `T=identity_absorber`, `CP=std::less`, `CB=inplace_plus`, `Sn=icl::inplace_et`, `A=std::allocator`
+* Interval Maps: `interval_map`, `split_interval_map`
+ * Template Parameters: `D`, `C`, `T=identity_absorber`, `CP=std::less`, `CB=inplace_plus`, `Sn=icl::inplace_et`, `I=interval<D,C>::type`, `A=std::allocator`
+
+##### Concepts
+
+```c++
+concept Domain<D,C> = regular<D> && strict_weak_ordering<D,C> && (is_incrementable<D> || has_unit_element<D>);
+concept is_integral<D> = is_incrementable<D> && is_decrementable<D>;
+
+concept Interval<I<D,C>> = is_exclusive_less_comparable<I<D,C>>;
+
+concept Codomain<C,CB,S> = regular<C> && combinable<C,CB> && combinable<C,inverse<CB>> && intersectable<C,S>;
+```
+
+##### Associated types
+
+* Data (fundamental):
+ * `domain_type`: `D`
+ * `codomain_type`: `C` for maps, otherwise `D`
+ * `element_type`: `(D,C)` for maps, otherwise `D`
+ * `segment_type`: `i<D,CP>` for intervals and interval sets, `(i<D,CP>,C)` for interval maps
+ * `size_type`: `SZ<D>`
+ * `difference_type`: `DF<D>` for intervals and interval sets/maps, `SZ<D>` for element sets/maps
+* Data (segmental):
+ * `key_type`: `D` for intervals and element sets/maps, `i<D,CP>` for interval sets/maps
+ * `data_type`: `D` for intervals and element sets, `i<D,CP>` for interval sets, `C` for maps
+ * `value_type`: `D` for intervals and element sets, `i<D,CP>` for interval sets, `(i<D,CP>,C)` for interval maps, `(D,C)` for element maps
+ * `interval_type`: `i<D,CP>` for intervals and interval sets/maps, not provided for element sets/maps
+ * `allocator_type`: `a<value_type>` for sets and maps, not provided for intervals
+* Ordering (fundamental):
+ * `domain_compare`: `CP<D>`
+* Ordering (segmental):
+ * `key_compare`: `CP<D>` for intervals and element sets/maps, `XL` for interval sets/maps
+ * `interval_compare`: `XL` for interval sets/maps; otherwise not provided
+* Aggregation (fundamental) (maps only):
+ * `codomain_combine`: `CB<C>`
+ * `inverse_codomain_combine`: `INV<CB<C>>`
+ * `codomain_intersect`: `Sn<C>`
+ * `inverse_codomain_intersect`: `INV<Sn<C>>`
+
+##### Functions for intervals, interval sets, interval maps, element sets, and element maps
+
+* Special members:
+ * def-ctor: provided by all
+ * value ctor: interval sets/maps: from `elemnt_type`, `segment_type` and copy-ctor; other: copy-ctor
+ * value assign: copy-assign provided by all
+ * swap: all sets/maps
+* Containedness:
+ * `T::empty`: all sets/maps
+ * `is_empty`: all
+ * `contains` and `within`: for all supported (`element_type`, `segment_type`, etc.)
+* Equivalences and Ordering:
+ * relational ops: all
+ * `is_element_equal`, `_less`, `_greater`: all sets/maps
+ * `is_distinct_equal`: maps
+* Size:
+ * `T::size`: all sets/maps
+ * `size`: all
+ * `cardinality`: all
+ * `length`: intervals and interval sets/maps
+ * `interactive_size`: all sets/maps
+ * `interval_count`: interval sets/maps
+* Selection:
+ * `T::find`: interval sets/maps: provided for `element_type` and `segment_type`, element sets/maps: provided 2 overloads
+ * `find`: interval sets/maps: provided for `element_type` and `segment_type`
+ * `[]`: element maps
+ * `()`: maps
+* Range:
+ * `I hull(const T&)`: interval sets/maps
+ * `T hull(const T&, const T&)`: intervals
+ * `lower` and `upper`: intervals and interval sets/maps
+ * `first` and `last`: intervals and interval sets/maps
+* Addition:
+ * `T::add(const P&)`: interval sets/maps: provided for `element_type` and `segment_type`, element maps provided for `element_type`
+ * `add(T&, const P&)`: interval sets/maps: provided for `element_type` and `segment_type`, element sets/maps provided for `element_type`
+ * `T::add(It p, const P&)`: interval sets/maps: provided for `segment_type`, element maps provided for `element_type`
+ * `add(T&, It p, const P&)`: interval sets/maps: provided for `segment_type`, element sets/maps provided for `element_type`
+ * `+=`, `+`, `|=`, `|`: all sets/maps for all supported types
+* Subtraction:
+ * `T::subtract(const P&)`: interval sets/maps: provided for `element_type` and `segment_type`, element maps provided for `element_type`
+ * `subtract(T&, const P&)`: interval sets/maps: provided for `element_type` and `segment_type`, element sets/maps provided for `element_type`
+ * `-=`, `-`, all sets/maps
+ * `left_subtract(T, const T&)`, `right_subtract`: intervals
+* Insertion:
+ * `T::insert(const P&)`, `insert(T&, const P&)`: interval sets/maps: provided for `element_type` and `segment_type`, element sets/maps provided for `element_type`
+ * `T::insert(It p, const P&)`, `insert(T&, It p, const P&)`: interval sets/maps: provided for `segment_type`, element sets/maps provided for `element_type`
+ * `insert`, all sets/maps
+ * `T::set`, `set_at`: interval maps: for `element_type` and `segment_type`, element maps: provided
+* Erasure:
+ * `T::clear`, `clear`: all sets/maps
+ * `T::erase`, `erase`: all sets/maps for all supported types
+ * `T::erase` for iter/iter-pair: all sets/maps
+* Intersection:
+ * `add_intersection`: interval sets/maps for all supported types
+ * `&=`: all sets/maps for all supported types
+ * `&`, `intersects`, `disjoint`: all types for all supported types
+* Symmetric difference:
+ * `T::flip`, `flip`, `^=`, `^`: sets/maps
+* Iteration:
+ * `T::begin`, `T::end`, `T::rbegin`, `T::rend`: all maps/sets
+ * `T::lower_bound`, `T::upper_bound`, `T::equal_range`: all maps/sets
+* Element iteration:
+ * `elements_begin`, `elements_end`, `elements_rbegin`, `elements_rend`: interval sets/maps
+* Streaming:
+ * `<<`: all
+
+##### Functions for interval types
+
+* Construction:
+ * `singleton`: all
+ * `construct(p1, p2)`: all, ro and lo intervals for both `DT` and `CT` args
+ * `construct(p1, p2, interval_bounds)`: dynamic intervals
+ * `hull(p1, p2)`, `span(p1, p2)`: all, ro and lo intervals for both `DT` and `CT` args
+ * `right_open`, `left_open`, `closed`, `open`: dynamic intervals
+* Orderings:
+ * `exclusive_less`, `lower_less`, `lower_equal`, `lower_less_equal`, `upper_less`, `upper_equal`, `upper_less_equal`: all
+* Misc:
+ * `touches`: all
+ * `inner_complement`: all
+ * `distance`: all
+
+#### Customization for intervals
+
+Template `interval_traits`:
+* types: `interval_type`, `domain_type`, `domain_compare`
+* functions: `construct`, `lower`, `upper`
+* meta-function: `interval_bound_type<interval_type>`
+
+------
+### Type Traits
+
+```c++
+struct absorbs_identities<T>; // default is false
+struct difference<T>; // default is T
+
+struct has_domain_type<T>; // detects T::domain_type
+struct domain_type_of<T>; // has_domain_type<T> ? T::domain_type : no_type
+
+struct has_codomain_type<T>; // detects T::codomain_type
+struct codomain_type_of<T>; // has_codomain_type<T> ? T::codomain_type : is_std_set<T> ? T::value_type : no_type
+
+struct has_difference_type<T>; // detects T::difference_type
+struct is_subtraction_closed<T>; // is_numeric<T> || (has_rep_type<T> && !has_difference_type<T>)
+struct has_difference<T>; // is_subtraction_closed<T> || is_pointer<T> || has_difference_type<T>
+struct difference_type_of<T>; // has_difference_type<T> ? T::difference_type : has_difference<T> ? (T or ptrdiff_t if T is ptr) : no_type
+
+struct has_element_type<T>; // detects T::element_type
+struct element_type_of<T>; // has_element_type<T> ? T::element_type : no_type
+
+struct has_value_type<T>; // detects T::value_type
+struct value_type_of<T>; // has_value_type<T> ? T::value_type : no_type
+
+struct has_key_type<T>; // detects T::key_type
+struct key_type_of<T>; // has_key_type<T> ? T::key_type : no_type
+
+struct has_interval_type<T>; // detects T:: interval_type
+struct interval_type_of<T>; // has_interval_type<T> ? T::interval_type : no_type
+
+struct has_inverse<T>; // is_signed<T> || is_floating_point<T>
+struct adds_inversely<T,Combiner>; // has_inverse && is_negative<Combiner>
+struct has_set_semantics<T>; // is_set<T> || (is_map<T> && has_set_semantics<codomain_type_of<T>>)
+struct is_associative_element_container<T>; // is_element_set<T> || is_element_map<T>
+struct is_asymmetric_interval<T>; // is_interval<T> && has_static_bounds<T> && has_asymmetric_bounds<T>
+struct is_continuous_asymmetric<T>; // is_asymmetric_interval<T> && is_continuous<domain_type_of<interval_traits<T>>>
+struct is_discrete_asymmetric<T>; // is_asymmetric_interval<T> && !is_continuous<domain_type_of<interval_traits<T>>>
+struct is_overloadable<T>; // is_same<T,T::overloadable_type>
+struct is_codomain_equal<L,R>; // is_same<L::codomain_type, R::codomain_type>
+struct is_key_compare_equal<L,R>; // is_same<L::key_compare, R::key_compare>
+struct is_codomain_type_equal<L,R>; // is_key_compare_equal<L,R> && is_codomain_equal<L,R>
+struct is_concept_compatible<IsConcept,L,R>; // IsConcept<L> && IsConcept<R> && is_codomain_type_equal<L,R>
+struct is_concept_combinable<LConc,RConc,L,R>; // LConc<L> && RConc<R> && is_key_compare_equal<L,R>
+struct is_intra_combinable<L,R>; // is_concept_compatible<is_interval_set,L,R> || is_concept_compatible<is_interval_map,L,R>
+struct is_cross_combinable<L,R>; // is_concept_combinable<is_interval_set,is_interval_map,L,R> || is_concept_combinable<is_interval_map,is_interval_set,L,R>
+struct is_inter_combinable<L,R>; // is_intra_combinable<L,R> || is_cross_combinable<L,R>
+struct is_fragment_of<Frag,T>; // true for T::element_type and T::segment_type, otherwise false
+struct is_key_of<Key,T>; // true for T::domain_type and T::interval_type, otherwise false
+
+struct is_interval_set_derivative<T,Assoc>; // is_interval_container<T> if Assoc is T::domain_type or T::interval_type, otherwise false
+struct is_interval_map_derivative<T,Assoc>; // is_interval_container<T> if Assoc is T::domain_mapping_type, T::interval_mapping_type or T::value_type, otherwise false
+struct is_intra_derivative<T,Assoc>; // (is_interval_set<T> && is_interval_set_derivative<T,Assoc>) || (is_interval_map<T>&&is_interval_map_derivative<T,Assoc>)
+struct is_cross_derivative<T,Assoc>; // is_interval_map<T> && is_interval_set_derivative<T,Assoc>
+struct is_inter_derivative<T,Assoc>; // is_intra_derivative<T,Assoc> || is_cross_derivative<T,Assoc>
+struct is_interval_set_right_combinable<Guide,Companion>; // is_interval_set<Guide> && (is_interval_set_derivative<Guide,Companion> || is_concept_compatible<is_interval_set,Guide,Companion>)
+struct is_interval_map_right_intra_combinable<Guide,Companion>; // is_interval_map<Guide> && (is_interval_map_derivative<Guide,Companion> || is_concept_compatible<is_interval_map,Guide,Companion>)
+struct is_interval_map_right_cross_combinable<Guide,Companion>; // is_interval_map<Guide> && (is_cross_derivative<Guide,Companion> || is_concept_combinable<is_interval_map,is_interval_set,Guide,Companion>)
+struct is_interval_map_right_inter_combinable<Guide,Companion>; // is_interval_map_right_intra_combinable<Guide,Companion> || is_interval_map_right_cross_combinable<Guide,Companion>
+struct is_right_intra_combinable<Guide,Companion>; // is_interval_set_right_combinable<Guide,Companion> || is_interval_map_right_intra_combinable<Guide,Companion>
+struct is_right_inter_combinable<Guide,Companion>; // is_interval_set_right_combinable<Guide,Companion> || is_interval_map_right_inter_combinable<Guide,Companion>
+struct combines_right_to_interval_set<Guide,ISet>; // is_concept_combinable<is_interval_container,is_interval_set,Guide,ISet>
+struct combines_right_to_interval_map<Guide,IMap>; // is_concept_compatible<is_interval_map,GuideT,IMap>
+struct combines_right_to_interval_container<Guide,ICont>; // combines_right_to_interval_set<Guide,ICont> || combines_right_to_interval_map<Guide,ICont>
+struct unknown_fineness<T>; // 0
+struct known_fineness<T>; // T::fineness;
+struct segmentational_fineness<T>; // is_interval_container<T> ? known_fineness<T> : unknown_fineness<T>
+struct is_interval_set_companion<Guide,Companion>; // combines_right_to_interval_set<Guide,Companion> || is_interval_set_derivative<Guide,Companion>
+struct is_interval_map_companion<Guide,Companion>; // combines_right_to_interval_map<Guide,Companion> || is_interval_map_derivative<Guide,Companion>
+struct is_coarser_interval_set_companion<Guide,Companion>; // is_interval_set_companion<Guide,Companion> && (segmentational_fineness<Guide> > segmentational_fineness<Cmopanion>)
+struct is_coarser_interval_map_companion<Guide,Companion>; // is_interval_map_companion<Guide,Companion> && (segmentational_fineness<Guide> > segmentational_fineness<Cmopanion>)
+struct is_binary_interval_set_combinable<Guide,Companion>; // is_interval_set<Guide> && is_coarser_interval_set_companion<Guide,Companion>
+struct is_binary_interval_map_combinable<Guide,Companion>; // is_interval_map<Guide> && is_coarser_interval_map_companion<Guide,Companion>
+struct is_binary_intra_combinable<Guide,Companion>; // is_binary_interval_set_combinable<Guide,Companion> || is_binary_interval_map_combinable<Guide,Companion>
+struct is_binary_cross_combinable<Guide,Companion>; // is_interval_map<Guide> && (is_coarser_interval_map_companion<Guide,Companion> || is_interval_set_companion<Guide,Companion>)
+struct is_binary_inter_combinable<Guide,Companion>; // (is_interval_map<Guide> && is_binary_cross_combinable<Guide,Companion>) || (is_interval_set<Guide> && is_binary_intra_combinable<Guide,Companion>)
+
+struct is_concept_equivalent<IsConcept,L,R>; // IsConcept<L> && IsConcept<R>
+struct has_same_concept<IsConcept,L,R>; // IsConcept<L> && is_concept_equivalent<IsConcept,L,R>
+
+struct has_std_infinity<T>; // is_numeric<T> && numeric_limits<T>::has_infinity
+struct has_max_infinity<T>; // is_numeric<T> && !numeric_limits<T>::has_infinity
+struct numeric_infinity<T> { static T value(); }; // has_std_infinity<T> ? std::numeric_limits<T>::infinity : has_max_infinity<T> ? std::numeric_limits<T>::max() ? T{};
+struct infinity<T> { static T value(); }; // is_numeric<T> ? numeric_infinity<T>::value() : has_rep_type<T> ? numeric_infinity<T::rep>::value() :
+    // has_size_type<T> ? numeric_infinity<T::size_type>::value() : has_difference_type<T> ? numeric_infinity<T::difference_type>::value() : identity_element<T>::value()
+struct infinity<std::string>; // std::string{}
+
+struct identity_element<T> { static T value(); T operator()()const { return value(); }; };
+std::string unary_template_to_string<identity_element>::apply() { return "0"; }
+
+struct interval_type_default<D,CP=std::less> {
+    using type = is_discrete<D> ? discrete_interval<D,CP> : continuous_interval<D,CP>;
+}; // if defined USE_STATIC_BOUNDED_INTERVALS, use static interval types
+```
+
 ------
 ### Dependency
 
