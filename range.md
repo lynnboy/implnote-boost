@@ -84,9 +84,71 @@ struct indexed_range<SinglePassR>;
 indexed_range<[const]SinglePassR> adaptors::index<SinglePassR>(<const> SinglePassR& r, range_difference<SinglePassR>::type index_value=0);
 
 struct indirected_range<R>;
-struct detail::indirect_forwarder {};
-const auto adaptors::indirected = indirect_forwarder{};
+const auto adaptors::indirected = struct detail::indirect_forwarder{};
 indirected_range<[const]SinglePassR> adaptors::indirect<SinglePassR>(<const>SinglePassR& r);
+
+struct detail::select_first<M>; struct detail::select_second_{mutable|const}<M>;
+struct select_first_range<M>; struct select_second_{mutable|const}_range<M>;
+const auto adaptors::map_keys = struct detail::map_keys_forwarder{};
+const auto adaptors::map_values = struct detail::map_values_forwarder{};
+select_first_range<StdPairR> adaptors::keys<StdPairR>(const StdPairR& r);
+select_second_const_range<StdPairR> adaptors::values<StdPairR>(const StdPairR& r);
+select_second_mutable_range<StdPairR> adaptors::values<StdPairR>(StdPairR& r);
+
+struct detail::unwrap_ref<SinglePassR>;
+struct unwrap_ref_range<SinglePassR>;
+const auto adaptors::ref_unwrapped = struct detail::ref_unwrapped_forwarder{};
+unwrap_ref_range<SinglePassR> adaptors::ref_unwrap<SinglePassR>(const SinglePassR& r);
+
+struct detail::replace_value<V>;
+struct replaced_range<R>;
+struct detail::replace_holder<T>;
+const auto replaced = detail::forwarder<replace_holder>{};
+replaced_range<[const] SinglePassR> adaptors::replace<SinglePassR,V>(<const> SinglePassR& r, V from, V to);
+
+struct detail::replace_value_if<Pred,V>;
+struct replaced_if_range<Pred,R>;
+struct detail::replace_if_holder<Pred,T>;
+const auto replaced_if = detail::forwarder<replace_if_holder>{};
+replaced_if_range<Pred,[const] SinglePassR> adaptors::replace_if<Pred,SinglePassR,V>(<const> SinglePassR& r, Pred pred, V to);
+
+struct reversed_range<R>;
+const auto reversed = struct detail::reverse_forwarder{};
+reversed_range<[const] BiR> adaptors::reverse<BiR>(<const> BiR& r);
+
+struct adaptors::sliced{ size_t t, u; };
+struct sliced_range<RndR>;
+struct sliced_range<RndR> adaptors::slice<RndR>(RndR& r, size_t t, size_t u);
+struct iterator_range<range_iterator<const RndR>::type> adaptors::slice<RndR>(const RndR& r, size_t t, size_t u);
+
+struct detail::strided_iterator<BaseIt,Cat>; // spec for bidi, ra
+struct strided_iterator<range_iterator<[const]R>::type, forward_traversal_tag> detail::make_{begin|end}_strided_iterator<R,Diff>(<const> R& r, Diff stride, forward_traversal_tag);
+struct strided_iterator<range_iterator<[const]R>::type, bidirectional_traversal_tag> detail::make_{begin|end}_strided_iterator<R,Diff>(<const> R& r, Diff stride, bidirectional_traversal_tag);
+struct strided_iterator<range_iterator<[const]R>::type, random_access_traversal_tag> detail::make_{begin|end}_strided_iterator<R,Diff>(<const> R& r, Diff stride, random_access_traversal_tag);
+struct strided_range<R,Cat=pure_iterator_traversal<range_iterator<R>::type>::type>;
+struct detail::strided_holder<Diff>;
+const auto strided = detail::forwarder<strided_holder>{};
+strided_range<[const] R> adaptors::stride<R,Diff>(<const> R& r, Diff step);
+
+struct tokenized_range<R>;
+struct detail::regex_holder<T,U,V>;
+struct detail::regex_forwarder;
+const auto tokenized = struct detail::regex_forwarder{};
+tokenized_range<[const] BiR> adaptors::tokenize<BiR,Regex,Submatch,Flag>(<const> BiR& r, const Regex& re, const Submatch& sub, Flag f);
+
+struct detail::transform_iterator_gen<P,It>;
+struct transformed_range<F,R>;
+struct detail::transform_holder<T>;
+const auto transformed = detail::forwarder<transform_holder>{};
+transformed_range<UFunc,[const] SinglePassR> adaptors::transform<UFunc,SinglePassR>(<const> SinglePassR& r, UFunc fn);
+
+struct adaptors::type_erased<V=use_default,Traversal=use_default,Ref=use_default,Diff=use_default,Buf=use_default>{};
+any_range_type_generator<[const]SinglePassR,V,T,R,D,B> adaptors::type_erase<SinglePassR,V,T,R,D,B>(<const>SinglePassR& r, type_erased<V,T,R,D,B> ={});
+
+struct detail::unique_not_equal_to;
+struct uniqued_range<FwdR>;
+const auto uniqued = struct detail::unique_forwarder{};
+uniqued_range<[const] FwdR> adaptors::unique<FwdR>(<const> FwdR& r);
 ```
 
 ------
