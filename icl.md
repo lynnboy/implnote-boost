@@ -210,6 +210,43 @@ Template `interval_traits`:
 ```c++
 struct absorbs_identities<T>; // default is false
 struct difference<T>; // default is T
+struct size<T>; // default is size_t
+struct is_continuous_interval<T>; // default is false
+struct is_discrete_interval<T>; // default is false
+struct is_interval_container<T>; // default is false
+struct is_interval_joiner<T>; // default is false
+struct is_interval_separator<T>; // default is false
+struct is_interval_splitter<T>; // default is false
+struct is_map<T>; // default is false
+struct is_set<T>; // default is is_std_set<T>
+struct is_total<T>; // default is false
+
+struct no_type{};
+struct property<T> { using argument_type=T; using result_type=bool; };
+struct member_property<T> : property<T>{ using mptr = bool (T::*)()const;
+    ctor(mptr pred): m_pred{pred}{}
+    bool operator()(const T& x)const { return (x.*m_pred)(); }
+    mptr m_pred;
+};
+struct relation<L,R> { using first_argument_type=L; using second_argument_type=R; using result_type=bool; };
+
+struct interval_bound_type<T>; // default is interval_bounds::undefined
+struct is_interval<T>; // interval_bound_type<T> < undefined
+struct has_static_bounds<T>; // interval_bound_type<T> < dynamic
+struct has_dynamic_bounds<T>; // interval_bound_type<T> == dynamic
+struct has_asymmetric_bounds<T>; // b = interval_bound_type<T>; value = (b==static_left_open||b==static_right_open)
+struct has_symmetric_bounds<T>; // b = interval_bound_type<T>; value = (b==static_closed||b==static_open)
+struct is_discrete_static<T>; // has_static_bounds<T> && is_discrete<interval_traits<T>::domain_type>
+struct is_continuous_static<T>; // has_static_bounds<T> && is_continuous<interval_traits<T>::domain_type> && has_asymmetric_bounds<T>
+struct is_static_right_open<T>; // interval_bound_type<T> == static_right_open
+struct is_static_left_open<T>; // interval_bound_type<T> == static_left_open
+struct is_static_open<T>; // interval_bound_type<T> == static_open
+struct is_static_closed<T>; // interval_bound_type<T> == static_closed
+struct is_discrete_static_closed<T>; // is_static_closed<T> && is_discrete<interval_traits<T>::domain_type>
+struct is_discrete_static_open<T>; // is_static_open<T> && is_discrete<interval_traits<T>::domain_type>
+struct is_continuous_right_open<T>; // is_static_right_open<T> && is_continuous<interval_traits<T>::domain_type>
+struct is_continuous_left_open<T>; // is_static_left_open<T> && is_continuous<interval_traits<T>::domain_type>
+struct is_singelizable<T>; // has_dynamic_bounds<T> || is_discrete<interval_traits<T>::domain_type>
 
 struct has_domain_type<T>; // detects T::domain_type
 struct domain_type_of<T>; // has_domain_type<T> ? T::domain_type : no_type
@@ -234,6 +271,21 @@ struct key_type_of<T>; // has_key_type<T> ? T::key_type : no_type
 struct has_interval_type<T>; // detects T:: interval_type
 struct interval_type_of<T>; // has_interval_type<T> ? T::interval_type : no_type
 
+struct has_key_object_type<T>; // detects T::key_object_type
+struct key_container_type_of<T>; // has_key_object_type<T> ? T::key_objec_type : (is_set<T>||is_map<T>) ? T : no_type;
+struct is_strict_key_container_of<Key,Obj>; // is_map<Obj> && is_same<Key,key_container_type_of<Obj>>
+struct is_key_container_of<Key,Obj>; // is_strict_key_container_of<Key,Obj> || ( (is_set<Obj>||is_map<Obj> && is_same<Obj,Key>) )
+
+struct has_rep_type<T>; // detects T::rep_type
+struct represents<Rep,T>; // has_rep_type<T> && is_same<T::rep,Rep>
+struct rep_type_of<T>; // has_rep_type<T> ? T::rep : no_type
+
+struct has_segment_type<T>; // detects T::segment_type
+struct segment_type_of<T>; // has_segment_type<T> ? T::segment_type : no_type
+
+struct has_size_type<T>; // detects T::size_type
+struct size_type_of<T>; // has_size_type<T> ? T::size_type : has_difference_type<T> ? T::difference_type : has_rep_type<T> ? T : size_t
+
 struct has_inverse<T>; // is_signed<T> || is_floating_point<T>
 struct adds_inversely<T,Combiner>; // has_inverse && is_negative<Combiner>
 struct has_set_semantics<T>; // is_set<T> || (is_map<T> && has_set_semantics<codomain_type_of<T>>)
@@ -252,6 +304,37 @@ struct is_cross_combinable<L,R>; // is_concept_combinable<is_interval_set,is_int
 struct is_inter_combinable<L,R>; // is_intra_combinable<L,R> || is_cross_combinable<L,R>
 struct is_fragment_of<Frag,T>; // true for T::element_type and T::segment_type, otherwise false
 struct is_key_of<Key,T>; // true for T::domain_type and T::interval_type, otherwise false
+struct is_container<T>; // detect value_type, iterator, size_type, reference
+struct is_std_set<T>; // is_container<T> && has_key_type<T> && is_same<key_type_of<T>,value_type_of<T>> && !has_segment_type<T>
+struct is_continuous<T>; // !is_discrete<T>
+struct is_discrete<T>; // is_incrementable<T> && ( (!has_rep_type<T> && is_non_floating_point<T>) || (has_rep_type<T> && is_discrete<rep_type_of<T>>) )
+struct is_element_map<T>; // is_map<T> && !is_interval_container<T>
+struct is_element_set<T>; // (is_set<T> && !is_interval_container<T>) || is_std_set<T>
+struct is_element_container<T>; // is_element_set<T> || is_element_map<T>
+struct is_icl_container<T>; // is_element_container<T> || is_interval_container<T>
+struct is_incrementing<Domain,Compare>; // true
+struct is_incrementing<Domain,std::greater<Domain>>; // false
+struct is_interval_map<T>; // is_interval_container<T> && is_map<T>
+struct is_interval_set<T>; // is_interval_container<T> && !is_interval_map<T>
+
+struct is_fixed_numeric<T>; // 0 < std::numeric_limits<T>::digits
+struct is_std_numeric<T>; // std::numeric_limits<T>::is_specialized
+struct is_std_integral<T>; // std::numeric_limits<T>::is_integer
+struct is_numeric<T>; // is_std_numeric<T> || is_integral<T> || is_std_integral<T>
+struct is_numeric<std::complex<T>>; // true
+struct numeric_minimum<T,Comp,_=false> {
+    static bool is_less_than(T){return true;}
+    static bool is_less_than_or(T,bool){return true;}
+};
+struct numeric_minimum<T,std::less<T>,true> {
+    static bool is_less_than(T v){return std::less<T>()(std::numeric_limits<T>::min(), v);}
+    static bool is_less_than_or(T v,bool cond){return cond||is_less_than(v);}
+};
+struct numeric_minimum<T,std::greater<T>,true> {
+    static bool is_less_than(T v){return std::greater<T>()(std::numeric_limits<T>::max(), v);}
+    static bool is_less_than_or(T v,bool cond){return cond||is_less_than(v);}
+};
+struct is_non_floating_point<T>; // !is_floating_point<T>
 
 struct is_interval_set_derivative<T,Assoc>; // is_interval_container<T> if Assoc is T::domain_type or T::interval_type, otherwise false
 struct is_interval_map_derivative<T,Assoc>; // is_interval_container<T> if Assoc is T::domain_mapping_type, T::interval_mapping_type or T::value_type, otherwise false
@@ -290,12 +373,25 @@ struct infinity<T> { static T value(); }; // is_numeric<T> ? numeric_infinity<T>
     // has_size_type<T> ? numeric_infinity<T::size_type>::value() : has_difference_type<T> ? numeric_infinity<T::difference_type>::value() : identity_element<T>::value()
 struct infinity<std::string>; // std::string{}
 
+static Inc succ<Inc>(Inc x) { return ++x; }
+static Dec pred<Dec>(Dec x) { return ++x; }
+struct successor<Domain,Comp> { static Domain apply(Domain v); }; // ++ if increasing, otherwise --
+struct predecessor<Domain,Comp> { static Domain apply(Domain v); }; // -- if increasing, otherwise ++
+
 struct identity_element<T> { static T value(); T operator()()const { return value(); }; };
 std::string unary_template_to_string<identity_element>::apply() { return "0"; }
 
 struct interval_type_default<D,CP=std::less> {
     using type = is_discrete<D> ? discrete_interval<D,CP> : continuous_interval<D,CP>;
 }; // if defined USE_STATIC_BOUNDED_INTERVALS, use static interval types
+
+struct to_string<T>{ static std::string apply(const T& v); }; // stringstream convert
+
+struct type_to_string<T> { static std::string apply(); } // spec for integers & floating-points, std::string, and U<T>, B<T1,T2>
+
+struct unit_element<T> { static T value(); }; // true/1/1.0/" "
+
+struct value_size<T> { static size_t apply(const T& v); }; // abs(v) for int/double, otherwise interative_size(v)
 ```
 
 ------
