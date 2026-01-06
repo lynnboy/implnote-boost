@@ -152,6 +152,138 @@ uniqued_range<[const] FwdR> adaptors::unique<FwdR>(<const> FwdR& r);
 ```
 
 ------
+### Range Algorithms
+
+#### Mutating Algorithms
+
+```c++
+OutIt copy<SPR,OutIt>(const SPR& r, OutIt out);
+BidiWriteIt copy_backward<BidiR,BidiWriteIt>(const BidiR& r, BidiWriteIt out);
+<const> FwdR& fill<FwdR,V>(<const> FwdR& r, const V& v);
+<const> FwdR& fill_n<FwdR,Size,V>(<const> FwdR& r, Size n, const V& v);
+<const> FwdR& generate<FwdR,Gen>(<const> FwdR& r, Gen gen);
+<const> BidiR& inplace_merge<BidiR,[BPred]>(<const> BidiR& r, range_iterator<<const> BidiR>::type middle, <BPred pred>);
+OutIt merge<SPR1,SPR2,OutIt,[BPred]>(const SPR1& r1, const SPR2& r2, OutIt out, <BPred pred>);
+<const> RndR& nth_element<RndR,[BPred]>(<const> RndR& r, range_iterator<RndR>::type nth, <BPred sort_pred>);
+<const> RndR& partial_sort<RndR,[BPred]>(<const> RndR& r, range_iterator<RndR>::type middle, <BPred sort_pred>);
+range_iterator<<const> RndR>::type partial_sort_copy<SPR,RndR,[BPred]>(const SPR& r1, <const> RndR& r2, <BPred sort_pred>);
+range_iterator<FwdR>::type partition<FwdR,UPred>(<const> FwdR& r, UPred pred);
+range_return<FwdR,re>::type partition<range_return_value re,FwdR,UPred>(<const> FwdR& r, UPred pred);
+<const> RndR& random_shuffle<RndR,[Gen]>(<const> RndR& r, <Gen& gen>);
+range_iterator<<const> FwdR>::type remove<FwdR,V>(<const> FwdR& r, const V& v);
+range_return<FwdR,re>::type remove<range_return_value re,FwdR,V>(<const> FwdR& r, const V& v);
+range_iterator<<const> FwdR>::type remove_if<FwdR,UPred>(<const> FwdR& r, UPred pred);
+range_return<FwdR,re>::type remove_if<range_return_value re,FwdR,UPred>(<const> FwdR& r, UPred pred);
+OutIt remove_copy<SPR,OutIt,V>(const SPR& r, OutIt out, const V& v);
+OutIt remove_copy_if<SPR,OutIt,Pred>(const SPR& r, OutIt out, Pred pred);
+<const> FwdR& replace<FwdR,V>(<const> FwdR& r, const V& what, const V& with_what);
+<const> FwdR& replace_if<FwdR,UPred,V>(<const> FwdR& r, UPred pred, const V& v);
+OutIt replace_copy<FwdR,OutIt,V>(const FwdR& r, OutIt out, const V& what, const V& with_what);
+OutIt replace_copy_if<FwdR,OutIt,Pred,V>(const FwdR& r, OutIt out, Pred pred, const V& v);
+<const> BidiR& reverse<BidiR>(<const> BidiR& r);
+OutIt reverse_copy<BidiR,OutIt>(const BidiR& r, OutIt out);
+<const> FwdR& rotate<FwdR>(<const> FwdR& r, range_iterator<<const> FwdR>::type middle);
+OutIt rotate_copy<FwdR,OutIt>(const FwdR& r, range_iterator<const FwdR>::type middle, OutIt target);
+<const> RndR& sort<RndR,[BPred]>(<const> RndR& r, <BPred pred>);
+range_iterator<BidiR>::type stable_partition<BidiR,UPred>(<const> BidiR& r, UPred pred);
+range_return<BidiR,re>::type stable_partition<range_return_value re,BidiR,UPred>(<const> BidiR& r, UPred pred);
+<const> RndR& stable_sort<RndR,[BPred]>(<const> RndR& r, <BPred pred>);
+<const> SPR2& swap_ranges<SPR1,SPR2>(<const> SPR1& r1, <const> SPR2& r2); // 2x2
+OutIt transform<SPR1,[SPR2],OutIt,UOp>(const SPR1& r1, <const SPR2& r2>, OutIt out, UOp fun);
+range_return<FwdR,re>::type unique<range_return_value re=return_begin_found,FwdR,[BPred]>(<const> FwdR& r, <BPred pred>);
+OutIt unique_copy<SPR,OutIt,[BPred]>(const SPR& r, OutIt out, <BPred pred>);
+```
+
+#### Non-mutating Algorithms
+
+```c++
+range_iterator<<const>FwdR>::type adjacent_find<FwdR,[BPred]>(<const> FwdR& r, <BPred pred>);
+range_return<<const>FwdR,re>::type adjacent_find<range_return_value re,FwdR,[BPred]>(<const> FwdR& r, <BPred pred>);
+bool binary_search<FwdR,V,[BPred]>(const FwdR& r, const V& v, <BPred pred>);
+range_difference<<const> SPR>::type count<SPR,V>(<const> SPR& r, const V& v);
+range_difference<<const> SPR>::type count_if<SPR,UPred>(<const> SPR& r, UPred pred);
+bool equal<SPR1,SPR2,[BPred]>(const SPR1& r1, const SPR2& r2, <BPred pred>);
+std::pair<<const>range_iterator<FwdR>::type,<const>range_iterator<FwdR>::type>
+    equal_range<FwdR,V,[Pred]>(<const> FwdR& r, const V& v, <Pred pred>);
+range_iterator<<const>SPR>::type find<SPR,V>(<const> SPR& r, const V& v);
+range_return<<const>SPR,re>::type find<range_return_value re,SPR,V>(<const> SPR& r, const V& v);
+range_iterator<<const> FwdR1>::type find_end<FwdR1,FwdR2,[BPred]>(<const> FwdR1& r1, const FwdR2& r2, <BPred pred>);
+range_return<<const> FwdR1,re>::type find_end<range_return_value re,FwdR1,FwdR2,[BPred]>(<const> FwdR1& r1, const FwdR2& r2, <BPred pred>);
+range_iterator<<const>SPR1>::type find_first_of<SPR1,FwdR2,[BPred]>(<const> SPR1& r1, const FwdR2& r2, <BPred pred>);
+range_return<<const>SPR1,re>::type find_first_of<range_return_value re,SPR1,FwdR2,[BPred]>(<const> SPR1& r1, const FwdR2& r2, <BPred pred>);
+range_iterator<<const>SPR>::type find_if<SPR,UPred>(<const> SPR& r, UPred pred);
+range_return<<const>SPR,re>::type find_if<range_return_value re,SPR,UPred>(<const> SPR& r, UPred pred);
+UFunc for_each<SPR,UFunc>(<const> SPR& r, UFunc fun);
+bool lexicographical_compare<SPR1,SPR2,[BPred]>(const SPR1& r1, const SPR2& r2, <BPred pred>);
+range_iterator<<const>FwdR>::type lower_bound<FwdR,V,[Pred]>(<const> FwdR& r, const V& v, <Pred pred>);
+range_return<<const>FwdR,re>::type lower_bound<range_return_value re,FwdR,V,[Pred]>(<const> FwdR& r, const V& v, <Pred pred>);
+range_iterator<<const>FwdR>::type max_element<FwdR,[BPred]>(<const> FwdR& r, <BPred pred>);
+range_return<<const>FwdR,re>::type max_element<range_return_value re,FwdR,[BPred]>(<const> FwdR& r, <BPred pred>);
+range_iterator<<const>FwdR>::type min_element<FwdR,[BPred]>(<const> FwdR& r, <BPred pred>);
+range_return<<const>FwdR,re>::type min_element<range_return_value re,FwdR,[BPred]>(<const> FwdR& r, <BPred pred>);
+std::pair<range_iterator<<const>SPR1>::type,range_iterator<<const>SPR2>::type> // 2x2
+    mismatch<SPR1,SPR2,[BPred]>(<const> SPR1& r1, <const> SPR2& r2, <BPred pred>);
+range_iterator<<const>FwdR1>::type search<FwdR1,FwdR2,[BPred]>(<const> FwdR1& r1, const FwdR2& r2, <BPred pred>);
+range_return<<const> FwdR1,re>::type search<range_return_value re,FwdR1,FwdR2,[BPred]>(<const> FwdR1& r1, const FwdR2& r2, <BPred pred>);
+range_iterator<<const>FwdR>::type search_n<FwdR,Int,V,[BPred]>(<const> FwdR& r, Int count, const V& v, <BPred pred>);
+range_return<<const>FwdR,re>::type search_n<range_return_value re,FwdR,Int,V,[BPred]>(<const> FwdR& r, Int count, const V& v, <BPred pred>);
+range_iterator<<const>FwdR>::type upper_bound<FwdR,V,[Pred]>(<const> FwdR& r, const V& v, <Pred pred>);
+range_return<<const>FwdR,re>::type upper_bound<range_return_value re,FwdR,V,[Pred]>(<const> FwdR& r, const V& v, <Pred pred>);
+```
+
+#### Set Algorithms
+
+```c++
+bool includes<SPR1,SPR2,[BPred]>(const SPR1& r1, const SPR2& r2, <BPred pred>);
+OutIt set_union<SPR1,SPR2,OutIt,[BPred]>(const SPR1& r1, const SPR2& r2, OutIt out, <BPred pred>);
+OutIt set_intersection<SPR1,SPR2,OutIt,[BPred]>(const SPR1& r1, const SPR2& r2, OutIt out, <BPred pred>);
+OutIt set_difference<SPR1,SPR2,OutIt,[BPred]>(const SPR1& r1, const SPR2& r2, OutIt out, <BPred pred>);
+OutIt set_symmetric_difference<SPR1,SPR2,OutIt,[BPred]>(const SPR1& r1, const SPR2& r2, OutIt out, <BPred pred>);
+```
+
+#### Heap Algorithms
+
+```c++
+<const> RndR& push_heap<RndR,[Comp]>(<const> RndR& r, <Comp comp_pred>);
+<const> RndR& pop_heap<RndR,[Comp]>(<const> RndR& r, <Comp comp_pred>);
+<const> RndR& make_heap<RndR,[Comp]>(<const> RndR& r, <Comp comp_pred>);
+<const> RndR& sort_heap<RndR,[Comp]>(<const> RndR& r, <Comp comp_pred>);
+```
+
+#### Permutation Algorithms
+
+```c++
+bool next_permutation<BidiR,[Comp]>(<const> BidiR& r, <Comp comp_pred>);
+bool prev_permutation<BidiR,[Comp]>(<const> BidiR& r, <Comp comp_pred>);
+```
+
+#### New Algorithms
+
+```c++
+OutIt copy_n<SPR,Size,OutIt>(const SPR& r, Size n, OutIt out);
+Container& erase<Container>(Contaner& on, iterator_range<Container::iterator> to_erase);
+Container& remove_erase<Container,T>(Contaner& on, const T& v);
+Container& remove_erase_if<Container,T>(Contaner& on, Pred pred);
+Container& unique_erase<Container,[Pred]>(Container& on, <Pred pred>);
+Fn2 for_each<SPR1,SPR2,Fn2>(<const> SPR1& r1, <const> SPR2& r2, Fn2 fn); // 2x2
+Container& insert<Container,Range>(Container& on, <Container::iterator before>, const Range& from);
+<const> FwdR& iota<FwdR,V>(<const> FwdR& r, V x);
+bool is_sorted<SPR,[BPred]>(const SPR& r, <BPred pred>);
+void overwrite<SPR1,SPR2>(const SPR1& from, <const> SPR2& to);
+Container& push_back<Container,Range>(Container& on, const Range& from);
+Container& push_front<Container,Range>(Container& on, const Range& from);
+```
+
+#### Numeric Algorithms
+
+```c++
+V accumulate<SPR,V,[BOp]>(const SPR& r, V init, [BOp op]);
+V inner_product<SPR1,SPR2,V,[BOp1,BOp2]>(const SPR1& r1, const SPR2& r2, V init, <BOp1 op1, BOp2 op2>);
+OutIt partial_sum<SPR,OutIt,[BOp]>(const SPR& r, OutIt result, <BOp op>);
+OutIt adjacent_difference<SPR,OutIt,[BOp]>(const SPR& r, OutIt result, <BOp op>);
+```
+
+------
 ### Dependency
 
 #### Boost.Array
