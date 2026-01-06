@@ -284,6 +284,83 @@ OutIt adjacent_difference<SPR,OutIt,[BOp]>(const SPR& r, OutIt result, <BOp op>)
 ```
 
 ------
+### Provided Ranges
+
+```c++
+struct any_iterator_buffer<size> : noncopyable {
+    ctor(); ~dtor(){delete[]m_ptr;}
+    void* allocate(size_t bytes){if (bytes<=size) return m_buffer.data(); m_ptr=new char[bytes]; return m_ptr;}
+    void deallocate(){delete[]m_ptr; m_ptr=nullptr;}
+private: char* m_ptr{}; array<char,size> m_buffer;
+};
+struct any_iterator_heap_only_buffer : noncopyable {
+    ctor(); ~dtor(){delete[]m_ptr;}
+    void* allocate(size_t bytes){m_ptr=new char[bytes]; return m_ptr;}
+    void deallocate(){delete[]m_ptr; m_ptr=nullptr;}
+private: char* m_ptr{};
+};
+struct any_iterator_stack_only_buffer<size> {
+    void* allocate(size_t bytes) { return m_buffer.data(); }
+    void deallocate(){}
+private: array<char,size> m_buffer;
+};
+using any_iterator_default_buffer = any_iterator_buffer<64>;
+
+struct detail::const_reference_type_generator<T>; // is_ref<T> ? const rem_ref<T>& : T
+struct detail::reference_as_value_type_generator<T>; // VT=rem_cv<T>; is_convertible<const VT&,T> ? VT : T
+struct detail::any_incrementable_iterator_interface<Ref,Buf> {
+    using reference=Ref; using const_reference=const_reference_type_generator<T>::type;
+    using reference_as_value_type=reference_as_value_type_generator<Ref>::type; using buffer_type=Buf;
+    virtual ~dtor(){}
+    virtual self* clone(Buf& buf) const=0;
+    virtual self<const_reference,Buf>* clone_const_ref(Buf& buf) const=0;
+    virtual self<reference_as_value_type,Buf>* clone_reference_as_value(Buf& buf) const=0;
+    virtual void increment() =0;
+};
+struct detail::any_single_pass_iterator_interface<Ref,Buf> : any_incrementable_iterator_interface<Ref,Buf> {
+    // all base members, covariance clone_xx return type
+    virtual reference dereference() const=0;
+    virtual bool equal(const self& other) const=0;
+};
+struct detail::any_forward_iterator_interface<Ref,Buf> : any_single_pass_iterator_interface<Ref,Buf> {
+    // all base members, covariance clone_xx return type
+};
+struct detail::any_bidirectional_iterator_interface<Ref,Buf> : any_forward_iterator_interface<Ref,Buf> {
+    // all base members, covariance clone_xx return type
+    virtual void decrement() =0;
+};
+struct detail::any_random_access_iterator_interface<Ref,Diff,Buf> : any_bidirectional_iterator_interface<Ref,Buf> {
+    // all base members, covariance clone_xx return type
+    virtual void advance(Diff offset) =0;
+    virtual Diff distance_to(const self& other) const =0;
+};
+struct detail::any_iterator_interface_type_generator<Trav,Ref,Diff,Buf>; // select interfaces by Trav
+
+Tgt& detail::polymorphic_ref_downcast<Tgt,Src>(Src& source);
+Ref detail::dereference_cast<Ref,T>(<const> T& x);
+
+struct detail::any_incrementable_iterator_wrapper<It,Ref,Buf> : any_incrementable_iterator_interface<Ref,Buf>;
+struct detail::any_single_pass_iterator_wrapper<It,Ref,Buf> : any_single_pass_iterator_interface<Ref,Buf>;
+struct detail::any_forward_iterator_wrapper<It,Ref,Buf> : any_forward_iterator_interface<Ref,Buf>;
+struct detail::any_bidirectional_iterator_wrapper<It,Ref,Buf> : any_bidirectional_iterator_interface<Ref,Buf>;
+struct detail::any_random_access_iterator_wrapper<It,Ref,Diff,Buf> : any_random_access_iterator_interface<Ref,Diff,Buf>;
+struct detail::any_iterator_wrapper_type_generator<It,Trav,Ref,Diff,Buf>; // select wrapper by Trav
+
+struct any_iterator<V,Trav,Ref,Diff,Buf=any_iterator_default_buffer> {
+private:
+    using abstract_base_type = any_iterator_interface_type_generator<Trav,Ref,Diff,Buf>::type;
+    using buffer_type = Buf;
+    buffer_type m_buffer; abstract_base_type* m_impl;
+};
+struct detail::is_any_iterator<It>;
+
+struct any_range<V,Traversal,Ref=V&,Diff=ptrdiff_t,Buf=use_default>
+    : iterator_range<any_iterator<V,Traversal,Ref,Diff,[Buf or any_iterator_default_buffer]>>{
+};
+struct any_range_type_generator<R,V=use_default,Trav=use_default,Ref=use_default,Diff=use_default,Buf=use_default>;
+```
+
+------
 ### Dependency
 
 #### Boost.Array
