@@ -8,11 +8,53 @@
 ### Range concept
 
 ```c++
+concept IncrementableIterator<It> = CopyConstructible<It> && requires (It i) {
+    requires Convertible<It::traversal_category,incrementable_traversal_tag>; ++i; i++;
+};
+concept SinglePassIterator<It> = IncrementableIterator<It> && EqualityComparable<It> && requires (It i) {
+    requires Convertible<It::traversal_category,single_pass_traversal_tag>;
+    {++i}->convertible_to<It>;
+    {*i}->convertible_to<std::iterator_traits<It>::reference>;
+    {*(++i)}->convertible_to<std::iterator_traits<It>::reference>;
+};
+concept ForwardIterator<It> = SinglePassIterator<It> && DefaultConstructible<It> && requires (It i) {
+    using difference_type = std::iterator_traits<It>::difference_type;
+    requires is_integral_v<difference_type> && std::numeric_limits<difference_type>::is_signed &&
+        Convertible<It::traversal_category,forward_traversal_tag>;
+    {i++}->convertible_to<It>;
+    {*(i++)}->convertible_to<std::iterator_traits<It>::reference>;
+};
+concept BidirectionalIterator<It> = ForwardIterator<It> && requires (It i) {
+    requires Convertible<It::traversal_category,bidirectional_traversal_tag>; --i; i--;
+};
+concept RandomAccessIterator<It> = BidirectionalIterator<It> && requires (It i, It j, difference_type n) {
+    requires Convertible<It::traversal_category,random_access_traversal_tag>;
+    i += n; i = i + n; i = n + i;
+    i -= n; i = i - n; n = i - j;
+};
+concept SinglePassRange<T,Rng=remove_reference<T>::type> = requires (Rng* r, Rng const& cr) {
+    using <const>_iterator = range_iterator<Rng <const>>::type;
+    requires SinglePassIterator<iterator> && SinglePassIterator<const_iterator>;
+    {begin(*r)}->convertible_to<iterator>; {end(*r)}->convertible_to<iterator>;
+    {begin(cr)}->convertible_to<const_iterator>; {end(cr)}->convertible_to<const_iterator>;
+};
+concept ForwardRange<T> = SinglePassRange<T> && ForwardIterator<<const>_iterator>;
+concept WriteableRange<T> = requires (range_iterator<T>::type i, range_value<T>::type v) { *i=v; };
+concept WriteableForwardRange<T> = ForwardRange<T> && WriteableRange<T>;
+concept BidirectionalRange<T> = ForwardRange<T> && BidirectionalIterator<<const>_iterator>;
+concept WriteableBidirectionalRange<T> = BidirectionalRange<T> && WriteableRange<T>;
+concept RandomAccessRange<T> = BidirectionalRange<T> && RandomAccessIterator<<const>_iterator>;
+concept WriteableRandomAccessRange<T> = RandomAccessRange<T> && WriteableRange<T>;
+
 // Single Pass Range metafunctions
-struct range_iterator<T,_=void>;
+struct range_iterator<T,_=void>
+    : if_c<is_const_v<remove_reference_t<T>>, range_const_iterator<remove_const_t<remove_reference_t<T>>>,
+                                              range_mutable_iterator<remove_reference_t<T>>>{};
 struct range_iterator<[const]R> {using type=R::<const>_iterator;};
 struct range_iterator<[const]Pair>{using type=Pair::first_type;};
 struct range_iterator<[const]V*>{using type=<const> V*;};
+struct range_mutable_iterator<T,_=void>;
+struct range_const_iterator<T,_=void>;
 struct range_value<R> {using type=iterator_value<range_iterator<R>::type>::type;};
 struct range_reference<R> {using type=iterator_reference<range_iterator<R>::type>::type;};
 struct range_pointer<R> {using type=iterator_pointer<range_iterator<R>::type>::type;};
@@ -23,6 +65,7 @@ struct range_difference<R> {using type=iterator_difference<range_iterator<R>::ty
 
 // Bidirectional Range metafunctions
 struct range_reverse_iterator<R> {using type=reverse_iterator<range_iterator<R>::type>::type;};
+struct range_size<R>;
 
 struct has_range_iterator<X> : range_mutable_iterator<X> {}; // sfinae
 struct has_range_const_iterator<X> : range_const_iterator<X> {}; // sfinae
@@ -286,6 +329,8 @@ OutIt adjacent_difference<SPR,OutIt,[BOp]>(const SPR& r, OutIt result, <BOp op>)
 ------
 ### Provided Ranges
 
+#### `any_range`
+
 ```c++
 struct any_iterator_buffer<size> : noncopyable {
     ctor(); ~dtor(){delete[]m_ptr;}
@@ -358,6 +403,21 @@ struct any_range<V,Traversal,Ref=V&,Diff=ptrdiff_t,Buf=use_default>
     : iterator_range<any_iterator<V,Traversal,Ref,Diff,[Buf or any_iterator_default_buffer]>>{
 };
 struct any_range_type_generator<R,V=use_default,Trav=use_default,Ref=use_default,Diff=use_default,Buf=use_default>;
+```
+
+#### `counting_range`
+
+```c++
+```
+
+#### `istream_range`
+
+```c++
+```
+
+#### `irange`
+
+```c++
 ```
 
 ------
