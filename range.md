@@ -420,6 +420,13 @@ struct any_range_type_generator<R,V=use_default,Trav=use_default,Ref=use_default
 ```c++
 ```
 
+as_array, as_literal, atl, category, combine, const_reverse_iterator, counting_range,
+distance, empty, irange, istream_range, iterator_range_<core|hash|io>, join,
+mfc_<map>, result_iterator, reverse_result_iterator, sub_range, traversal
+
+detail/: collection_traits_<detail>, combine_<cxx03|cxx11|no_rvalue|rvalue>, common, default_constructible_unary_fn, demote_iterator_traversal_tag,
+  difference_type, empty, join_iterator, less, microsoft, range_return, safe_bool, sfinae, sizer, str_types
+
 ------
 ### Dependency
 
