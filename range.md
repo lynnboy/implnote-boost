@@ -65,10 +65,16 @@ struct range_difference<R> {using type=iterator_difference<range_iterator<R>::ty
 
 // Bidirectional Range metafunctions
 struct range_reverse_iterator<R> {using type=reverse_iterator<range_iterator<R>::type>::type;};
+struct range_const_reverse_iterator<R> : range_reverse_iterator<const remove_reference_t<R>> {};
 struct range_size<R>;
 
 struct has_range_iterator<X> : range_mutable_iterator<X> {}; // sfinae
 struct has_range_const_iterator<X> : range_const_iterator<X> {}; // sfinae
+
+// Other
+struct range_traversal<SPR> : iterator_traversal<range_iterator<SPR>::type> {};
+struct range_result_iterator<C> : range_iterator<C>{};
+struct range_reverse_result_iterator<C> : range_reverse_iterator<C>{};
 
 // Single Pass Range functions
 range_iterator<[const] R>::type begin<R>( <const> R& r );
@@ -196,6 +202,43 @@ uniqued_range<[const] FwdR> adaptors::unique<FwdR>(<const> FwdR& r);
 
 ------
 ### Range Algorithms
+
+#### Commons
+
+```c++
+struct collection_traits<T> {
+    using function_type = ...;
+    using value_type = function_type::value_type; // and size_type, <const>_iterator, result_iterator, difference_type
+};
+struct value_type_of<C>;
+struct difference_type_of<C>;
+struct iterator_of<C>;
+struct const_iterator_of<C>;
+struct result_iterator_of<C>;
+collection_traits<C>::size_type size<C>(const C& c);
+bool empty<C>(const C& c);
+collection_traits<C>::<const>_iterator {begin|end}<C>(<const> C& c);
+
+enum range_return_value
+{
+    // (*) indicates the most common values
+    return_found,       // only the found resulting iterator (*)
+    return_next,        // next(found) iterator
+    return_prior,       // prior(found) iterator
+    return_begin_found, // [begin, found) range (*)
+    return_begin_next,  // [begin, next(found)) range
+    return_begin_prior, // [begin, prior(found)) range
+    return_found_end,   // [found, end) range (*)
+    return_next_end,    // [next(found), end) range
+    return_prior_end,   // [prior(found), end) range
+    return_begin_end    // [begin, end) range
+};
+
+struct range_return<SPR,range_return_value> { // spec for each range_return_value for different impl of
+    using type = iterator_range<range_iterator<SPR>::type>;
+    static type pack(range_iterator<SPR>::type found, SPR& r);
+};
+```
 
 #### Mutating Algorithms
 
@@ -408,24 +451,184 @@ struct any_range_type_generator<R,V=use_default,Trav=use_default,Ref=use_default
 #### `counting_range`
 
 ```c++
+iterator_range<counting_iterator<V>> counting_range<V>(V first, V last);
+iterator_range<counting_iterator<range_iterator<[const] R>::type>> counting_range<R>(<const> R& r);
 ```
 
 #### `istream_range`
 
 ```c++
+iterator_range<std::istream_iterator<T,Ch,Tr>> istream_range<T,Ch,Tr>(std::basic_istream<Ch,Tr>& in);
 ```
 
 #### `irange`
 
 ```c++
+struct detail::integer_iterator<Int> : public iterator_facade<self, Int, random_access_traversal_tag, Int, ptrdiff_t> {
+    ctor(); explicit ctor(value_type x);
+private: void increment(); void decrement();
+    void advance(difference_type offset); difference_type distance_to(const integer_iterator& other) const;
+    bool equal(const self& other) const; reference dereference() const;
+    value_type m_value{};
+};
+struct detail::integer_iterator_with_step<Int> : public iterator_facade<self, Int, random_access_traversal_tag, Int, ptrdiff_t> {
+    ctor(value_type first, difference_type step, value_type step_size);
+private: void increment(); void decrement();
+    void advance(difference_type offset); difference_type distance_to(const integer_iterator& other) const;
+    bool equal(const self& other) const; reference dereference() const;
+    value_type m_first; difference_type m_step, m_step_size;
+};
+struct integer_range<Int> : public iterator_range<integer_iterator<Int>> { ctor(Int first, Int last); };
+struct strided_integer_range<Int> : public integer_range<integer_iterator_with_step<Int>> { ctor<It>(It first, It last); };
+integer_range<Int> irange<Int>(Int first, Int last);
+strided_integer_range<Int> irange<Int,Step>(Int first, Int last, Step step_size);
+integer_range<Int> irange<Int>(Int last);
 ```
 
-as_array, as_literal, atl, category, combine, const_reverse_iterator, counting_range,
-distance, empty, irange, istream_range, iterator_range_<core|hash|io>, join,
-mfc_<map>, result_iterator, reverse_result_iterator, sub_range, traversal
+------
+### Utilities
 
-detail/: collection_traits_<detail>, combine_<cxx03|cxx11|no_rvalue|rvalue>, common, default_constructible_unary_fn, demote_iterator_traversal_tag,
-  difference_type, empty, join_iterator, less, microsoft, range_return, safe_bool, sfinae, sizer, str_types
+#### `iterator_range`
+
+```c++
+struct detail::range_tag{}; struct detail::const_range_tag{}; struct detail::iterator_range_tag{};
+struct detail::pure_iterator_traversal<It>;
+struct detail::iterator_range_base<It,Tr> : public iterator_range_tag {
+    using value_type = iterator_value<It>::type;
+    using difference_type = iterator_difference<It>::type; using size_type = size_t;
+    using reference = iterator_reference<It>::type;
+    using const_iterator = It; using iterator = It;
+protected: ctor(); ctor<It>(It begin, It end);
+    void assign<It>(It first, It last); void assign<SPR>(<const> SPR& r);
+    It m_begin, m_end;
+public: It begin() const; It end() const;
+    bool empty() const; explicit operator bool() const; bool operator!() const;
+    bool equal(const self& r) const;
+    reference front() const; void drop_front(<difference_type n>); void pop_front();
+};
+struct detail::iterator_range_base<It,bidirectional_traversal_tag>: public self<It,incrementable_traversal_tag> {
+    reference back() const; void drop_back(<difference_type n>); void pop_back();
+};
+struct detail::iterator_range_base<It,random_access_traversal_tag> : public self<It, bidirectional_traversal_tag> {
+    using abstract_value_type = if_< or_<is_abstract<value_type>||is_array<value_type>||is_function<value_type>>, reference, value_type>::type;
+    reference operator[](difference_type at) const;
+    abstract_value_type operator()(difference_type at) const;
+    size_type size() const;
+};
+struct iterator_range<It> : public iterator_range_base<It,pure_iterator_traversal<It>::type> {
+    struct is_compatible_range<Src>;
+    using type = self;
+    ctor(); ctor<It>(It first, It last);
+    ctor<SPR>(<const> SPR& r) requires is_compatible_range<SPR>; ctor<SPR>(<const> SPR& r, <const>_range_tag);
+    self& operator=<It>(<const> self<It>& o); self& operator=<SPR>(<const> SPR& r);
+    self& advance_{begin|end}(difference_type n);
+};
+bool operator{==|!=|<|<=|>|>=} <It,FwdR> (const FwdR& l, const iterator_range<It>& r);
+bool operator{==|!=|<|<=|>|>=} <It,FwdR> (const iterator_range<It>& l, const FwdR& r);
+bool operator{==|!=|<|<=|>|>=} <It1,It2> (const iterator_range<It1>& l, const iterator_range<It2>& r);
+iterator_range<It> make_iterator_range<It>(It begin, It end);
+iterator_range<It> make_iterator_range_n<It,Int>(It first, Int n);
+iterator_range<range_iterator<<const> FwdR>::type> make_iterator_range<FwdR>(<const> FwdR& r);
+iterator_range<range_iterator<<const> R>::type> make_iterator_range<R>(<const> R& r, range_difference<R>::type begin, range_difference<R>::type end);
+Seq copy_range<Seq,R>(const R& r);
+
+size_t hash_value<T>(const iterator_range<T>& r);
+std::basic_ostream<Ch,Tr>& operator<< <It,Ch,Tr> (std::basic_ostream<Ch,Tr>& os, const iterator_range<It>& r);
+```
+
+#### `sub_range`
+
+```c++
+struct detail::sub_range_base<FwdR,TraversalTag> : public iterator_range<range_iterator<FwdR>::type> {
+    using value_type = range_value<FwdR>::type;
+    using <const>_iterator = range_iterator<[const] FwdR>::type;
+    using difference_type = range_difference<FwdR>::type; using size_type = range_size<FwdR>::type;
+    using <const>_reference = range_reference<[const] FwdR>::type;
+    ctor(); ctor<It>(It first, It last);
+    <const>_reference first() <const>;
+};
+struct detail::sub_range_base<FwdR,bidirectional_traversal_tag> : public sub_range_base<FwdR,forward_traversal_tag> {
+    <const>_reference back() <const>;
+};
+struct detail::sub_range_base<FwdR,random_access_traversal_tag> : public sub_range_base<FwdR,bidirectional_traversal_tag> {
+    <const>_reference operator[](difference_type n) <const>;
+};
+struct sub_range<FwdR> : public sub_range_base<FwdR,iterator_traversal<range_iterator<FwdR>::type>::type> {
+    struct is_compatible_range<Src>;
+    ctor(); ctor<FwdR2>(<const> FwdR2& r) requires is_compatible_range<<const> FwdR2>;
+    ctor<It>(It first, It last);
+    self& operator=<FwdR2> (<const> FwdR2& r); self& operator=( const self& r);
+    <const>_iterator {begin|end}() <const>;
+    self& advance_{begin|end}(difference_type n);
+};
+```
+
+#### `combine`
+
+```c++
+struct combined_range<ItTup> : public iterator_range<zip_iterator<ItTup>> {
+    ctor(ItTup first, ItTup last);
+};
+auto combine<...Ranges>(Ranges&&...rngs) -> combined_range<decltype(make_tuple(begin(rngs)...))>;
+```
+
+#### `join`
+
+```c++
+struct detail::join_iterator_link<It1,It2>{ It1 last1; It2 first2; };
+struct join_iterator_begin_tag{}; struct join_iterator_end_tag{};
+
+struct join_iterator_union<It1,It2,Ref> {
+    using iterator1_t = It1; using iterator2_t = It2;
+    ctor(); ctor(unsigned, const It1& it1, const It2& it2);
+    <const> It1& it1() <const>; <const> It2& it2() <const>;
+    Ref dereference(unsigned selected) const { return selected ? *m_it2 : *m_it1; }
+    bool equal(const self& other, unsigned selected) const;
+private: It1 m_it1; It2 m_it2;
+};
+struct join_iterator_union<It,It,Ref> {
+    using iterator1_t = It; using iterator2_t = It;
+    ctor(); ctor(unsigned selected, const It& it1, const It& it2) : m_it{selected? it2:it1}{}
+    <const> It& it1() <const>; <const> It& it2() <const>;
+    Ref dereference(unsigned selected) const { return *m_it; }
+    bool equal(const self& other, unsigned) const;
+private: It m_it;
+};
+
+struct join_iterator<It1,It2,V=iterator_value<It1>::type,Ref=...,Traversal=...> : iterator_facade<self,V,Traversal,Ref> {
+    using link_t = join_iterator_link<It1,It2>; using iterator_union = join_iterator_union<It1,It2,Ref>;
+    using iterator1_t = It1; using iterator2_t = It2;
+    ctor();
+    ctor(unsigned section, It1, cur1, It1 last1, It2 first2, It2 cur2)
+        : m_section{section}, m_it{section,cur1,cur2}, m_link{link_t{last1,first2}}{}
+    ctor<R1,R2>(<const> R1& r1, <const> R2& r2, join_iterator_begin_tag)
+        : m_section{empty(r1)?1:0}, m_it{empty(r1)?1:0, <const>_begin(r1), <const>_begin(r2)}, m_link{link_t{<const>_end(r1),<const>_begin(r2)}}{}
+    ctor<R1,R2>(<const> R1& r1, <const> R2& r2, join_iterator_end_tag)
+        : m_section{empty(r1)?1:0}, m_it{empty(r1)?1:0, <const>_end(r1), <const>_end(r2)}, m_link{link_t{<const>_end(r1),<const>_begin(r2)}}{}
+private: void increment(); void decrement();
+    reference dereference() const;
+    bool equal(const self& other) const;
+    void advance(difference_type offset); difference_type distance_to(const self& other) const;
+    unsigned m_section; iterator_union m_it; link_t m_link;
+};
+
+struct detail::joined_type<SPR1,SPR2> { using type=iterator_range<join_iterator<range_iterator<SPR1>::type, range_iterator<SPR2>::type, range_value<SPR1>::type>>; };
+
+struct joined_range<SPR1,SPR2> : public joined_type<SPR1,SPR2>::type {
+    ctor(SPR1& r1, SPR2& r2);
+};
+
+joined_range<<const> SPR1, <const> SPR2> join<SPR1,SPR2>(<const> SPR1& r1, <const> SPR2& r2);
+```
+
+#### `as_array`, `as_literal`
+
+```c++
+iterator_range<range_iterator<[const] R>::type> as_array<R>(<const> R& r);
+
+iterator_range<range_iterator<[const] R>::type> as_literal<R>  (<const> R& r);
+iterator_range<[const] Ch*> as_literal<Ch,sz>(<const> Ch (&arr)[sz]);
+```
 
 ------
 ### Dependency
