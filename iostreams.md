@@ -82,11 +82,144 @@ concept SymmetricFilter<F,Ch=char_type_of<F>::type> =
 ------
 ### Core Components
 
+#### Categories
+
 ```c++
+const streamsize default_device_buffer_size = 4096, default_filter_buffer_size = 128, default_pback_buffer_size = 4;
+
+struct any_tag{};
+struct detail::two_sequence : virtual any_tag{}; struct detail::random_access : virtual any_tag{};
+struct detail::one_head : virtual any_tag{}; struct detail::two_head : virtual any_tag{};
+struct input : virtual any_tag{}; struct output : virtual any_tag{};
+struct bidirectional : virtual input, virtual output, two_sequence{}; struct dual_use : virtual input, virtual output{};
+struct input_seekable : virtual input, virtual random_access{}; struct output_seekable : virtual output, virtual random_access{};
+struct seekable : virtual input_seekable, virtual output_seekable, one_head{};
+struct dual_seekable : virtual input_seekable, virtual output_seekable, two_head{};
+struct bidirectional_seekable : input_seekable, output_seekable, bidirectional, two_head{};
+
+struct device_tag : virtual any_tag{}; struct filter_tag : virtual any_tag{};
+
+struct peekable_tag : virtual any_tag{}; struct closable_tag : virtual any_tag{};
+struct flushable_tag : virtual any_tag{}; struct localizable_tag : virtual any_tag{};
+struct optimally_buffered_tag : virtual any_tag{};
+struct direct_tag : virtual any_tag{}; struct multichar_tag : virtual any_tag{};
+
+struct source_tag : device_tag, input{}; struct sink_tag : device_tag, output{};
+struct bidirectional_device_tag : device_tag, bidirectional{};
+struct seekable_device_tag : virtual device_tag, seekable {};
+
+struct input_filter_tag : filter_tag, input{}; struct output_filter_tag: filter_tag, output{};
+struct bidirectional_filter_tag : filter_tag, bidirectional{};
+struct seekable_filter_tag : filter_tag, seekable{};
+struct dual_use_filter_tag : filter_tag, dual_use{};
+
+struct multichar_input_filter_tag : multichar_tag, input_filter_tag{};
+struct multichar_output_filter_tag : multichar_tag, output_filter_tag{};
+struct multichar_bidirectional_filter_tag : multichar_tag, bidirectional_filter_tag{};
+struct multichar_seekable_filter_tag : multichar_tag, seekable_filter_tag{};
+struct multichar_dual_use_filter_tag : multichar_tag, dual_use_filter_tag{};
+
+struct std_io_tag : virtual localizable_tag{};
+
+struct istream_tag : virtual device_tag, virtual peekable_tag, virtual std_io_tag{};
+struct ostream_tag : virtual device_tag, virtual std_io_tag{};
+struct iostream_tag : istream_tag, ostream_tag{};
+struct streambuf_tag : device_tag, peekable_tag, std_io_tag{};
+
+struct ifstream_tag : input_seekable, closable_tag, istream_tag{};
+struct ofstream_tag : output_seekable, closable_tag, ostream_tag{};
+struct fstream_tag : seekable, closable_tag, iostream_tag{};
+struct filebuf_tag : seekable, closable_tag, streambuf_tag{};
+
+struct istringstream_tag : input_seekable, istream_tag{};
+struct ostringstream_tag : output_seekable, ostream_tag{};
+struct stringstream_tag : dual_seekable, iostream_tag{};
+struct stringbuf_tag : dual_seekable, streambuf_tag{};
+
+struct generic_istream_tag : input_seekable, istream_tag{};
+struct generic_ostream_tag : output_seekable, ostream_tag{};
+struct generic_iostream_tag : seekable, iostream_tag{};
+struct generic_streambuf_tag : seekable, streambuf_tag{};
 ```
+
+#### Traits
+
+```c++
+struct is_istream<T>; struct is_ostream<T>; struct is_iostream<T>; struct is_streambuf<T>;
+struct is_istringstream<T>; struct is_ostringstream<T>; struct is_stringstream<T>; struct is_stringbuf<T>;
+struct is_ifstream<T>; struct is_ofstream<T>; struct is_fstream<T>; struct is_filebuf<T>;
+struct is_std_io<T>; struct is_std_file_device<T>; struct is_std_string_device<T>;
+
+struct char_type_of<T>; struct category_of<T>; struct int_type_of<T>; struct mode_of<T>;
+
+struct is_device<T>; struct is_filter<T>; struct is_direct<T>;
+
+struct detail::is_boost_stream<T>; struct detail::is_boost_stream_buffer<T>;
+struct detail::is_filtering_stream<T>; struct detail::is_filtering_streambuf<T>;
+struct detail::is_linked<T>;
+struct detail::is_boost<T>;
+```
+
+#### Stream
+
+```c++
+struct detail::stream_buffer_traits<T,Tr,Alloc,Mode>; // category_of<T>::type=>direct_tag ? direct_streambuf : indirect_streambuf
+struct stream_buffer<T,Tr=std::char_traits<char_type>, Alloc=std::allocator<char_type>, Mode=mode_of<T>::type> : streambuffer_traits<T,Tr,Alloc,Mode>::type {
+    using char_type = char_type_of<T>::type; using traits_type = Tr;
+    using int_type = traits_type::int_type; using off_type = traits_type::off_type; using pos_type = traits_type::pos_type;
+    struct category : Mode, closable_tag, streambuf_tag{};
+    ctor(); ~dtor();
+    ctor(<const> T& t, std::streamsize buffer_size = -1 , std::streamsize pback_size = -1);
+    ctor(const reference_wrapper<T>& ref , std::streamsize buffer_size = -1 , std::streamsize pback_size = -1);
+    void open(<const> T& t , std::streamsize buffer_size = -1 , std::streamsize pback_size = -1);
+    void open(const reference_wrapper<T>& ref , std::streamsize buffer_size = -1 , std::streamsize pback_size = -1)
+    ctor<U,[U1],[U2]>(<const> U &u0, <const U1& u1>, <const U2& u2>) requires !same_as<U,T>;
+    void open<U,[U1],[U2]>(<const> U &u, <const U1& u1>, <const U2& u2>) requires !same_as<U,T>;
+    T& operator*(); T* operator->();
+private: void open_impl(const T& t, std::streamsize buffer_size = -1 , std::streamsize pback_size = -1); // throw if is_open()
+};
+
+struct detail::stream_traits<Device,Tr> {
+    using char_type = char_type_of<Device>::type; using traits_type = Tr; using mode = category_of<Device>::type;
+    using stream_type = select<and_<is_convertible<mode,input>,is_convertible<mode,output>>, std::basic_iostream<char_type,traits_type>,
+            is_convertible<mode,input>, std::basic_istream<char_type,traits_type>,
+            else_, std::basic_ostream<char_type,traits_type> >::type;
+    using stream_tag = select<and_<is_convertible<mode,input>,is_convertible<mode,output>>, iostream_tag,
+            is_convertible<mode,input>, istream_tag,
+            else_, ostream_tag >::type;
+};
+struct detail::stream_base<Device,Tr=std::char_traits<char_type>,Alloc=std::allocator<char_type>>
+    : protected base_from_member<stream_buffer<Device,Tr,Alloc>>, public stream_traits<Device,Tr>::stream_type {
+    ctor(): base_from_member{}, stream_type{&base_from_member::member} {}
+};
+struct stream<Device,Tr=std::char_traits<char_type>,Alloc=std::allocator<char_type>> : stream_base<Device,Tr,Alloc> {
+    using char_type = char_type_of<Device>::type;
+    struct category : mode_of<Device>::type, closable_tag, stream_traits<Device,Tr>::stream_tag {};
+    using stream_type = stream_traits<Device,Tr>::stream_type;
+    ctor();
+    ctor(<const> T& t, std::streamsize buffer_size = -1 , std::streamsize pback_size = -1);
+    ctor(const reference_wrapper<T>& ref , std::streamsize buffer_size = -1 , std::streamsize pback_size = -1);
+    void open(<const> T& t , std::streamsize buffer_size = -1 , std::streamsize pback_size = -1);
+    void open(const reference_wrapper<T>& ref , std::streamsize buffer_size = -1 , std::streamsize pback_size = -1)
+    ctor<U,[U1],[U2]>(<const> U &u0, <const U1& u1>, <const U2& u2>) requires !same_as<U,T>;
+    void open<U,[U1],[U2]>(<const> U &u, <const U1& u1>, <const U2& u2>) requires !same_as<U,T>;
+    bool is_open() const { return member.is_open(); }
+    void close() { member.close(); }
+    bool auto_close() const { return member.auto_close(); }
+    void set_auto_close(bool close) { member.set_auto_close(close); }
+    bool strict_sync() { return member.strict_sync(); }
+    Device& operator*() { return *member; } Device* operator->() { return &*member; }
+    Device* component() { return member.component(); }
+private: void open_impl(const T& t, std::streamsize buffer_size = -1 , std::streamsize pback_size = -1); // clear() and member.open()
+};
+```
+
+#### Filter Stream
 
 ------
 ### Details
+
+#### Common
 
 ```c++
 std::string detail::absolute_path(const std::string& path);
@@ -342,6 +475,258 @@ T detail::wrap<T>(const T& t) requires !is_std_io<T>;
 wrapped_type<T>::type detail::wrap<T>(const T& t) requires is_std_io<T>;
 unwrapped_type<T>::type& detail::unwrap<T>(const reference_wrapper<T>& ref);
 <const> unwrapped_type<T>::type& detail::unwrap<T>(<const> T& t);
+```
+
+#### Adapters
+
+```c++
+struct detail::device_wrapper_impl<any_tag>{
+    static streampos seek<Device,Dummy>(Device& dev, Dummy*, stream_offset off, ios::seekdir way, ios::openmode which) {return seek(dev,off,way,which,category_of<Device>::type{}); }
+    static streampos seek<Device>(Device&, stream_offset, ios::seekdir, ios::openmode, any_tag); // throw_exception(cant_seek())
+    static streampos seek<Device>(Device& dev, stream_offset off, ios::seekdir way, ios::openmode which, random_access);
+    static void close<Device,Dummy>(Device& dev, Dummy*, ios::openmode which);
+    static bool flush<Device,Dummy>(Device& dev, Dummy*);
+};
+struct detail::device_wrapper_impl<input> : device_wrapper_impl<any_tag> {
+    static streamsize read<Device,Dummy>(Device& dev, Dummy*, char_type_of<Device>::type* s, streamsize n);
+    static streamsize write<Device,Dummy>(Device&, Dummy*, const char_type_of<Device>::type*, streamsize); // throw_exception(cant_write())
+};
+struct detail::device_wrapper_impl<output> {
+    static streamsize read<Device,Dummy>(Device&, Dummy*, char_type_of<Device>::type*, streamsize); // throw_exception(cant_read())
+    static streamsize write<Device,Dummy>(Device& dev, Dummy*, const char_type_of<Device>::type* s, streamsize n);
+};
+
+struct detail::flt_wrapper_impl<any_tag>{
+    static streampos seek<Filter,Device>(Filter& f, Device* dev, stream_offset off, ios::seekdir way, ios::openmode which) {return seek(f,dev,off,way,which,category_of<Filter>::type{}); }
+    static streampos seek<Filter,Device>(Filter&,Device*, stream_offset, ios::seekdir, ios::openmode, any_tag); // throw_exception(cant_seek())
+    static streampos seek<Filter,Device>(Filter& f, Device* dev, stream_offset off, ios::seekdir way, ios::openmode which, random_access tag) {return seek(f,dev,off,way,which,tag,category_of<Filter>::type{}); }
+    static streampos seek<Filter,Device>(Filter& f, Device* dev, stream_offset off, ios::seekdir way, ios::openmode, random_access, any_tag) {return f.seek(*dev,off,way);}
+    static streampos seek<Filter,Device>(Filter& f, Device* dev, stream_offset off, ios::seekdir way, ios::openmode which, random_access, two_sequence) {return f.seek(*dev,off,way,which);}
+    static void close<Filter,Device>(Filter& f, Device* dev, ios::openmode which);
+    static bool flush<Filter,Device>(Filter& f, Device* dev);
+};
+struct detail::flt_wrapper_impl<input> {
+    static streamsize read<Filter,Source>(Filter& f, Source* src, char_type_of<Filter>::type* s, streamsize n);
+    static streamsize write<Filter,Sink>(Filter&, Sink*, const char_type_of<Filter>::type*, streamsize); // throw_exception(cant_write())
+};
+struct detail::flt_wrapper_impl<output> {
+    static streamsize read<Filter,Source>(Filter&, Source*, char_type_of<Filter>::type*, streamsize); // throw_exception(cant_read())
+    static streamsize write<Filter,Sink>(Filter& f, Sink* snk, const char_type_of<Filter>::type* s, streamsize n);
+};
+
+class detail::concept_adapter<T> { // no copy-assign
+    using value_type = value_type<T>::type;
+    using input_tag = dispatch<T,input,output>::type; using output_tag = dispatch<T,output,input>::type;
+    using {input|output|any}_impl = if_<is_device<T>,device_wrapper_impl<{input|output|any}_tag>, flt_wrapper_impl<{input|output|any}_tag>>::type;
+public: using char_type = char_type_of<T>::type; using category=category_of<T>::type;
+    explicit ctor(const reference_wrapper<T>& ref); explicit ctor(const T& t);
+    T& operator*(); T* operator->();
+    streamsize read(char_type* s, streamsize n); streamsize read<Source>(char_type* s, streamsize n, Source* src); // input_impl::read
+    streamsize write(const char_type* s, streamsize n); streamsize write<Sink>(const char_type* s, streamsize n, Sink* snk); // output_impl::write
+    streampos seek(stream_offset off, ios::seekdir way, ios::openmode which);
+    streampos seek<Device>(stream_offset off, ios::seekdir way, ios::openmode which, Device* dev); // any_impl::seek
+    void close(ios::openmode which); void close<Device>(ios::openmode which, Device* dev); // any_impl::close
+    bool flush<Device>(Device* dev); // any_impl::flush
+    void imbue<Locale>(const Locale& loc);
+    streamsize optimal_buffer_size() const; 
+private: value_type t_;
+};
+
+class detail::device_adapter<T> {
+    using value_type = value_type<T>::type; using param_type = param_type<T>::type;
+public: explicit ctor(param_type t);
+    T& component();
+    void close(); void close(ios::openmode which);
+    bool flush();
+    void imbue<Locale>(const Locale& loc);
+    streamsize optimal_buffer_size() const;
+    value_type t_;
+};
+
+class detail::device_adapter<T> {
+    using value_type = value_type<T>::type; using param_type = param_type<T>::type;
+public: explicit ctor(param_type t);
+    T& component();
+    void close<Device>(Device& dev); void close<Device>(Device& dev, ios::openmode which);
+    bool flush<Device>(Device& dev);
+    void imbue<Locale>(const Locale& loc);
+    streamsize optimal_buffer_size() const;
+    value_type t_;
+};
+
+struct detail::direct_adapter_base<Direct> {
+    using char_type = char_type_of<Direct>::type; using mode_type = mode_of<Direct>::type;
+    struct category : public mode_type, device_type, closable_tag, localizable_tag{};
+protected: explicit ctor(const Direct& d);
+    using is_double = is_convertible<category, two_sequence>;
+    struct pointers {char_type *beg, *ptr, *end;};
+    double_object<pointers,is_double> ptrs_; Direct d_;
+};
+struct detail::direct_adapter<Direct> : private direct_adapter_base<Direct> {
+    ctor(const Direct& d); ctor(const self& d); ctor<...P>(const P&...p);
+    streamsize read(char_type* s, streamsize n);
+    streamsize write(const char_type* s, streamsize n);
+    streampos seek(stream_offset, ios::seekdir, ios::openmode = ios::in|ios::out);
+    void close(); void close(ios::openmode which);
+    void imbue(const std::locale&);
+    Direct& operator*(); Direct* operator->();
+};
+
+struct detail::wrap_direct_traits<Device> : if_<is_direct<Device>, direct_adapter<Device>, Device>{};
+wrap_direct_traits<Device>::type detail::wrap_direct<Device>(Device dev);
+Device& detail::unwrap_direct<Device>(Device& d);
+Device& detail::unwrap_direct<Device>(direct_adapter<Device>& d);
+
+class detail::mode_adapter<Mode,T> {
+    struct empty_base{};
+public: using component_type = wrapped_type<T>::type; using char_type = char_type_of<T>::type;
+    struct category : public Mode, device_tag, if_<is_filter<T>,filter_tag,device_tag>, if_<is_filter<T>,multichar_tag,empty_base>, closable_tag, localizable_tag{};
+    explicit ctor(const component_type& t);
+    streamsize read(char_type* s, streamsize n);
+    streamsize write(const char_type* s, streamsize n);
+    streampos seek(stream_offset off, ios::seekdir way, ios::openmode which = ios::in|ios::out);
+    void close(); void close(ios::openmode which);
+    streamsize read<Source>(Source& src, char_type* s, streamsize n);
+    streamsize read<Sink>(Sink& snk, const char_type* s, streamsize n);
+    streampos seek<Device>(Device& dev, stream_offset off, ios::seekdir way, <ios::openmode which>);
+    void close<Device>(Device& dev); void close<Device>(Device& dev, ios::openmode which);
+    void imbue<Locale>(const Locale& loc);
+private: component_type t_;
+};
+
+struct non_blocking_adapter<Device> { // no copy-assign
+    using char_type = char_type_of<Device>::type;
+    struct category : public mode_of<Device>::type, device_tag {};
+    explicit ctor(Device& dev);
+    streamsize read(char_type* s, streamsize n);
+    streamsize write(const char_type* s, streamsize n);
+    streampos seek(stream_offset off, ios::seekdir way, ios::openmode which = ios::in|ios::out);
+private: Device& device_;
+};
+
+struct detail::output_iterator_adapter<Mode,Ch,OutIt> {
+    using char_type = Ch; using category = sink_tag;
+    explicit ctor(OutIt out);
+    streamsize write(const char_type* s, streamsize n);
+private: OutIt out_;
+};
+
+struct detail::range_adapter_impl<std::forward_iterator_tag> {
+    static streamsize read<It,Ch>(It& cur, It& last, Ch* s, streamsize n);
+    static streamsize write<It,Ch>(It& cur, It& last, const Ch* s, streamsize n);
+};
+struct detail::range_adapter_impl<std::random_access_iterator_tag> {
+    static streamsize read<It,Ch>(It& cur, It& last, Ch* s, streamsize n);
+    static streamsize write<It,Ch>(It& cur, It& last, const Ch* s, streamsize n);
+    static void seek<It>(It& first, It& cur, It& last, stream_offset off, ios::seekdir way);
+};
+class detail::range_adapter<Mode,Range> {
+    using iterator = Range::iterator; using iter_traits = std::iterator_traits<iterator>; using iter_cat = iter_traits::iterator_category;
+public: using char_type = Range::value_type;
+    struct category : public Mode, device_tag {};
+    using tag = if_<is_convertible<iter_cat,std::random_access_iterator_tag>, random_access_iterator_tag, forward_iterator_tag>::type;
+    using impl = range_adapter_impl<tag>;
+    explicit ctor(const Range& rng); ctor(iterator first, iterator last);
+    streamsize read(char_type* s, streamsize n);
+    streamsize write(const char_type* s, streamsize n);
+    streampos seek(stream_offset off, ios::seekdir way);
+private: iterator first_, cur_, last_;
+};
+```
+
+#### Stream Buffers
+
+```c++
+class detail::linked_streambuf<Ch,Tr=std::char_traits<Ch>> : public std::basic_streambuf<Ch,Tr> {
+    enum flag_type { f_true_eof=1, f_input_closed=2, f_output_closed=4 };
+    int flags_;
+protected: ctor() :flags_{0}{}
+    void set_true_eof(bool eof) { flags_ = (flags_&~f_true_eof) | (eof?f_true_eof:0); }
+    void close(ios::openmode which) {
+        if (which==ios::in && (flags_&f_input_closed)==0) { flags_ |= f_input_closed; close_impl(which); }
+        if (which==ios::out && (flags_&f_output_closed)==0) { flags_ |= f_output_closed; close_impl(which); }
+    }
+    void set_needs_close() { flags_ &= ~(f_input_closed|f_output_closed); }
+    virtual void set_next(self*){}
+    virtual void close_impl(ios::openmode) =0;
+    virtual bool auto_close() const =0;
+    virtual void set_auto_close(bool) =0;
+    virtual bool strict_sync() =0;
+    virtual const typeinfo& component_type() const =0;
+    virtual void* component_impl() =0;
+public: bool true_eof() const { return flags_&f_true_eof; }
+};
+
+class detail::chainbuf<Chain,Mode,Access> : public std::basic_streambuf<Chain::char_type,Chain::traits_type>,
+    public access_control<Chain::client_type,Access>, noncopyable {
+    using client_type = access_control<chain_client<Chain>,Access>;
+public: using char_type = Chain::char_type; using traits_type = Chain::traits_type;
+    using int_type = traits_type::int_type; using off_type = traits_type::off_type; using pos_type = traits_type::pos_type;
+protected: using delegate_type = linked_streambuf<char_type,traits_type>;
+    ctor() { client_type::set_chain(&chain_); }
+    int_type underflow() { sentry t{this}; return translate(delegate().underflow()); }
+    int_type pbackfail(int_type c) { sentry t{this}; return translate(delegate().pbackfail(c)); }
+    streamsize xsgetn(char_type* s, streamsize n) { sentry t{this}; return delegate().xsgetn(s,n); }
+    int_type overflow(int_type c) { sentry t{this}; return translate(delegate().overflow(c)); }
+    streamsize xsputn(const char_type* s, streamsize n) { sentry t{this}; return delegate().xsputn(s,n); }
+    int sync() { sentry t{this}; return delegate().sync(); }
+    pos_type seekoff(off_type off, ios::seekdir way, ios::openmode which=ios::in|ios::out) { sentry t{this}; return delegate().seekoff(off,way,which); }
+    pos_type seekpos(pos_type sp, ios::openmode which=ios::in|ios::out) { sentry t{this}; return delegate().seekpos(sp,which); }
+private: using std_traits = std::char_traits<char_type>; using chain_traits = Chain::traits_type;
+    static chain_traits::int_type translate(std::traits::int_type c) { return translate_int_type<std_traits,chain_traits>(c); }
+    delegate_type& delegate() { return (delegate_type&)chain_.front(); }
+    void get_pointers() { setg(delegate().epback(), delegate().gptr(), delegate().egptr());
+        setp(delegate().pbase(), delegate().epptr()); pbump((int)(delegate().pptr()-delegate().pbase())); }
+    void set_pointers() { delegate().setg(eback(),gptr(),egptr()); delegate().setp(pbase(),epptr()); delegate().pbump((int)(pptr()-pbase())); }
+    struct sentry {ctor(chainbuf* buf):buf_{buf}{buf_->set_pointers();} ~dtor(){buf_->get_pointers();} chainbuf* buf_; };
+    Chain chain_;
+};
+
+class detail::direct_streambuf<T,Tr=std::char_traits<char_type_of<T>::type>> : public linked_streambuf<char_type_of<T>::type,Tr> {
+    using category = category_of<T>::type; using streambuf_type = std::basic_streambuf<char_type,traits_type>;
+    optional<T> storage_;
+    char_type *ibeg_, *iend_, *obeg_, *oend_;
+    bool auto_close_;
+public: using char_type = char_type_of<T>::type; using traits_type = Tr;
+    using int_type = traits_type::int_type; using off_type = traits_type::off_type; using pos_type = traits_type::pos_type;
+    void open(const T& t, streamsize buffer_size, streamsize pback_size);
+    bool is_open() const;
+    void close();
+    bool auto_close() const override { return auto_close_; }
+    void set_auto_cose(bool close) override { auto_close_ = close; }
+    bool strict_sync() override { return true; }
+    T* component() { return storage_.get(); }
+protected: ctor();
+    void close_impl(ios::openmode) override;
+    const typeinfo& component_type() const override { return typeid(T); }
+    void* component_impl() override { return component(); }
+};
+
+class detail::indirect_streambuf<T,Tr,Alloc,Mode> : public linked_streambuf<char_type_of<T>::type,Tr> {
+    using category = category_of<T>::type; using wrapper = concept_adapter<T>;
+    using buffer_type = basic_buffer<char_type,Alloc>; using streambuf_type = std::basic_streambuf<char_type,traits_type>;
+
+    enum flag_type { f_open=1, f_output_buffered=2, f_auto_close=4 };
+    optional<T> storage_; streambuf_type* next_;
+    double_object<buffer_type,is_convertible<Mode,two_sequence>> buffer_;
+    streamsize pback_size_; int flags_;
+public: using char_type = char_type_of<T>::type; using traits_type = Tr;
+    using int_type = traits_type::int_type; using off_type = traits_type::off_type; using pos_type = traits_type::pos_type;
+    ctor();
+    void open(const T& t, streamsize buffer_size=-1, streamsize pback_size=-1);
+    bool is_open() const;
+    void close();
+    bool auto_close() const override;
+    void set_auto_cose(bool close) override;
+    bool strict_sync() override;
+    T* component() { return &*obj(); }
+protected:
+    void imbue(const std::locale& loc);
+    void set_next(streambuf_type* next) override;
+    void close_impl(ios::openmode) override;
+    const typeinfo& component_type() const override { return typeid(T); }
+    void* component_impl() override { return component(); }
+};
 ```
 
 ------
