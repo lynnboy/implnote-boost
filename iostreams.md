@@ -216,6 +216,165 @@ private: void open_impl(const T& t, std::streamsize buffer_size = -1 , std::stre
 
 #### Filter Stream
 
+```c++
+struct filtering_<w>streambuf<Mode,Ch={char|wchar_t},Tr=std::char_traits<Ch>,Alloc=std::allocator<Ch>,Access=public_>
+    : public chainbuf<chain<Mode,Ch,Tr,Alloc>,Mode,Access> {
+    using char_type=Ch; using mode=Mode; using chain_type = chain<Mode,Ch,Tr,Alloc>;
+    struct category : Mode, closable_tag, streambuf_tag {};
+    ctor(); ~dtor();
+    explicit ctor<C,T>(std::basic_streambuf<C,T>& sb, streamsize buffer_size = -1, std::streamsize pback_size = -1);
+    explicit ctor<C,T>(std::basic_istream<C,T>& is, streamsize buffer_size = -1, std::streamsize pback_size = -1);
+    explicit ctor<C,T>(std::basic_ostream<C,T>& os, streamsize buffer_size = -1, std::streamsize pback_size = -1);
+    explicit ctor<C,T>(std::basic_iostream<C,T>& io, streamsize buffer_size = -1, std::streamsize pback_size = -1);
+    explicit ctor<It>(const iterator_range<It>& rng, std::streamsize buffer_size = -1, std::streamsize pback_size = -1);
+    explicit ctor<Pipeline,Concept>(const pipeline<Pipeline,Concept>& p);
+};
+using filtering_istreambuf = filtering_streambuf<input>;
+using filtering_ostreambuf = filtering_streambuf<output>;
+using filtering_wistreambuf = filtering_wstreambuf<input>;
+using filtering_wostreambuf = filtering_wstreambuf<output>;
+
+struct detail::filtering_stream_traits<Mode,Ch,Tr> {
+    using stream_type = select<and_<is_convertible<Mode,input>,is_convertible<Mode,output>>, std::basic_iostream<Ch,Tr>,
+            is_convertible<Mode,input>, std::basic_istream<Ch,Tr>,
+            else_, std::basic_ostream<Ch,Tr> >::type;
+    using stream_tag = select<and_<is_convertible<Mode,input>,is_convertible<Mode,output>>, iostream_tag,
+            is_convertible<Mode,input>, istream_tag,
+            else_, ostream_tag >::type;
+};
+struct detail::filtering_stream_base<Chain,Access> : public access_control<chain_client<Chain>,Access>,
+    public filtering_stream_traits<Chain::mode,Chain::char_type,Chain::traits_type>::stream_type {
+    using chain_type = Chain; using client_type = access_control<...>;
+protected: using stream_type = filtering_stream_traits<...>::stream_type;
+    ctor() : base{0} { set_chain(&chain_); }
+private: void notify() { rdbuf(chain_.empty()?0:&chain_.front()); }
+    Chain chain_;
+};
+
+struct <w>filtering_stream<Mode,Ch={char|wchar_t},Tr=std::char_traits<Ch>,Alloc=std::allocator<Ch>,Access=public_>
+    : public filtering_stream_base<chain<Mode,Ch,Tr,Alloc>,Access> {
+    using char_type=Ch; using mode=Mode; using chain_type = chain<Mode,Ch,Tr,Alloc>; using traits_type=Tr;
+    using int_type = traits_type::int_type; using off_type = traits_type::off_type; using pos_type = traits_type::pos_type;
+    struct category : Mode, closable_tag, filtering_stream_traits<...>::stream_tag {};
+    ctor(); ~dtor();
+    explicit ctor<C,T>(std::basic_streambuf<C,T>& sb, streamsize buffer_size = -1, std::streamsize pback_size = -1);
+    explicit ctor<C,T>(std::basic_istream<C,T>& is, streamsize buffer_size = -1, std::streamsize pback_size = -1);
+    explicit ctor<C,T>(std::basic_ostream<C,T>& os, streamsize buffer_size = -1, std::streamsize pback_size = -1);
+    explicit ctor<C,T>(std::basic_iostream<C,T>& io, streamsize buffer_size = -1, std::streamsize pback_size = -1);
+    explicit ctor<It>(const iterator_range<It>& rng, std::streamsize buffer_size = -1, std::streamsize pback_size = -1);
+    explicit ctor<Pipeline,Concept>(const pipeline<Pipeline,Concept>& p);
+private: using client_type = access_control<...>;
+    void push_impl<T>(const T& t , std::streamsize buffer_size = -1 , std::streamsize pback_size = -1); // client_type::push
+};
+using filtering_istream = filtering_stream<input>;
+using filtering_ostream = filtering_stream<output>;
+using filtering_wistream = wfiltering_stream<input>;
+using filtering_wostream = wfiltering_stream<output>;
+```
+
+#### Chain
+
+```c++
+using stream_offset = intmax_t;
+std::streamoff stream_offset_to_streamoff(stream_offset off);
+std::streampos offset_to_position(stream_offset off);
+stream_offset position_to_offset<PosType>(PosType pos);
+stream_offset position_to_offset(std::streampos pos);
+
+struct detail::chain_base<Self,Ch,Tr,Alloc,Mode> {
+    using char_type = Ch; using traits_type = Tr; using allocator_type = Alloc; using mode = Mode;
+    using int_type = traits_type::int_type; using off_type = traits_type::off_type; using pos_type = traits_type::pos_type;
+    struct category : Mode, device_tag{};
+    using client_type = chain_client<Self>;
+private: using streambuf_type = linked_streambuf<Ch>; using list_type = std::list<streambuf_type*>;
+protected: ctor(); ctor(const self& rhs);
+public: void set_device_buffer_size(streamsize n);
+    void set_filter_buffer_size(streamsize n);
+    void set_pback_size(streamsize n);
+    streamsize read(char_type* streamsize n);
+    streamsize write(const char_type* streamsize n);
+    streamsize seek(stream_offset off, ios::seekdir way);
+    const typeinfo& component_type(int n) const; const typeinfo& component_type<n>() const;
+    T* component<T>(int n) const; T* component<n,T>() const;
+private: T* component<T>(int n, boost::type<T>) const;
+public: using size_type = list_type::size_type;
+    streambuf_type& front();
+    void push<C,T>(std::basic_streambuf<C,T>& sb, std::streamsize buffer_size = -1 , std::streamsize pback_size = -1);
+    void push<C,T>(std::basic_istream<C,T>& is , std::streamsize buffer_size = -1 , std::streamsize pback_size = -1);
+    void push<C,T>(std::basic_ostream<C,T>& os , std::streamsize buffer_size = -1 , std::streamsize pback_size = -1);
+    void push<C,T>(std::basic_iostream<C,T>& io , std::streamsize buffer_size = -1 , std::streamsize pback_size = -1);
+    void push<It>(const iterator_range<It>& rng , std::streamsize buffer_size = -1 , std::streamsize pback_size = -1);
+    void push<Pipeline,Concept>(const pipeline<Pipeline,Concept>& p);
+    void push<T>(const T& t , std::streamsize buffer_size = -1 , std::streamsize pback_size = -1) requires !is_std_io<T>;
+    void pop();
+    bool empty() const;
+    size_type size() const;
+    void reset();
+
+    bool is_complete() const;
+    bool auto_close() const;
+    void set_auto_close(bool close);
+    bool sync();
+    bool strict_sync();
+private: void push_impl<T>(const T& t, std::streamsize buffer_size = -1, std:streamsize pback_size = -1);
+    <const> list_type& list() <const>;
+    void register_client(client_type* client);
+    void notify();
+    static void close(streambuf_type* b, ios::openmode m);
+    static void set_next(streambuf_type* b, streambuf_type* next);
+    static void set_auto_close(streambuf_type* b, bool close);
+    struct closer { void operator()(streambuf_type* b); ios::openmode mode_; };
+    enum flags { f_complete=1, f_open=2, f_auto_close=4 };
+    struct chain_impl {
+        ctor() ~dtor(); void close(); void reset();
+        list_type links_; client_type* client_;
+        std::streamsize device_buffer_size_, filter_buffer_size_, pback_size_;
+        int flags_;
+    };
+    shared_ptr<chain_impl> pimpl_;
+};
+
+struct <w>chain<Mode,Ch={char|wchar_t},Tr=std::char_traits<Ch>,Alloc=std::allocator<Ch>>
+    : public chain_base<self,Ch,Tr,Alloc,Mode> {
+    struct category : device_tag, Mode{};
+    using mode = Mode; using char_type = Ch; using traits_type = Tr;
+    using int_type = traits_type::int_type; using off_type = traits_type::off_type;
+    ctor(); ctor(const self& rhs); self& operator=(const self& rhs);
+};
+
+class detail::chain_client<Chain> {
+    using chain_type = Chain; using char_type = Chain::char_type;
+    using traits_type = Chain::traits_type; using size_type = Chain::size_type; using mode = Chain::mode;
+    ctor(chain_type* chn=0); ctor(self* client);
+    virtual ~dtor(){}
+    const typeinfo& component_type(int n) const; const typeinfo& component_type<n>() const;
+    T* component<T>(int n) const; T* component<n,T>() const;
+    bool is_complete() const;
+    bool auto_close() const; void set_auto_close(bool close);
+    bool strict_sync();
+    void set_device_buffer_size(streamsize n);
+    void set_filter_buffer_size(streamsize n);
+    void set_pback_size(streamsize n);
+    void push<C,T>(std::basic_streambuf<C,T>& sb, std::streamsize buffer_size = -1 , std::streamsize pback_size = -1);
+    void push<C,T>(std::basic_istream<C,T>& is , std::streamsize buffer_size = -1 , std::streamsize pback_size = -1);
+    void push<C,T>(std::basic_ostream<C,T>& os , std::streamsize buffer_size = -1 , std::streamsize pback_size = -1);
+    void push<C,T>(std::basic_iostream<C,T>& io , std::streamsize buffer_size = -1 , std::streamsize pback_size = -1);
+    void push<It>(const iterator_range<It>& rng , std::streamsize buffer_size = -1 , std::streamsize pback_size = -1);
+    void push<Pipeline,Concept>(const pipeline<Pipeline,Concept>& p);
+    void push<T>(const T& t , std::streamsize buffer_size = -1 , std::streamsize pback_size = -1) requires !is_std_io<T>;
+    void pop();
+    void empty() const;
+    size_type size() const;
+    void reset();
+    chain_type filters() <const>;
+protected: void push_impl<T>(const T& t, std::streamsize buffer_size = -1 , std::streamsize pback_size = -1);
+    chain_type& ref();
+    void set_chain(chain_type* c);
+    virtual void notify(){}
+private: chain_type* chain_;
+};
+```
+
 ------
 ### Details
 
