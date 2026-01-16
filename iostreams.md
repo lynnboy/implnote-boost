@@ -375,6 +375,953 @@ private: chain_type* chain_;
 };
 ```
 
+#### Char Traits, Code Converter
+
+```c++
+const int WOULD_BLOCK=EOF-1; const std::wint_t WWOULD_BLOCK=WEOF-1;
+struct char_traits<{char|wchar_t}> : std::char_traits<{char|wchar_t}> {
+    static {char|wchar_t} newline();
+    static {int|wint_t} good(), would_block();
+    static bool is_good({int|wint_t} c), is_eof({int|wint_t} c), would_block({int|wint_t} c);
+};
+
+struct code_conversion_error: std::ios::failure { ctor(); };
+struct detail::conversion_buffer<Codecvt,Alloc> : public buffer<codecvt_extern<Codecvt>::type,Alloc> {
+    using state_type = Codecvt::state_type;
+    ctor() : base{0}{reset();}
+    state_type& state();
+    void reset() {if(size()) set(0,0); state_={}; }
+private: state_type state_;
+};
+struct detail::code_converter_impl<Device,Codecvt,Alloc> {
+    using extern_type=codecvt_extern<Codecvt>::type; using device_category=category_of<Device>::type;
+    using mode = select< is_convertible<device_category,bidirectional>, bidirectional,
+                    is_convertible<device_category,input>, input,
+                    is_convertible<device_category,output>, output>::type;
+    using device_type = if_<is_direct<Device>,direct_adapter<Device>,Device>::type;
+    using storage_type = optional<concept_adapter<device_type>>;
+    using is_double = is_convertible<device_category,two_sequence>;
+    using buffer_type = conversion_buffer<Codecvt,Alloc>;
+    ctor(); ~dtor(); // close
+    void open<T>(const T& dev, std::streamsize buffer_size);
+    void close(); void close(ios::openmode which);
+    bool is_open() const;
+    device_type& dev();
+    enum flag_type { f_open=1, f_input_closed=2, f_output_closed=4 };
+    codecvt_holder<Codecvt> cvt_; storage_type dev_; double_object<buffer_type,is_double> buf_; int flags_;
+};
+struct code_converter_base<Device,Codecvt,Alloc> {
+    using impl_type = code_converter_impl<Device,Codecvt,Alloc>;
+    ctor();
+    shared_ptr<impl_type> pimpl_;
+};
+class code_converter<Device,Codecvt=default_codecvt,Alloc=std::allocator<char>> : protected code_converter_base<Device,Codecvt,Alloc> {
+    using device_type = impl_type::device_type; using buffer_type = impl_type::buffer_type;
+    using codecvt_type = codecvt_holder<Codecvt>::codecvt_type;
+    using {in|ex}tern_type = codecvt_{in|ex}tern<Codecvt>::type;
+    using state_type = codecvt_state<Codecvt>::type;
+public: using char_type = intern_type;
+    struct category : impl_type::mode, device_tag, closable_tag, localizable_tag {};
+    ctor();
+    ctor(<const> Device& t, std::streamsize buffer_size = -1); ctor(const reference_wrapper<Device>& ref , std::streamsize buffer_size = -1);
+    void open(<const> Device& t , std::streamsize buffer_size = -1); void open(const reference_wrapper<Device>& ref , std::streamsize buffer_size = -1)
+    ctor<U,[U1],[U2]>(<const> U &u0, <const U1& u1>, <const U2& u2>) requires !same_as<U,Device>;
+    void open<U,[U1],[U2]>(<const> U &u, <const U1& u1>, <const U2& u2>) requires !same_as<U,Device>;
+    bool is_open() const;
+    void close(ios::openmode which=ios::in|ios::out);
+    std::streamsize read(char_type*, std::streamsize); std::streamsize write(const char_type*, std::streamsize);
+    void imbue(const std::locale& loc);
+    Device& operator*(); Device* operator->();
+private: void open_impl<T>(const T& t, std::streamsize buffer_size = -1);
+    const codecvt_type& cvt(); device_type& dev(); buffer_type & in(), out();
+    impl_type& impl();
+};
+```
+
+##### Operations
+
+```c++
+struct detail::custom_tag{};
+struct detail::is_custom<T>; // !is_base_and_derived<custom_tag,operations<T>>
+struct operations<T> : custom_tag{};
+
+// operations
+void close<T>(T& t);
+void close<T>(T& t, ios::openmode which);
+void close<T,Sink>(T& t, Sink& snk, ios::openmode which);
+void detail::close_all<T>(T& t);
+void detail::close_all<T,Sink>(T& t, Sink& snk);
+struct detial::close_boost_stream{}; struct detail::close_filtering_stream{};
+struct detail::close_tag<T> {
+    using category = category_of<T>::type; using unwrapped = unwrapped_type<T>::type;
+    using type = select< not_<is_convertible<category,closable_tag>>, any_tag,
+                        or_<is_boost_stream<unwrapped>,is_boost_stream_buffer<unwrapped>>, close_boost_stream,
+                        or_<is_filtering_stream<unwrapped>,is_filtering_streambuf<unwrapped>>, close_filtering_stream,
+                        or_<is_convertible<category,two_sequence>,is_convertible<category,dual_use>>, two_sequence,
+                        else_, closable_tag>::type;
+};
+struct detail::close_impl<T> : if_<is_custom<T>, operations<T>, close_impl<close_tag<T>::type>>::type{};
+struct detail::close_impl<any_tag> { static void close<T,[Sink]>(T& t, <Sink& snk>, ios::openmode which); }; // flush, `out` only
+struct detail::close_impl<close_boost_stream> { static void close<T,[Sink]>(T& t, <Sink& snk>, ios::openmode which); }; // t.close, `out` only
+struct detail::close_impl<close_filtering_stream> { static void close<T,>(T& t, ios::openmode which); }; // t.pop
+struct detail::close_impl<closable_tag> { static void close<T,[Sink]>(T& t, <Sink& snk>, ios::openmode which); }; // t.close, `in` only
+struct detail::close_impl<two_sequence> { static void close<T,[Sink]>(T& t, <Sink& snk>, ios::openmode which); }; // t.close
+
+bool flush<T>(T& t);
+bool flush<T,Sink>(T& t, Sink& snk);
+struct detail::flush_device_impl<T> : if_<is_custom<T>, operations<T>, flush_device_impl<dispatch<T,ostream_tag,streambuf_tag,flushable_tag,any_tag>::type>>::type{};
+struct detail::flush_device_impl<ostream_tag> { static bool flush<T>(T& t); }; // t.rdbuf()->pubsync()==0;
+struct detail::flush_device_impl<streambuf_tag> { static bool flush<T>(T& t); }; // t.pubsync()==0;
+struct detail::flush_device_impl<flushable_tag> { static bool flush<T>(T& t); }; // t.flush
+struct detail::flush_device_impl<any_tag> { static bool flush<T>(T&); };
+struct detail::flush_filter_impl<T> : if_<is_custom<T>, operations<T>, flush_filter_impl<dispatch<T,flushable_tag,any_tag>::type>>::type{};
+struct detail::flush_device_impl<flushable_tag> { static bool flush<T,Sink>(T& t, Sink& snk); }; // t.flush
+struct detail::flush_device_impl<any_tag> { static bool flush<T,Sink>(T&,Sink&); }; // false
+
+void imbue<T,Locale>(T& t, const Locale& loc);
+struct detail::imbue_impl<T> : if_<is_custom<T>, operations<T>, imbue_impl<dispatch<T,streambuf_tag,localizable_tag,any_tag>::type>>::type{};
+struct detail::imbue_impl<streambuf_tag> { static void imbue<T,L>(T& t, const L& loc); }; // t.pubimbue
+struct detail::imbue_impl<localizable_tag> { static void imbue<T,L>(T& t, const L& loc); }; // t.imbue
+struct detail::imbue_impl<any_tag> { static void imbue<T,L>(T&, const L&); };
+
+std::streamsize optimal_buffer_size<T>(const T& t);
+struct optimal_buffer_size_impl<T> : if_<is_custom<T>, operations<T>, optimal_buffer_size_impl<dispatch<T,optimally_buffered_tag,device_tag,filter_tag>::type>>::type{};
+struct optimal_buffer_size_impl<optimally_buffered_tag> { static streamsize optimal_buffer_size<T>(const T& t); }; // t.optimal_buffer_size;
+struct optimal_buffer_size_impl<device_tag> { static streamsize optimal_buffer_size<T>(const T&); }; // default_device_buffer_size
+struct optimal_buffer_size_impl<filter_tag> { static streamsize optimal_buffer_size<T>(const T&); }; // default_filter_buffer_size
+
+std::pair<char_type_of<T>::type*, char_type_of<T>::type*> input_sequence<T>(T& t);
+struct input_sequence_impl<T> : if_<is_custom<T>, operations<T>, input_sequence_impl<direct_tag>>::type{};
+struct input_sequence_impl<direct_tag> { static std::pair<char_type_of<T>::type*,char_type_of<T>::type*> input_sequence<T>(T& t); }; // t.input_sequence
+
+std::pair<char_type_of<T>::type*, char_type_of<T>::type*> output_sequence<T>(T& t);
+struct output_sequence_impl<T> : if_<is_custom<T>, operations<T>, output_sequence_impl<direct_tag>>::type{};
+struct output_sequence_impl<direct_tag> { static std::pair<char_type_of<T>::type*,char_type_of<T>::type*> output_sequence<T>(T& t); }; // t.output_sequence
+
+int_type_of<T>::type get<T>(T& t);
+std::streamsize read<T>(T& t, char_type_of<T>::type* s, std::streamsize n);
+std::streamsize read<T,Source>(T& t, Source& src, char_type_of<T>::type* s, std::streamsize n);
+bool putback<T>(T& t, char_type_of<T>::type c);
+bool detail::true_eof<T>(T& t); // is_linked<T> ? t.true_eof() : true
+struct detail::read_device_impl<T> : if_<is_custom<T>, operations<T>, read_device_impl<dispatch<T,istream_tag,streambuf_tag,input>::type>>::type{};
+struct detail::read_device_impl<istream_tag> {
+    static int_type_of<T>::type get<T>(T& t); // t.get
+    static streamsize read<T>(T& t, char_type_of<T>::type* s, streamsize n); // t.rdbuf()->sgetn
+    static bool putback<T>(T& t, char_type_of<T>::type c); // t.rdbuf()->sputbackc(c) != eof
+};
+struct detail::read_device_impl<streambuf_tag> {
+    static int_type_of<T>::type get<T>(T& t); // t.sbumpc, would_block if eof
+    static streamsize read<T>(T& t, char_type_of<T>::type* s, streamsize n); // t.sgetn
+    static bool putback<T>(T& t, char_type_of<T>::type c); // t.sputbackc
+};
+struct detail::read_device_impl<input> {
+    static int_type_of<T>::type get<T>(T& t); // t.read
+    static streamsize read<T>(T& t, char_type_of<T>::type* s, streamsize n); // t.read
+    static bool putback<T>(T& t, char_type_of<T>::type c); // t.putback
+};
+struct detail::read_filter_impl<T> : if_<is_custom<T>, operations<T>, read_filter_impl<dispatch<T,multichar_tag,any_tag>::type>>::type{};
+struct detail::read_filter_impl<multichar_tag> { static streamsize read<T,Source>(T& t, Source& src, char_type_of<T>::type* s, streamsize n); }; // t.read
+struct detail::read_filter_impl<any_tag> { static streamsize read<T,Source>(T& t, Source& src, char_type_of<T>::type* s, streamsize n); }; // loop on t.get
+
+bool put<T>(T& t, char_type_of<T>::type c);
+std::streamsize write<T>(T& t, const char_type_of<T>::type* s, std::streamsize n);
+std::streamsize write<T,Sink>(T& t, Sink& snk, const char_type_of<T>::type* s, std::streamsize n);
+struct detail::write_device_impl<T> : if_<is_custom<T>, operations<T>, write_device_impl<dispatch<T,ostream_tag,streambuf_tag,output>::type>>::type{};
+struct detail::write_device_impl<ostream_tag> {
+    static bool put<T>(T& t, char_type_of<T>::type c); // t.rdbuf()->sputc
+    static streamsize write<T>(T& t, const char_type_of<T>::type* s, streamsize n); // t.rdbuf()->sputn
+};
+struct detail::write_device_impl<streambuf_tag> {
+    static bool put<T>(T& t, char_type_of<T>::type c); // t.sputc
+    static streamsize write<T>(T& t, const char_type_of<T>::type* s, streamsize n); // t.sputn
+};
+struct detail::write_device_impl<output> {
+    static bool put<T>(T& t, char_type_of<T>::type c); // t.write
+    static streamsize write<T>(T& t, const char_type_of<T>::type* s, streamsize n); // t.write
+};
+struct detail::write_filter_impl<T> : if_<is_custom<T>, operations<T>, write_filter_impl<dispatch<T,multichar_tag,any_tag>::type>>::type{};
+struct detail::write_filter_impl<multichar_tag> { static streamsize write<T,Sink>(T& t, Sink& snk, const char_type_of<T>::type* s, streamsize n); }; // t.write
+struct detail::write_filter_impl<any_tag> { static streamsize write<T,Sink>(T& t, Sink& snk, const char_type_of<T>::type* s, streamsize n); }; // loop on t.put
+
+std::streampos seek<T>(T& t, stream_offset off, ios::seekdir way, ios::openmode which=ios::in|ios::out);
+std::streampos seek<T,Device>(T& t, Device& dev, stream_offset off, ios::seekdir way, ios::openmode which=ios::in|ios::out);
+struct detail::seek_device_impl<T> : if_<is_custom<T>, operations<T>, seek_device_impl<dispatch<T,iostream_tag,istream_tag,ostream_tag,streambuf_tag,two_head,any_tag>::type>>::type{};
+struct detail::seek_impl_basic_ios { static streampos seek<T>(T& t, stream_offset off, ios::seekdir way, ios::openmode which); }; // t.rdbuf()->pubseekpos/pubseekoff
+struct detail::seek_device_impl<iostream_tag> : seek_impl_basic_ios{};
+struct detail::seek_device_impl<istream_tag> : seek_impl_basic_ios{};
+struct detail::seek_device_impl<ostream_tag> : seek_impl_basic_ios{};
+struct detail::seek_device_impl<streambuf_tag> { static streampos seek<T>(T& t, stream_offset off, ios::seekdir way, ios::openmode which); }; // t.pubseekpos/pubseekoff
+struct detail::seek_device_impl<two_head> { static streampos seek<T>(T& t, stream_offset off, ios::seekdir way, ios::openmode which); }; // t.seek(off,way,which)
+struct detail::seek_device_impl<any_tag> { static streampos seek<T>(T& t, stream_offset off, ios::seekdir way, ios::openmode); }; // t.seek(off,way)
+struct detail::seek_filter_impl<T> : if_<is_custom<T>, operations<T>, seek_filter_impl<dispatch<T,two_head,any_tag>::type>>::type{};
+struct detail::seek_filter_impl<two_head> { static streampos seek<T,Device>(T& t, Device& d, stream_offset off, ios::seekdir way, ios::openmode which); }; // t.seek(d, off,way,which)
+struct detail::seek_filter_impl<any_tag> { static streampos seek<T,Device>(T& t, Device& d, stream_offset off, ios::seekdir way, ios::openmode); }; // t.seek(d, off,way)
+
+// checked operations
+int_type_of<T>::type get_if<T>(T& t);
+std::streamsize read_if<T>(T& t, char_type_of<T>::type* s, std::streamsize n);
+bool put_if<T>(T& t, char_type_of<T>::type c);
+std::streamsize write_if<T>(T& t, const char_type_of<T>::type* s, std::streamsize n);
+std::streampos seek_if<T>(T& t, stream_offset off, ios::seekdir way, ios::openmode which=ios::in|ios::out);
+struct detail::read_write_if_impl<input> {
+    static int_type_of<T>::type get<T>(T& t); // get(t)
+    static streamsize read<T>(T& t, char_type_of<T>::type* s, streamsize n); // read(t,s,n)
+    static bool put<T>(T&, char_type_of<T>::type); // throw_exception(cant_write())
+    static streamsize write<T>(T&, const char_type_of<T>::type*, streamsize n); // throw_exception(cant_write())
+};
+struct detail::read_write_if_impl<output> {
+    static int_type_of<T>::type get<T>(T&); // throw_exception(cant_read())
+    static streamsize read<T>(T&, char_type_of<T>::type*, streamsize); // throw_exception(cant_read())
+    static bool put<T>(T& t, char_type_of<T>::type c); // put(t,c)
+    static streamsize write<T>(T& t, const char_type_of<T>::type* s, streamsize n); // write(t,s,n)
+};
+struct detail::seek_if_impl<random_access> { static streampos seek<T>(T& t, stream_offset off, ios::seekdir way, ios::openmode which); }; // seek(t,off,way,which)
+struct detail::seek_if_impl<any_tag> { static streampos seek<T>(T&, stream_offset, ios::seekdir, ios::openmode); }; // throw_exception(cant_seek())
+```
+
+------
+### Devices
+
+```c++
+// array
+struct detail::array_adapter<Mode,Ch> {
+    using char_type = Ch; using pair_type = std::pair<char_type*,char_type*>;
+    struct category : Mode, device_tag, direct_tag{};
+    ctor(<const> char_type* begin, <const> char_type* end);
+    ctor(<const> char_type* begin, size_t length);
+    ctor<n>(char_type (&ar)[n]);
+    pair_type input_sequence(), output_sequence();
+private: char_type *begin_, *end_;
+};
+struct basic_array_source<Ch> : array_adapter<input_seekable,Ch> {};
+struct basic_array_sink<Ch> : array_adapter<output_seekable,Ch> {};
+struct basic_array<Ch> : array_adapter<seekable,Ch> {};
+using array_source = basic_array_source<char>; using warray_source = basic_array_source<wchar_t>;
+using array_sink = basic_array_sink<char>; using warray_sink = basic_array_sink<wchar_t>;
+using array = basic_array<char>; using warray = basic_array<wchar_t>;
+
+// back_inserter
+struct back_insert_device<Container> {
+    using char_type = Container::value_type; using category = sink_tag;
+    ctor(Container& cnt);
+    std::streamsize write(const char_type* s, std::streamsize n); // container->insert at end
+protected: Container* container;
+};
+back_insert_device<Container> back_inserter<Container>(Container& cnt);
+
+// file
+struct basic_file<Ch> {
+    using char_type = Ch;
+    struct category : seekable_device_tag, closable_tag, localizable_tag, flushable_tag{};
+    ctor(const std::string& path, ios::openmode mode=ios::in|ios::out, ios::openmode base_mode=ios::in|ios::out);
+    streamsize read(char_type* s, streamsize n);
+    bool putback(char_type c);
+    streamsize write(stream_offset off, ios::seekdir way, ios::openmode which=ios::in|ios::out);
+    void open(const std::stream& path, ios::openmode mode=ios::in|ios::out, ios::openmode base_mode=ios::in|ios::out);
+    bool is_open() const;
+    void close();
+    bool flush();
+    void imbue(const std::locale& loc);
+private: struct impl {
+        ctor(const std::string& path, ios::openmode mode); ~dtor(); // open && close
+        std::basic_filebuf<Ch> file_;
+    };
+    shared_ptr<impl> pimpl_;
+};
+using file = basic_file<char>; using wfile = basic_file<wchar_t>;
+
+struct basic_file_source<Ch> : private basic_file<Ch> {
+    using char_type = Ch;
+    struct category : input_seekable, device_tag, closable_tag{};
+    using base::read; // putback, seek, is_open, close
+    ctor(const std::string& path, ios::openmode mode=ios::in);
+    void open(const std::stream& path, ios::openmode mode=ios::in);
+};
+using file_source = basic_file_source<char>; using wfile_source = basic_file_source<wchar_t>;
+
+struct basic_file_sink<Ch> : private basic_file<Ch> {
+    using char_type = Ch;
+    struct category : output_seekable, device_tag, closable_tag, flushable_tag{};
+    using base::write; // seek, is_open, close, flush
+    ctor(const std::string& path, ios::openmode mode=ios::out);
+    void open(const std::stream& path, ios::openmode mode=ios::out);
+};
+using file_sink = basic_file_sink<char>; using wfile_sink = basic_file_sink<wchar_t>;
+
+// null
+struct basic_null_device<Ch,Mode> {
+    using char_type = Ch;
+    struct category : Mode, device_tag, closable_tag{};
+    streamsize read(Ch*, streamsize) { return -1; }
+    streamsize write(const Ch*, streamsize n) { return n; }
+    streampos seek(stream_offset, ios::seekdir, ios::openmode=ios::in|ios::out) { return -1; }
+    void close(){} void close(ios::openmode){}
+};
+struct basic_null_source<Ch> : private basic_null_device<Ch,input>
+{ using char_type = Ch; using category = source_tag; using base::read; using base::close; };
+using null_source = basic_null_source<char>; using wnull_source = basic_null_device<wchar_t>;
+struct basic_null_sink<Ch> : private basic_null_device<Ch,output>
+{ using char_type = Ch; using category = sink_tag; using base::write; using base::close; };
+using null_sink = basic_null_sink<char>; using wnull_sink = basic_null_sink<wchar_t>;
+
+// file descriptor
+enum file_descriptor_flags { never_close_handle = 0, close_handle = 3 };
+struct file_descriptor {
+    using handle_type = file_handle; using char_type = char;
+    struct category : seekable_device_tag, closable_tag{};
+    ctor(); ctor(const self& other);
+    ctor(handle_type fd, file_descriptor_flags);
+    explicit ctor(const {std::string&|char*} path, ios::openmode mode=ios::in|ios::out);
+    explicit ctor<Path>(const Path& path, ios::openmode mode=ios::in|ios::out);
+    void open(handle_type fd, file_descriptor_flags);
+    void open(const {std::string&|char*} path, ios::openmode mode=ios::in|ios::out);
+    void open<Path>(const Path& path, ios::openmode mode=ios::in|ios::out);
+    bool is_open() const;
+    void close();
+    streamsize read(char_type* s, streamsize n);
+    streamsize write(const char_type* s, streamsize n);
+    streampos seek(stream_offset off, ios::seekdir way);
+    handle_type handle() const;
+private: void init(); void open(const path& path, ios::openmode, ios::openmode={0});
+    shared_ptr<file_descriptor_impl> pimpl_;
+};
+struct file_descriptor_source : private file_descriptor {
+    using handle_type = file_handle; using char_type = char;
+    struct category : input_seekable, device_tag, closable_tag{};
+    using base::ctor; // is_open, close, read, seek, handle, open, openmode=ios::in
+};
+struct file_descriptor_sink : private file_descriptor {
+    using handle_type = file_handle; using char_type = char;
+    struct category : output_seekable, device_tag, closable_tag{};
+    using base::ctor; // is_open, close, write, seek, handle, open, openmode=ios::out
+};
+
+// mapped file
+struct mapped_file_base { enum mapmode { readonly=1, readwrite=2, priv=4 }; };
+mapped_file_base::mapmode operator {|,&,^} (mapped_file_base::mapmode a, mapped_file_base::mapmode b)
+mapped_file_base::mapmode operator ~ (mapped_file_base::mapmode a)
+mapped_file_base::mapmode operator {|=,&=,^=} (mapped_file_base::mapmode& a, mapped_file_base::mapmode b)
+
+struct detail::mapped_file_params_base {
+    void normalize();
+    mapped_file_base::mapmode flags{0}; ios::openmode mode{};
+    stream_offset offset{0}; size_t length{-1}; stream_offset new_file_size{0}; const char* hint{0};
+};
+struct basic_mapped_file_params<Path> : mapped_file_params_base {
+    ctor(); explicit ctor(const Path& p); explicit ctor<Path2>(const Path2& p);
+    ctor(const self& other); ctor<Path2>(const self<Path2>& other);
+    using path_type = Path;
+    Path path;
+};
+using mapped_file_params = basic_mapped_file_params<std::string>;
+
+class mapped_file_source : public mapped_file_base {
+    using impl_type = mapped_file_impl; using param_type = basic_mapped_file_params<path>;
+public: using char_type = char; using size_type = size_t; using iterator = const char*;
+    struct category : source_tag, direct_tag, closable_tag{};
+    constexpr static size_type max_length = size_type{-1};
+    ctor(); ctor(const self& other);
+    explicit ctor<Path>(const basic_mapped_file_params<Path>& p);
+    explicit ctor<Path>(const Path& path, size_type length=max_length, intmax_t offset=0);
+    void open<Path>(const basic_mapped_file_params<Path>& p);
+    void open<Path>(const Path& path, size_type length=max_length, intmax_t offset=0);
+    bool is_open() const;
+    void close();
+    explicit operator bool() const; bool operator!() const;
+    mapmode flags() const;
+    size_type size() const;
+    const char* data() const;
+    iterator begin() const; iterator end() const;
+    static int alignment();
+private: void init(); void open_impl(const param_type& p);
+    shared_ptr<impl_type> pimpl_;
+};
+
+class mapped_file : public mapped_file_base {
+    using delegate_type = mapped_file_source; using param_type = basic_mapped_file_params<path>;
+public: using char_type = char; using size_type = size_t; using <const>_iterator = <const> char*;
+    struct category : seekable_device_tag, direct_tag, closable_tag{};
+    constexpr static size_type max_length = delegate_type::max_length;
+    ctor(); ctor(const self& other);
+    explicit ctor<Path>(const basic_mapped_file_params<Path>& p);
+    ctor<Path>(const Path& path, mapmode flags, size_type length=max_length, stream_offset offset=0);
+    explicit ctor<Path>(const Path& path, ios::openmode mode=ios::in|ios::out, size_type length=max_length, stream_offset offset=0);
+    operator <const> mapped_file_source& () <const>;
+    void open<Path>(const basic_mapped_file_params<Path>& p);
+    void open<Path>(const Path& path, mapmode mode, size_type length=max_length, stream_offset offset=0);
+    void open<Path>(const Path& path, ios::openmode mode=ios::in|ios::out, size_type length=max_length, stream_offset offset=0);
+    bool is_open() const;
+    void close();
+    explicit operator bool() const; bool operator!() const;
+    mapmode flags() const;
+    size_type size() const;
+    <const> char* <const>_data() const;
+    <const>_iterator <const>_begin() const; <const>_iterator <const>_end() const;
+    static int alignment();
+    void resize();
+private: void init(); void open_impl(const param_type& p);
+    delegate_type delegate_;
+};
+
+class mapped_file_sink : private mapped_file {
+    using base::mapmode, readonly, readwrite, priv, char_type, size_type, iterator, max_length;
+    struct category : sink_tag, direct_tag, closable_tag{};
+    using base::is_open, close, operator bool, operator!, flags, size, data, begin, end, alignment, resize;
+    ctor(); ctor(const self& other);
+    explicit ctor<Path>(const basic_mapped_file_params<Path>& p);
+    ctor<Path>(const Path& path, size_type length=max_length, stream_offset offset=0, mapmode flags=readwrite);
+    void open<Path>(const basic_mapped_file_params<Path>& p);
+    void open<Path>(const Path& path, size_type length=max_length, stream_offset offset=0, mapmode flags=readwrite);
+};
+
+struct operations<mapped_file_source> : close_impl<closable_tag> { static std::pair<char*,char*> input_sequence(mapped_file_source& src); };
+struct operations<mapped_file> : close_impl<closable_tag> { static std::pair<char*,char*> {input|output}_sequence(mapped_file& file); };
+struct operations<mapped_file_sink> : close_impl<closable_tag> { static std::pair<char*,char*> output_sequence(mapped_file& file); };
+```
+
+------
+### Filters
+
+#### Filter Pipeline
+
+```c++
+struct detail::pipeline_segment<Component> { // no copy assign
+    ctor(const Component& component);
+    void for_each<Fn>(Fn fn) const { fn(component_); }
+    void push<Chain>(Chain chn) const { chn.push(component_); }
+private: const Component& component_;
+};
+struct pipeline<Pipeline,Component> : Pipeline { // no copy assign
+    using pipeline_type = Pipeline; using component_type = Component;
+    ctor(const Pipeline& p, const Component& component);
+    void for_each<Fn>(Fn fn) const { base::for_each(fn); fn(component_); }
+    void push<Chain>(Chain& chn) const { base::oush(chn); chn.push(component_); }
+    const Pipeline& tail() const { return *this; }
+    const Component& head() const { return component_; }
+private: const Component& component_;
+};
+pipeline<pipeline<P,F>,C> operator| <P,F,C> (const pipeline<P,F>& p, const C& c);
+```
+
+#### Helper Filter Base Classes
+
+```c++
+// line
+struct basic_line_filter<Ch,Alloc=std::allocator<Ch>> {
+    using char_type = Ch; using traits_type = char_traits<char_type>;
+    using string_type = std::basic_string<Ch,std::char_traits<Ch>,Alloc>;
+    struct category : dual_use, filter_tag, multichar_tag, closable_tag {};
+protected: ctor(bool suppress_newlines=false);
+public: virtual ~dtor(){}
+    streamsize read<Source>(Source& src, char_type* s, streamsize n);
+    streamsize write<Sink>(Sink& src, const char_type* s, streamsize n);
+    void close<Sink>(Sink& snk, ios::openmode which);
+private: virtual string_type do_filter(const string_type& line) =0;
+    streamsize read_line(char_type* s, streamsize n);
+    traits_type::int_type next_line<Source>(Source& src);
+    bool write_line<Sink>(Sink& snk);
+    void close_impl(); void clear();
+    enum flag_type { f_read=1, f_write=2, f_suppress=4 };
+    string_type cur_line_; string_type::size_type pos_; int flags_;
+};
+pipeline<pipeline_segment<basic_line_filter<T0,T1>>, C> operator|( const basic_line_filter<T0,T1>& f, const C& c);
+using line_filter = basic_line_filter<char>; using wline_filter = basic_line_filter<wchar_t>;
+
+// aggregate
+struct aggregate_filter<Ch,Alloc=std::allocator<Ch>> {
+    using char_type = Ch;
+    struct category : dual_use, filter_tag, multichar_tag, closable_tag {};
+    ctor(); virtual ~dtor(){}
+    streamsize read<Source>(Source& src, char_type* s, streamsize n);
+    streamsize write<Sink>(Sink& src, const char_type* s, streamsize n);
+    void close<Sink>(Sink& snk, ios::openmode which);
+protected: using vector_type = std::vector<Ch,Alloc>; using size_type = vector_type::size_type;
+private: virtual void do_filter(const vector_type& src, vector_type& dest) =0;
+    virtual void do_close(){}
+    void do_read<Source>(Source& src);
+    void do_write<Sink>(Sink& snk, const char_type* s, streamsize n);
+    void close_impl();
+    enum flag_type { f_read=1, f_write=2, f_eof=4 };
+    vector_type data_; size_type ptr_; int state_;
+};
+pipeline<pipeline_segment<aggregate_filter<T0>>, C> operator|( const aggregate_filter<T0>& f, const C& c);
+
+// symmetric_filter
+struct symmetric_filter<SymF,Alloc=std::allocator<char_type_of<SymF>::type>> {
+    using char_type = char_type_of<SymF>::type; using traits_type = std::char_traits<char_type>;
+    using string_type = std::basic_string<char_type, traits_type, Alloc>;
+    struct category : dual_use, filter_tag, multichar_tag, closable_tag {};
+    explicit ctor<...T>(std::streamsize buffer_size, const T&...t);
+    streamsize read<Source>(Source& src, char_type* s, streamsize n);
+    streamsize write<Sink>(Sink& src, const char_type* s, streamsize n);
+    void close<Sink>(Sink& snk, ios::openmode which);
+private: using buffer_type = buffer<char_type,Alloc>;
+    <const> buffer_type& buf() <const>;
+    int& state();
+    void begin_read(); void begin_write();
+    int fill<Source>(Source& src);
+    bool flush<Sink>(Sink& snk);
+    void close_impl();
+    enum flag_type { f_read=1, f_write=2, f_eof=4, f_good, f_would_block };
+    struct impl : SymF { ctor<...T>(streamsize buffer_size, const T&...t); buffer_type buf_; int state_; };
+    shared_ptr<impl> pimpl_;
+};
+pipeline<pipeline_segment<symmetric_filter<T0,T1>>, C> operator|( const symmetric_filter<T0,T1>& f, const C& c);
+
+// stdio
+class basic_stdio_filter<Ch,Alloc=std::allocator<Ch>> : public aggregate_filter<Ch,Alloc> {
+    static std::<w>istream& standard_input({char|wchar_t}*); // cin/wcin
+    static std::<w>ostream& standard_output({char|wchar_t}*); // cout/wcout
+    struct scoped_redirector{ using traits_type = std::char_traits<Ch>;
+        using ios_type = std::basic_ios<Ch,traits_type>; using streambuf_type = std::basic_streambuf<Ch,traits_type>;
+        ctor(ios_type& ios, streambuf_type* newbuf) : ios_{ios}, old_{ios.rdbuf(newbuf)}{} // change to newbuf
+        ~dtor() { ios_.rdbuf(old_); } // set back
+        ios_type& ios_; streambuf_type* old_;
+    };
+    virtual void do_filter() =0;
+    virtual void do_filter(const vector_type& src, vector_type& dest);
+};
+pipeline<pipeline_segment<basic_stdio_filter<T0,T1>>, C> operator|( const basic_stdio_filter<T0,T1>& f, const C& c);
+using stdio_filter = basic_stdio_filter<char>; using wstdio_filter = basic_stdio_filter<wchar_t>;
+```
+
+#### Text Filters
+
+```c++
+// counter
+struct basic_counter<Ch> {
+    using char_type = Ch;
+    struct category : dual_use, filter_tag, multichar_tag, optimally_buffered_tag{};
+    explicit ctor(int first_line=0, int first_char=0);
+    int lines() const; int characters() const;
+    streamsize optimal_buffer_size() const { return 0; }
+    streamsize read<Source>(Source& src, char_type* s, streamsize n);
+    streamsize write<Sink>(Sink& snk, const char_type* s, streamsize n);
+private: int lines_, chars_;
+};
+pipeline<pipeline_segment<basic_counter<T0>>, C> operator|( const basic_counter<T0>& f, const C& c);
+using counter = basic_counter<char>; using wcounter = basic_counter<wchar_t>;
+
+// regex
+struct basic_regex_filter<Ch,Tr=regex_traits<Ch>,Alloc=std::allocator<Ch>> : public aggregate_filter<Ch,Alloc> {
+    using string_type = std::basic_string<Ch>; using regex_type = basic_regex<Ch,Tr>;
+    using flag_type = regex_constants::match_flag_type; using match_type = match_results<const Ch*>;
+    using formatter = function<string_type<const match_type&>>;
+    ctor(const regex_type& re, const formatter& replace, flat_type flags=match_default);
+    ctor(const regex_type& re, const {string_type&|char_type*} fmt, flat_type flags=match_default, flag_type fmt_flags=format_default);
+private: void do_filter(const vector_type& src, vector_type& dest);
+    struct simple_formatter {
+        string_type operator()(const match_type& match) const;
+        string_type fmt_; flag_type fmt_flags_;
+    };
+    regex_type re_; formatter replace_; flag_type flags_;
+};
+pipeline<pipeline_segment<basic_regex_filter<T0,T1,T2>>, C> operator|( const basic_regex_filter<T0,T1,T2>& f, const C& c);
+using regex_filter = basic_regex_filter<char>; using wregex_filter = basic_regex_filter<wchar_t>;
+
+// grep
+const int grep::invert=1, whole_line=2;
+struct basic_grep_filter<Ch,Tr=regex_traits<Ch>,Alloc=std::allocator<Ch>> : public basic_line_filter<Ch,Alloc> {
+    using traits_type = char_traits<char_type>; using string_type = std::basic_string<Ch>;
+    using regex_type = basic_regex<Ch,Tr>; using match_flag_type = regex_constants::match_flag_type;
+    ctor(const regex_type& re, match_flat_type matchflags=match_default, int options=0);
+    int count() const;
+    void close<Sink>(Sink& snk, ios::openmode which);
+private: void do_filter(const string_type& line);
+    enum flags_ { f_initialized = 65536 };
+    regex_type re_; match_flag_type match_flags_; int options_, count_;
+};
+pipeline<pipeline_segment<basic_grep_filter<T0,T1,T2>>, C> operator|( const basic_grep_filter<T0,T1,T2>& f, const C& c);
+using grep_filter = basic_grep_filter<char>; using wgrep_filter = basic_grep_filter<wchar_t>;
+
+// newline
+const char newline::CR=0x0D, LF=0x0A;
+const int newline::posix=1, mac=2, dos=4, mixed=8, final_newline=16, platform_mask=posix|dos|mac;
+struct detail::newline_base {
+    bool is_posix() const; bool is_dos() const; bool is_mac() const;
+    bool is_mixed_posix() const; bool is_mixed_dos() const; bool is_mixed_mac() const;
+    bool is_mixed() const;
+    bool has_final_newline() const;
+protected: ctor(int flags);
+    int flags_;
+};
+class newline_error : public std::ios::failure, public newline_base { ctor(int flags); };
+struct newline_filter {
+    using char_type = char;
+    struct category : dual_use, filter_tag, closable_tag {};
+    explicit ctor(int target);
+    int get<Source>(Source& src);
+    bool put<Sink>(Sink& dest, char c);
+    void close<Sink>(Sink& dest, ios::openmode);
+private: int newline();
+    bool newline<Sink>(Sink& dest);
+    void newline_if_sink<Device>(Device& dest);
+    enum flags { f_has_LF=0x8000, f_has_CR=0x10000, f_has_newline=0x20000, f_has_EOF=0x40000, f_read=0x80000, f_write=0x100000 };
+    int flags_;
+};
+pipeline<pipeline_segment<basic_grep_filter>, C> operator|( const basic_grep_filter& f, const C& c);
+
+struct newline_checker : public newline_base {
+    using char_type = char;
+    struct category : dual_use_filter_tag, closable_tag {};
+    explicit ctor(int target=newline::mixed);
+    int get<Source>(Source& src);
+    bool put<Sink>(Sink& dest, int c);
+    void close<Sink>(Sink&, ios::openmode);
+private: void fail(){ throw_exception(newline_error(source())); }
+    int& source(); int source() const;
+    enum flags { f_has_CR=0x8000, f_line_complete=0x10000 };
+    int target_; bool open_;
+};
+pipeline<pipeline_segment<newline_checker>, C> operator|( const newline_checker& f, const C& c);
+```
+
+#### Compression Filters
+
+```c++
+// bzip2
+using bzip2::alloc_func = void* (*) (void*,int,int); using bzip2::free_func = void (*)(void*, void*);
+extern const int bzip2::ok, run_ok, flush_ok, finish_ok, stream_end, sequence_error, param_error, mem_error,
+    data_error, data_error_magic, io_error, unexpected_eof, outbuf_full, config_error;
+extern const int bzip2::finish, run;
+const int bzip2::default_block_size=9, default_work_factor=30;
+const bool bzip2::default_small=false;
+
+struct bzip2_params {
+    ctor(int block_size_=bzip2::default_block_size, int work_factor_=bzip2::default_work_factor);
+    ctor(bool small);
+    union { int block_size; bool small; }; int work_factor;
+};
+struct bzip2_error : public std::ios::failure {
+    explicit ctor(int error);
+    int error() const;
+    static void check(int error);
+private: int error_;
+};
+struct detail::bzip2_allocator_traits<Alloc> { using type = std::allocator_traits<Alloc>::rebind_alloc<char>; };
+struct detail::bzip2_allocator<Alloc> : bzip2_allocator_traits<Alloc>::type {
+    static constexpr bool custom=!is_same_v<std::allocator<char>,base>;
+    using allocator_type = base;
+    static void* allocate(void* self, int items, int size);
+    static void deallocate(void* self, void* address);
+};
+struct detail::bzip2_base {
+    using char_type = char;
+protected: ctor(const bzip2_params& params); ~dtor();
+    bzip2_params& params(); bool& ready();
+    void init<Alloc>(bool compress, bzip2_allocator<Alloc>& alloc);
+    void before(const char*& src_begin, const char* src_end, char*& dest_begin, char* dest_end);
+    void after(const char*& src_begin, char*& dest_begin);
+    int check_end(const char* src_begin, const char* dest_begin);
+    int compress(int action); int decompress();
+    int end(bool compress, std::nothrow_t); void end(bool compress);
+private: void do_init(bool compress, bzip2::alloc_func, bzip2::free_func, void* derived);
+    bzip2_params params_; void* stream_; bool ready_;
+};
+struct detail::bzip2_compressor_impl<Alloc=std::allocator<char>> : public bzip2_base, bzip2_allocator<Alloc> {
+    ctor(const bzip2_params&); ~dtor();
+    bool filter(const char*& src_begin, const char* src_end, char*& dest_begin, char* dest_end, bool flush);
+    void close();
+private: void init();
+    bool eof_;
+};
+struct detail::bzip2_decompressor_impl<Alloc=std::allocator<char>> : public bzip2_base, bzip2_allocator<Alloc> {
+    ctor(bool small=bzip2::default_small); ~dtor();
+    bool filter(const char*& src_begin, const char* src_end, char*& dest_begin, char* dest_end, bool flush);
+    void close();
+private: void init();
+    bool eof_;
+};
+
+struct basic_bzip2_compressor<Alloc=std::allocator<char>> : symmetric_filter<bzip2_compressor_impl<Alloc>,Alloc> {
+    ctor(const bzip2_params&=bzip2::default_block_size, streamsize buffer_size=default_device_buffer_size);
+};
+pipeline<pipeline_segment<basic_bzip2_compressor<T0>>, C> operator|( const basic_bzip2_compressor<T0>& f, const C& c);
+using bzip2_compressor = basic_bzip2_compressor<>;
+
+struct basic_bzip2_decompressor<Alloc=std::allocator<char>> : symmetric_filter<bzip2_decompressor_impl<Alloc>,Alloc> {
+    ctor(bool small=bzip2::default_small, streamsize buffer_size=default_device_buffer_size);
+};
+pipeline<pipeline_segment<basic_bzip2_decompressor<T0>>, C> operator|( const basic_bzip2_decompressor<T0>& f, const C& c);
+using bzip2_decompressor = basic_bzip2_decompressor<>;
+
+// zlib
+using zlib::uint = uint32_t; using zlib::byte = uint8_t; using zlib::ulong = uint32_t;
+using zlib::xalloc_func = void* (*)(void*, zlib::uint, zlib::uint); using zlib::xfree_func = void (*)(void*, void*);
+extern const int zlib::no_compression, best_speed, best_compression, default_compression;
+extern const int zlib::deflated;
+extern const int zlib::default_strategy, filtered, huffman_only;
+extern const int zlib::okay, stream_end, stream_error, version_error, data_error, mem_error, buf_error;
+extern const int zlib::finish, no_flush, sync_flush;
+const int zlib::null=0, default_window_bits=15, default_mem_level=8;
+const bool zlib::default_crc=false, default_noheader=false;
+
+struct zlib_params {
+    int level=default_compression, method=deflated, window_bits=default_window_bits, mem_level=default_mem_level, strategy=default_strategy;
+    bool noheader=default_noheader, calculate_crc=default_crc;
+};
+struct zlib_error : public std::ios::failure {
+    explicit ctor(int error);
+    int error() const;
+    static void check(int error);
+private: int error_;
+};
+struct detail::zlib_allocator_traits<Alloc> { using type = std::allocator_traits<Alloc>::rebind_alloc<char>; };
+struct detail::zlib_allocator<Alloc> : private zlib_allocator_traits<Alloc>::type {
+    constexpr static bool custom = !is_same_v<std::allocator<char>,base>;
+    using allocator_type = base;
+    static void* allocate(void* self, zlib::uint items, zlib::uint size);
+    static void deallocate(void* self, void* address);
+};
+struct detail::zlib_base {
+    using char_type = char;
+protected: ctor() ~dtor();
+    void* stream();
+    void init<Alloc>(const zlib_params& p, bool compress, zlib_allocator<Alloc>& zalloc);
+    void before(const char*& src_begin, const char* src_end, char*& dest_begin, char* dest_end);
+    void after(const char*& src_begin, char*& dest_begin, bool compress);
+    int xdeflate(int flush); int xinflate(int flush);
+    void reset(bool compress, bool realloc);
+public: zlib::ulong crc() const; int total_in() const; int total_out() const;
+private: void do_init(const zlib_params& p, bool compress, zlib::xalloc_func, zlib::xfree_func, void* derived);
+    void* stream_; bool calculate_crc_; zlib::ulong crc_, crc_imp_; int total_in_, total_out_;
+};
+struct detail::zlib_compressor_impl<Alloc=std::allocator<char>> : public zlib_base, public zlib_allocator<Alloc> {
+    ctor(const zlib_params&=zlib::default_compression); ~dtor();
+    bool filter(const char*& src_begin, const char* src_end, char*& dest_begin, char* dest_end, bool flush);
+    void close();
+};
+struct detail::zlib_decompressor_impl<Alloc=std::allocator<char>> : public zlib_base, public zlib_allocator<Alloc> {
+    ctor(const zlib_params&); ctor(int window_bits=zlib::default_window_bits); ~dtor();
+    bool filter(const char*& src_begin, const char* src_end, char*& dest_begin, char* dest_end, bool flush);
+    void close();
+    bool eof() const;
+private: bool eof_;
+};
+struct basic_zlib_compressor<Alloc=std::allocator<char>> : symmetric_filter<zlib_compressor_impl<Alloc>,Alloc> {
+    ctor(const zlib_params&=zlib::default_compression, streamsize buffer_size=default_device_buffer_size);
+    zlib::ulong crc(); int total_in();
+};
+pipeline<pipeline_segment<basic_zlib_compressor<T0>>, C> operator|( const basic_zlib_compressor<T0>& f, const C& c);
+using zlib_compressor = basic_zlib_compressor<>;
+
+struct basic_zlib_decompressor<Alloc=std::allocator<char>> : symmetric_filter<basic_zlib_decompressor<Alloc>,Alloc> {
+    ctor(int window_bits=zlib::default_window_bits, streamsize buffer_size=default_device_buffer_size);
+    ctor(const zlib_params& p, streamsize buffer_size=default_device_buffer_size);
+    zlib::ulong crc(); int total_out(); bool eof();
+};
+pipeline<pipeline_segment<basic_zlib_decompressor<T0>>, C> operator|( const basic_zlib_decompressor<T0>& f, const C& c);
+using zlib_decompressor = basic_zlib_decompressor<>;
+
+// gzip
+namespace gzip { using namespace zlib; }
+const int gzip::zlib_error=1, bad_crc=2, bad_length=3, bad_header=4, bad_footer=5, bad_method=6;
+const int gzip::magic::id1=0x1f, id2=0x8b;
+const int gzip::method::deflate=8;
+const int gzip::flags::text=1, header_crc=2, extra=4, name=8, comment=16;
+const int gzip::extra_flags::best_compression=2, best_speed=4;
+const int gzip::os_fat=0, os_amiga=1, os_vms=2, os_unix=3, os_vm_cms=4, os_atari=5, os_hpfs=6, os_macintosh=7,
+    os_z_system=8, os_cp_m=9, os_tops_20=10, os_ntfs=11, os_qdos=12, os_acorn=13, os_unknown=255;
+struct gzip_params : zlib_params {
+    std::string file_name="", comment=""; std::time_t mtime=0;
+};
+struct gzip_error : public std::ios::failure {
+    explicit ctor(int error); explicit ctor(const zlib_error& e)
+    int error() const; int zlib_error_code() const;
+private: int error_, zlib_error_code_;
+};
+struct basic_gzip_compressor<Alloc=std::allocator<char>> : basic_zlib_compressor<Alloc> {
+    using char_type = char;
+    struct category : dual_use, filter_tag, multichar_tag, closable_tag {};
+    ctor(const gzip_params&=gzip::default_compression, streamsize buffer_size=default_device_buffer_size);
+    streamsize read<Source>(Source& src, char_type* s, streamsize n);
+    streamsize write<Sink>(Sink& snk, const char_type* s, streamsize n);
+    void close<Sink>(Sink& snk, ios::openmode m);
+private: static gzip_params normalize_params(gzip_params p);
+    void prepare_footer();
+    streamsize read_string(char* s, streamsize n, std::string& str);
+    static void write_long<Sink>(long n, Sink& next);
+    void close_impl();
+    enum state_type { f_header_done=1, f_body_done=2, f_footer_done=4 };
+    std::string header_, footer_; size_t offset_; int flags_;
+};
+pipeline<pipeline_segment<basic_gzip_compressor<T0>>, C> operator|( const basic_gzip_compressor<T0>& f, const C& c);
+using gzip_compressor = basic_gzip_compressor<>;
+
+struct detail::gzip_header {
+    ctor() {reset();}
+    void process(char c);
+    bool done() const;
+    void reset();
+    std::string file_name() const; std::string comment() const;
+    bool text() const; int os() const; time_t mtime() const;
+private: enum state_type { s_id1=1, s_id2, s_cm, s_flg, s_mtime, s_xfl, s_os, s_xlen, s_extra, s_name, s_comment, s_hcrc, s_done };
+    std::string file_name_, comment_; int os_; time_t mtime_;
+    int flags_, state_, offset_, xlen_;
+};
+struct detail::gzip_footer {
+    ctor() {reset();}
+    void process(char c);
+    bool done() const;
+    void reset();
+    zlib::ulong crc() const; zlib::ulong uncompressed_size() const;
+private: enum state_type { s_crc=1, s_isize, s_done };
+    zlib::ulong crc_, isize_; int state_, offset_;
+};
+struct basic_gzip_decompressor<Alloc=std::allocator<char>> : basic_zlib_decompressor<Alloc> {
+    using char_type = char;
+    struct category : dual_use, filter_tag, multichar_tag, closable_tag {};
+    ctor(int window_bits=gzip::default_window_bits, streamsize buffer_size=default_device_buffer_size);
+    streamsize read<Source>(Source& src, char_type* s, streamsize n);
+    streamsize write<Sink>(Sink& snk, const char_type* s, streamsize n);
+    void close<Sink>(Sink& snk, ios::openmode m);
+    std::string file_name() const; std::string comment() const;
+    bool text() const; int os() const; time_t mtime() const;
+private: static gzip_params make_params(int window_bits);
+    struct peekable_source<Source> {
+        using char_type = char;
+        struct category : source_tag, peekable_tag{};
+        explicit ctor(Source& src, const string_type& putback="");
+        streamsize read(char* s, streamsize n);
+        bool putback(char c); void putback(const string_type& s);
+        bool has_unconsumed_input() const; string_type unconsumed_input() const;
+        Source& src_; string_type putback_; streamsize offset_;
+    };
+    enum state_type { s_start=1, s_header, s_body, s_footer, s_done };
+    gzip_header header_; gzip_footer footer_; string_type putback_; int state_;
+};
+pipeline<pipeline_segment<basic_gzip_decompressor<T0>>, C> operator|( const basic_gzip_decompressor<T0>& f, const C& c);
+using gzip_decompressor = basic_gzip_decompressor<>;
+
+// lzma
+using lzma::alloc_func = void* (*)(void*, size_t, size_t); using lzma::free_func = void (*)(void*, void*);
+extern const int lzma::no_compression, best_speed, best_compression, default_compression;
+extern const int lzma::okay, stream_end, unsupported_check, mem_error, options_error, data_error, buf_error, prog_error;
+extern const int lzma::finish, full_flush, sync_flush, run;
+const int lzma::null=0;
+
+struct lzma_params { uint32_t level=default_compression, threads=1; };
+struct lzma_error : public std::ios::failure {
+    explicit ctor(int error);
+    int error() const;
+    static void check(int error);
+private: int error_;
+};
+struct detail::lzma_allocator_traits<Alloc> { using type = std::allocator_traits<Alloc>::rebind_alloc<char>; };
+struct detail::lzma_allocator<Alloc> : private lzma_allocator_traits<Alloc>::type {
+    constexpr static bool custom = !is_same_v<std::allocator<char>,base>;
+    using allocator_type = base;
+    static void* allocate(void* self, size_t items, size_t size);
+    static void deallocate(void* self, void* address);
+};
+struct detail::lzma_base {
+    using char_type = char;
+protected: ctor() ~dtor();
+    void* stream();
+    void init<Alloc>(const lzma_params& p, bool compress, lzma_allocator<Alloc>& zalloc);
+    void before(const char*& src_begin, const char* src_end, char*& dest_begin, char* dest_end);
+    void after(const char*& src_begin, char*& dest_begin, bool compress);
+    int deflate(int action); int inflate(int action);
+    void reset(bool compress, bool realloc);
+public: zlib::ulong crc() const; int total_in() const; int total_out() const;
+private: void do_init(const lzma_params& p, bool compress, lzma::alloc_func, lzma::free_func, void* derived);
+    void init_stream(bool compress);
+    void* stream_; uint32_t level_, threads_;
+};
+struct detail::lzma_compressor_impl<Alloc=std::allocator<char>> : public lzma_base, public lzma_allocator<Alloc> {
+    ctor(const lzma_params&={}); ~dtor();
+    bool filter(const char*& src_begin, const char* src_end, char*& dest_begin, char* dest_end, bool flush);
+    void close();
+};
+struct detail::lzma_decompressor_impl<Alloc=std::allocator<char>> : public lzma_base, public lzma_allocator<Alloc> {
+    ctor(const lzma_params&); ctor(); ~dtor();
+    bool filter(const char*& src_begin, const char* src_end, char*& dest_begin, char* dest_end, bool flush);
+    void close();
+};
+struct basic_lzma_compressor<Alloc=std::allocator<char>> : symmetric_filter<lzma_compressor_impl<Alloc>,Alloc> {
+    ctor(const lzma_params&={}, streamsize buffer_size=default_device_buffer_size);
+    zlib::ulong crc(); int total_in();
+};
+pipeline<pipeline_segment<basic_lzma_compressor<T0>>, C> operator|( const basic_lzma_compressor<T0>& f, const C& c);
+using lzma_compressor = basic_lzma_compressor<>;
+
+struct basic_lzma_decompressor<Alloc=std::allocator<char>> : symmetric_filter<basic_lzma_decompressor<Alloc>,Alloc> {
+    ctor(buffer_size=default_device_buffer_size);
+    ctor(const lzma_params& p, streamsize buffer_size=default_device_buffer_size);
+};
+pipeline<pipeline_segment<basic_lzma_decompressor<T0>>, C> operator|( const basic_lzma_decompressor<T0>& f, const C& c);
+using lzma_decompressor = basic_lzma_decompressor<>;
+
+// zstd
+using zstd::alloc_func = void* (*)(void*, size_t, size_t); using zstd::free_func = void (*)(void*, void*);
+extern const int zstd::best_speed, best_compression, default_compression;
+extern const int zstd::okay, stream_end;
+extern const int zstd::finish, flush, run;
+const int zstd::null=0;
+
+struct zstd_params { uint32_t level=default_compression; };
+struct zstd_error : public std::ios::failure {
+    explicit ctor(int error);
+    int error() const;
+    static void check(int error);
+private: int error_;
+};
+struct detail::zstd_allocator_traits<Alloc> { using type = std::allocator_traits<Alloc>::rebind_alloc<char>; };
+struct detail::zstd_allocator<Alloc> : private zstd_allocator_traits<Alloc>::type {
+    constexpr static bool custom = !is_same_v<std::allocator<char>,base>;
+    using allocator_type = base;
+    static void* allocate(void* self, size_t items, size_t size);
+    static void deallocate(void* self, void* address);
+};
+struct detail::zstd_base {
+    using char_type = char;
+protected: ctor() ~dtor();
+    void init<Alloc>(const zstd_params& p, bool compress, zstd_allocator<Alloc>& zalloc);
+    void before(const char*& src_begin, const char* src_end, char*& dest_begin, char* dest_end);
+    void after(const char*& src_begin, char*& dest_begin, bool compress);
+    int deflate(int action); int inflate(int action);
+    void reset(bool compress, bool realloc);
+private: void do_init(const zstd_params& p, bool compress, zstd::alloc_func, zstd::free_func, void* derived);
+    void *cstream_, *dstream_, *in_, *out_; int eof_; uint32_t level;
+};
+struct detail::zstd_compressor_impl<Alloc=std::allocator<char>> : public zstd_base, public zstd_allocator<Alloc> {
+    ctor(const zstd_params&=zstd::default_compression); ~dtor();
+    bool filter(const char*& src_begin, const char* src_end, char*& dest_begin, char* dest_end, bool flush);
+    void close();
+};
+struct detail::zstd_decompressor_impl<Alloc=std::allocator<char>> : public zstd_base, public zstd_allocator<Alloc> {
+    ctor(const zstd_params&); ctor(); ~dtor();
+    bool filter(const char*& src_begin, const char* src_end, char*& dest_begin, char* dest_end, bool flush);
+    void close();
+};
+struct basic_zstd_compressor<Alloc=std::allocator<char>> : symmetric_filter<zstd_compressor_impl<Alloc>,Alloc> {
+    ctor(const zstd_params&=zstd::default_compression, streamsize buffer_size=default_device_buffer_size);
+    zlib::ulong crc(); int total_in();
+};
+pipeline<pipeline_segment<basic_zstd_compressor<T0>>, C> operator|( const basic_zstd_compressor<T0>& f, const C& c);
+using zstd_compressor = basic_zstd_compressor<>;
+
+struct basic_zstd_decompressor<Alloc=std::allocator<char>> : symmetric_filter<basic_zstd_decompressor<Alloc>,Alloc> {
+    ctor(buffer_size=default_device_buffer_size);
+    ctor(const zstd_params& p, streamsize buffer_size=default_device_buffer_size);
+};
+pipeline<pipeline_segment<basic_zstd_decompressor<T0>>, C> operator|( const basic_zstd_decompressor<T0>& f, const C& c);
+using zstd_decompressor = basic_zstd_decompressor<>;
+```
+
+------
+### Algorithms
+
+copy
+
+------
+### Views
+
+combine, compose, invert, restrict, slice, tee
+
+
+concepts, skip
+
 ------
 ### Details
 
