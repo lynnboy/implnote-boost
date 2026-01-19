@@ -155,7 +155,7 @@ struct detail::is_non_narrowing_conversion<Source,Dest>;
 struct quantity<Unit,Y=double> {
     using value_type=Y; using unit_type = U;
     ctor(); ctor(nullptr_t); ctor(const self& src); self& operator=(const self& src);
-    ctor<YY>(const self<Unit,YY>& src); self& operator= <YY>(const self<Unit,YY)& src>);
+    ctor<YY>(const self<Unit,YY>& src); self& operator= <YY>(const self<Unit,YY>& src>);
     explicit ctor<Unit2,YY>(const self<Unit2,YY>& src); self& operator= <Unit2,YY>(const self<Unit2,YY>& src);
 
     const value_type& value() const;
@@ -392,11 +392,356 @@ using {NAME}_dimension = derived_dimension<{B1},{n1},...>::type;
 ------
 ### Unit Systems
 
+```c++
+struct constant<Base> {
+    using value_type = Base::value_type;
+    operator value_type() const; value_type value() const; // Base{}.value()
+    value_type uncertainty() const, {lower,upper}_bound() const; // Base{}.xxx()
+};
+struct physical_constant<Base> {
+    using value_type = Base::value_type;
+    operator value_type() const; value_type value() const; // Base{}.value()
+    value_type uncertainty() const, {lower,upper}_bound() const; // Base{}.xxx()
+};
+
+struct {add,subtract,multiply,divide}_typeof_helper<constant<T>,unit<T1,T2>>
+{using type={add,subtract,multiply,divide}_typeof_helper<T::value_type,unit<T1,T2>>::type;}; // and inversed
+{add,subtract,multiply,divide}_typeof_helper<T::value_type,unit<T1,T2>>::type operator{+,-,*,/} <T,T1,T2>(const constant<T>& t, const unit<T1,T2>& u); // and inversed
+
+struct {add,subtract,multiply,divide}_typeof_helper<constant<T>,quantity<T1,T2>>
+{using type={add,subtract,multiply,divide}_typeof_helper<T::value_type,quantity<T1,T2>>::type;}; // and inversed
+{add,subtract,multiply,divide}_typeof_helper<T::value_type,quantity<T1,T2>>::type operator{+,-,*,/} <T,T1,T2>(const constant<T>& t, const quantity<T1,T2>& u); // and inversed
+
+struct {add,subtract,multiply,divide}_typeof_helper<constant<T1>,constant<T2>>
+{using type={add,subtract,multiply,divide}_typeof_helper<T1::value_type,T2::value_type>::type;};
+{add,subtract,multiply,divide}_typeof_helper<T1::value_type,T2::value_type>::type operator{+,-,*,/} <T1,T2>(const constant<T1>& t, const constant<T2>& u);
+
+struct {add,subtract,multiply,divide}_typeof_helper<constant<T1>,T2> // and inversed
+{using type={add,subtract,multiply,divide}_typeof_helper<T1::value_type,T2>::type;};
+{add,subtract,multiply,divide}_typeof_helper<T1::value_type,T2>::type operator{+,-,*,/} <T1,T2>(const constant<T1>& t, const T2& u); // and inversed
+
+struct {multiply,divide}_typeof_helper<constant<T1>,one> // and inversed
+{using type={multiply,divide}_typeof_helper<T1::value_type,one>::type;};
+{multiply,divide}_typeof_helper<T1::value_type,one>::type operator{*,/} <T1>(const constant<T1>& t, const one& u); // and inversed
+
+struct power_typeof_helper<constant<T1>,static_rational<n,d>>; // type, value()
+
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,Y> (std::basic_ostream<Ch,Tr>& os, const physical_constant<Y>& val);
+std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr,Y> (std::basic_ostream<Ch,Tr>& os, const constant<Y>& val);
+```
+
 #### SI System
 
 ```c++
-```
+namespace si {
+// system
+using system = make_system<meter_base_unit, kilogram_base_unit, second_base_unit,
+    ampere_base_unit, kelven_base_unit, mole_base_unit, candela_base_unit,
+    angle::radian_base_unit, angle::steradian_base_unit>::type;
+using dimensionless = unit<dimensionless_type,system>;
 
+// units
+using absorbed_dose = unit<absorbed_dose_dimension, si::system>;
+constexpr static absorbed_dose gray, grays;
+using acceleration = unit<acceleration_dimension, si::system>;
+constexpr static acceleration {meter,metre}<s>_per_second_squared;
+using action = unit<action_dimension, si::system>;
+using activity = unit<activity_dimension, si::system>;
+constexpr static activity becquerel<s>;
+using amount = unit<amount_dimension, si::system>;
+constexpr static amount mole<s>;
+using angular_acceleration = unit<angular_acceleration_dimension,si::system>;
+using angular_momentum = unit<angular_momentum_dimension,si::system>;
+using angular_velocity = unit<angular_velocity_dimension,si::system>;
+constexpr static angular_velocity radian<s>_per_second;
+using area = unit<area_dimension, si::system>;
+constexpr static area square_{meter,metre}<s>;
+using capacitance = unit<capacitance_dimension,si::system>;
+constexpr static capacitance farad<s>;
+using catalytic_activity_dim  = derived_dimension<time_base_dimension,-1,amount_base_dimension,1>::type;
+using catalytic_activity = unit<si::catalytic_activity_dim,si::system>;
+constexpr static catalytic_activity katal<s>;
+using conductance = unit<conductance_dimension,si::system>;
+constexpr static conductance siemen<s>, mho<s>;
+using conductivity = unit<conductivity_dimension,si::system>;
+using current = unit<current_dimension,si::system>;
+constexpr static current ampere<s>;
+static constexpr dimensionless si_dimensionless;
+using dose_equivalent = unit<dose_equivalent_dimension,si::system>;
+constexpr static dose_equivalent sievert<s>;
+using dynamic_viscosity = unit<dynamic_viscosity_dimension,si::system>;
+using electric_charge = unit<electric_charge_dimension,si::system>;
+constexpr static electric_charge coulomb<s>;
+using electric_potential = unit<electric_potential_dimension,si::system>;
+constexpr static electric_potential volt<s>;
+using energy = unit<energy_dimension,si::system>;
+constexpr static energy joule<s>;
+using force = unit<force_dimension,si::system>;
+constexpr static force newton<s>;
+using frequency = unit<frequency_dimension,si::system>;
+constexpr static frequency hertz;
+using illuminance = unit<illuminance_dimension,si::system>;
+constexpr static illuminance lux;
+using impedance = unit<impedance_dimension,si::system>;
+using inductance = unit<inductance_dimension,si::system>;
+constexpr static inductance henry<s>;
+using kinematic_viscosity = unit<kinematic_viscosity_dimension,si::system>;
+using length = unit<length_dimension,si::system>;
+constexpr static length {meter,metre}<s>;
+using luminous_flux = unit<luminous_flux_dimension,si::system>;
+constexpr static luminous_flux lumen<s>;
+using luminous_intensity = unit<luminous_intensity_dimension,si::system>;
+constexpr static luminous_intensity candela<s>;
+using magnetic_field_intensity = unit<magnetic_field_intensity_dimension,si::system>;
+using magnetic_flux = unit<magnetic_flux_dimension,si::system>;
+constexpr static magnetic_flux weber<s>;
+using magnetic_flux_density = unit<magnetic_flux_density_dimension,si::system>;
+constexpr static magnetic_flux_density tesla<s>;
+using mass = unit<mass_dimension,si::system>;
+constexpr static mass kilogram<me><s>;
+using mass_density = unit<mass_density_dimension,si::system>;
+constexpr static mass_density kilogram<me><s>_per_cubic_{meter,metre};
+using moment_of_inertia = unit<moment_of_inertia_dimension,si::system>;
+using momentum = unit<momentum_dimension,si::system>;
+using permeability = unit<permeability_dimension,si::system>;
+using permittivity = unit<permittivity_dimension,si::system>;
+using plane_angle = unit<plane_angle_dimension,si::system>;
+constexpr static plane_angle radian<s>;
+using power = unit<power_dimension,si::system>;
+constexpr static power watt<s>;
+using pressure = unit<pressure_dimension,si::system>;
+constexpr static pressure pascal<s>;
+using reluctance = unit<reluctance_dimension,si::system>;
+using resistance = unit<resistance_dimension,si::system>;
+constexpr static resistance ohm<s>;
+using resistivity = unit<resistivity_dimension,si::system>;
+using solid_angle = unit<solid_angle_dimension,si::system>;
+constexpr static solid_angle steradian<s>;
+using surface_density = unit<surface_density_dimension,si::system>;
+constexpr static surface_density kilogram<me><s>_per_square_{meter,metre};
+using surface_tension = unit<surface_tension_dimension,si::system>;
+constexpr static surface_tension newton<s>_per_meter;
+using temperature = unit<temperature_dimension,si::system>;
+constexpr static temperature kelvin<s>;
+using time = unit<time_dimension,si::system>;
+constexpr static time second<s>;
+using torque = unit<torque_dimension,si::system>;
+constexpr static torque newton_meter<s>;
+using velocity = unit<velocity_dimension,si::system>;
+constexpr static velocity {meter,metre}<s>_per_second;
+using volume = unit<volume_dimension,si::system>;
+constexpr static volume cubic_{meter,metre}<s>;
+using wavenumber = unit<wavenumber_dimension,si::system>;
+constexpr static wavenumber reciprocal_{meter,metre}<s>;
+
+// prefixes: for (EXP,NAME):
+using {NAME}_type = make_scaled_unit<dimensionless, scale<10,static_rational<{EXP}>>>::type;
+constexpr static {NAME}_type {NAME};
+// (-24,yocto), (-21,zepto), (-18,atto), (-15,femto), (-12,pico), (-9,nano), (-6,micro),
+// (-3,milli), (-2,centi), (-1,deci), (1,deka), (2,hecto), (3,kilo), (6,mega), (9,giga),
+// (12,tera), (15,peta), (18,exa), (21,zetta), (24,yotta)
+
+// io: for (NAME,N,S)
+std::string name_string(const reduce_unit<si::{NAME}>::type&) { return "{N}"; }
+std::string symbol_string(const reduce_unit<si::{NAME}>::type&) { return "{S}"; }
+// (absorbed_dose,gray,Gy), (capacitance,farda,F), (catalytic_activity,katal,kat),
+// (conductance,siemen,S), (electric_charge,coulomb,C), (electric_potential,volt,V),
+// (energy,joule,J), (force,newton,N), (frequency,hertz,Hz), (illuminance,lux,lx),
+// (inductance,henry,H), (luminous_flux,lumen,lm), (magnetic_flux,weber,Wb),
+// (magnetic_flux_density,tesla,T), (power,watt,W), (presure,pascal,Pa), (resistance,ohm,Ohm)
+
+// constants
+namespace constants::codata {
+using frequency_over_electric_potential = divide_typeof_helper<frequency,electric_potential>::type;
+using electric_charge_over_mass = divide_typeof_helper<electric_charge,mass>::type;
+using mass_over_amount = divide_typeof_helper<mass,amount>::type;
+using energy_over_magnetic_flux_density = divide_typeof_helper<energy,magnetic_flux_density>::type;
+using frequency_over_magnetic_flux_density = divide_typeof_helper<frequency,magnetic_flux_density>::type;
+using current_over_energy = divide_typeof_helper<current,energy>::type;
+using inverse_amount = divide_typeof_helper<dimensionless,amount>::type;
+using energy_over_temperature = divide_typeof_helper<energy,temperature>::type;
+using energy_over_temperature_amount = divide_typeof_helper<energy_over_temperature,amount>::type;
+using power_over_area_temperature_4 = divide_typeof_helper<divide_typeof_helper<power,area>::type,power_typeof_helper<temperature,static_rational<4> >::type>::type;
+using power_area = multiply_typeof_helper<power,area>::type;
+using power_area_over_solid_angle = divide_typeof_helper<power_area,solid_angle>::type;
+using length_temperature = multiply_typeof_helper<length,temperature>::type;
+using frequency_over_temperature = divide_typeof_helper<frequency,temperature>::type;
+using force_over_current_squared = divide_typeof_helper<divide_typeof_helper<force,current>::type,current>::type;
+using capacitance_over_length = divide_typeof_helper<capacitance,length>::type;
+using volume_over_mass_time_squared = divide_typeof_helper<divide_typeof_helper<divide_typeof_helper<volume,mass>::type,time>::type,time>::type;
+using energy_time = multiply_typeof_helper<energy,time>::type;
+using electric_charge_over_amount = divide_typeof_helper<electric_charge,amount>::type;
+
+// for (NAME,TYPE,VAL,UNCERTAINTY):
+struct {NAME}_t {
+    using value_type = {TYPE};
+    operator value_type() const; value_type value() const; // {VAL}
+    value_type uncertainty() const; // {UNCERTAINTY}
+    value_type {lower,upper}_bound() const; // {VAL} +/- {UNCERTAINTY}
+};
+
+// ---- atomic-nuclear_constants
+/// alpha particle mass: (m_alpha,quantity<mass>,6.64465620e-27*kilograms,3.3e-34*kilograms)
+/// alpha-electron mass ratio: (m_alpha_over_m_e,quantity<dimensionless>,7294.2995365*dimensionless(),3.1e-6*dimensionless())
+/// alpha-proton mass ratio: (m_alpha_over_m_p,quantity<dimensionless>,3.97259968951*dimensionless(),4.1e-10*dimensionless())
+/// alpha molar mass: (M_alpha,quantity<mass_over_amount>,4.001506179127e-3*kilograms/mole,6.2e-14*kilograms/mole)
+
+/// deuteron mass: (m_d,quantity<mass>,3.34358320e-27*kilograms,1.7e-34*kilograms)
+/// deuteron-electron mass ratio: (m_d_over_m_e,quantity<dimensionless>,3670.4829654*dimensionless(),1.6e-6*dimensionless())
+/// deuteron-proton mass ratio: (m_d_over_m_p,quantity<dimensionless>,1.99900750108*dimensionless(),2.2e-10*dimensionless())
+/// deuteron molar mass: (M_d,quantity<mass_over_amount>,2.013553212724e-3*kilograms/mole,7.8e-14*kilograms/mole)
+/// deuteron rms charge radius: (R_d,quantity<length>,2.1402e-15*meters,2.8e-18*meters)
+/// deuteron magnetic moment: (mu_d,quantity<energy_over_magnetic_flux_density>,0.433073465e-26*joules/tesla,1.1e-34*joules/tesla)
+/// deuteron-Bohr magneton ratio: (mu_d_over_mu_B,quantity<dimensionless>,0.4669754556e-3*dimensionless(),3.9e-12*dimensionless())
+/// deuteron-nuclear magneton ratio: (mu_d_over_mu_N,quantity<dimensionless>,0.8574382308*dimensionless(),7.2e-9*dimensionless())
+/// deuteron g-factor: (g_d,quantity<dimensionless>,0.8574382308*dimensionless(),7.2e-9*dimensionless())
+/// deuteron-electron magnetic moment ratio: (mu_d_over_mu_e,quantity<dimensionless>,-4.664345537e-4*dimensionless(),3.9e-12*dimensionless())
+/// deuteron-proton magnetic moment ratio: (mu_d_over_mu_p,quantity<dimensionless>,0.3070122070*dimensionless(),2.4e-9*dimensionless())
+/// deuteron-neutron magnetic moment ratio: (mu_d_over_mu_n,quantity<dimensionless>,-0.44820652*dimensionless(),1.1e-7*dimensionless())
+
+/// electron mass: (m_e,quantity<mass>,9.10938215e-31*kilograms,4.5e-38*kilograms)
+/// electron-muon mass ratio: (m_e_over_m_mu,quantity<dimensionless>,4.83633171e-3*dimensionless(),1.2e-10*dimensionless())
+/// electron-tau mass ratio: (m_e_over_m_tau,quantity<dimensionless>,2.87564e-4*dimensionless(),4.7e-8*dimensionless())
+/// electron-proton mass ratio: (m_e_over_m_p,quantity<dimensionless>,5.4461702177e-4*dimensionless(),2.4e-13*dimensionless())
+/// electron-neutron mass ratio: (m_e_over_m_n,quantity<dimensionless>,5.4386734459e-4*dimensionless(),3.3e-13*dimensionless())
+/// electron-deuteron mass ratio: (m_e_over_m_d,quantity<dimensionless>,2.7244371093e-4*dimensionless(),1.2e-13*dimensionless())
+/// electron-alpha particle mass ratio: (m_e_over_m_alpha,quantity<dimensionless>,1.37093355570e-4*dimensionless(),5.8e-14*dimensionless())
+/// electron charge to mass ratio: (e_over_m_e,quantity<electric_charge_over_mass>,1.758820150e11*coulombs/kilogram,4.4e3*coulombs/kilogram)
+/// electron molar mass: (M_e,quantity<mass_over_amount>,5.4857990943e-7*kilograms/mole,2.3e-16*kilograms/mole)
+/// Compton wavelength: (lambda_C,quantity<length>,2.4263102175e-12*meters,3.3e-21*meters)
+/// classical electron radius: (r_e,quantity<length>,2.8179402894e-15*meters,5.8e-24*meters)
+/// Thompson cross section: (sigma_e,quantity<area>,0.6652458558e-28*square_meters,2.7e-37*square_meters)
+/// electron magnetic moment: (mu_e,quantity<energy_over_magnetic_flux_density>,-928.476377e-26*joules/tesla,2.3e-31*joules/tesla)
+/// electron-Bohr magenton moment ratio: (mu_e_over_mu_B,quantity<dimensionless>,-1.00115965218111*dimensionless(),7.4e-13*dimensionless())
+/// electron-nuclear magneton moment ratio: (mu_e_over_mu_N,quantity<dimensionless>,-183.28197092*dimensionless(),8.0e-7*dimensionless())
+/// electron magnetic moment anomaly: (a_e,quantity<dimensionless>,1.15965218111e-3*dimensionless(),7.4e-13*dimensionless())
+/// electron g-factor: (g_e,quantity<dimensionless>,-2.0023193043622*dimensionless(),1.5e-12*dimensionless())
+/// electron-muon magnetic moment ratio: (mu_e_over_mu_mu,quantity<dimensionless>,206.7669877*dimensionless(),5.2e-6*dimensionless())
+/// electron-proton magnetic moment ratio: (mu_e_over_mu_p,quantity<dimensionless>,-658.2106848*dimensionless(),5.4e-6*dimensionless())
+/// electron-shielded proton magnetic moment ratio: (mu_e_over_mu_p_prime,quantity<dimensionless>,-658.2275971*dimensionless(),7.2e-6*dimensionless())
+/// electron-neutron magnetic moment ratio: (mu_e_over_mu_n,quantity<dimensionless>,960.92050*dimensionless(),2.3e-4*dimensionless())
+/// electron-deuteron magnetic moment ratio: (mu_e_over_mu_d,quantity<dimensionless>,-2143.923498*dimensionless(),1.8e-5*dimensionless())
+/// electron-shielded helion magnetic moment ratio: (mu_e_over_mu_h_prime,quantity<dimensionless>,864.058257*dimensionless(),1.0e-5*dimensionless())
+/// electron gyromagnetic ratio: (gamma_e,quantity<frequency_over_magnetic_flux_density>,1.760859770e11/second/tesla,4.4e3/second/tesla)
+
+/// helion mass: (m_h,quantity<mass>,5.00641192e-27*kilograms,2.5e-34*kilograms)
+/// helion-electron mass ratio: (m_h_over_m_e,quantity<dimensionless>,5495.8852765*dimensionless(),5.2e-6*dimensionless())
+/// helion-proton mass ratio: (m_h_over_m_p,quantity<dimensionless>,2.9931526713*dimensionless(),2.6e-9*dimensionless())
+/// helion molar mass: (M_h,quantity<mass_over_amount>,3.0149322473e-3*kilograms/mole,2.6e-12*kilograms/mole)
+/// helion shielded magnetic moment: (mu_h_prime,quantity<energy_over_magnetic_flux_density>,-1.074552982e-26*joules/tesla,3.0e-34*joules/tesla)
+/// shielded helion-Bohr magneton ratio: (mu_h_prime_over_mu_B,quantity<dimensionless>,-1.158671471e-3*dimensionless(),1.4e-11*dimensionless())
+/// shielded helion-nuclear magneton ratio: (mu_h_prime_over_mu_N,quantity<dimensionless>,-2.127497718*dimensionless(),2.5e-8*dimensionless())
+/// shielded helion-proton magnetic moment ratio: (mu_h_prime_over_mu_p,quantity<dimensionless>,-0.761766558*dimensionless(),1.1e-8*dimensionless())
+/// shielded helion-shielded proton magnetic moment ratio: (mu_h_prime_over_mu_p_prime,quantity<dimensionless>,-0.7617861313*dimensionless(),3.3e-8*dimensionless())
+/// shielded helion gyromagnetic ratio: (gamma_h_prime,quantity<frequency_over_magnetic_flux_density>,2.037894730e8/second/tesla,5.6e-0/second/tesla)
+
+/// muon mass: (m_mu,quantity<mass>,1.88353130e-28*kilograms,1.1e-35*kilograms)
+/// muon-electron mass ratio: (m_mu_over_m_e,quantity<dimensionless>,206.7682823*dimensionless(),5.2e-6*dimensionless())
+/// muon-tau mass ratio: (m_mu_over_m_tau,quantity<dimensionless>,5.94592e-2*dimensionless(),9.7e-6*dimensionless())
+/// muon-proton mass ratio: (m_mu_over_m_p,quantity<dimensionless>,0.1126095261*dimensionless(),2.9e-9*dimensionless())
+/// muon-neutron mass ratio: (m_mu_over_m_n,quantity<dimensionless>,0.1124545167*dimensionless(),2.9e-9*dimensionless())
+/// muon molar mass: (M_mu,quantity<mass_over_amount>,0.1134289256e-3*kilograms/mole,2.9e-12*kilograms/mole)
+/// muon Compton wavelength: (lambda_C_mu,quantity<length>,11.73444104e-15*meters,3.0e-22*meters)
+/// muon magnetic moment: (mu_mu,quantity<energy_over_magnetic_flux_density>,-4.49044786e-26*joules/tesla,1.6e-33*joules/tesla)
+/// muon-Bohr magneton ratio: (mu_mu_over_mu_B,quantity<dimensionless>,-4.84197049e-3*dimensionless(),1.2e-10*dimensionless())
+/// muon-nuclear magneton ratio: (mu_mu_over_mu_N,quantity<dimensionless>,-8.89059705*dimensionless(),2.3e-7*dimensionless())
+/// muon magnetic moment anomaly: (a_mu,quantity<dimensionless>,1.16592069e-3*dimensionless(),6.0e-10*dimensionless())
+/// muon g-factor: (g_mu,quantity<dimensionless>,-2.0023318414*dimensionless(),1.2e-9*dimensionless())
+/// muon-proton magnetic moment ratio: (mu_mu_over_mu_p,quantity<dimensionless>,-3.183345137*dimensionless(),8.5e-8*dimensionless())
+
+/// neutron mass: (m_n,quantity<mass>,1.674927211e-27*kilograms,8.4e-35*kilograms)
+/// neutron-electron mass ratio: (m_n_over_m_e,quantity<dimensionless>,1838.6836605*dimensionless(),1.1e-6*dimensionless())
+/// neutron-muon mass ratio: (m_n_over_m_mu,quantity<dimensionless>,8.89248409*dimensionless(),2.3e-7*dimensionless())
+/// neutron-tau mass ratio: (m_n_over_m_tau,quantity<dimensionless>,0.528740*dimensionless(),8.6e-5*dimensionless())
+/// neutron-proton mass ratio: (m_n_over_m_p,quantity<dimensionless>,1.00137841918*dimensionless(),4.6e-10*dimensionless())
+/// neutron molar mass: (M_n,quantity<mass_over_amount>,1.00866491597e-3*kilograms/mole,4.3e-13*kilograms/mole)
+/// neutron Compton wavelength: (lambda_C_n,quantity<length>,1.3195908951e-15*meters,2.0e-24*meters)
+/// neutron magnetic moment: (mu_n,quantity<energy_over_magnetic_flux_density>,-0.96623641e-26*joules/tesla,2.3e-33*joules/tesla)
+/// neutron g-factor: (g_n,quantity<dimensionless>,-3.82608545*dimensionless(),9.0e-7*dimensionless())
+/// neutron-electron magnetic moment ratio: (mu_n_over_mu_e,quantity<dimensionless>,1.04066882e-3*dimensionless(),2.5e-10*dimensionless())
+/// neutron-proton magnetic moment ratio: (mu_n_over_mu_p,quantity<dimensionless>,-0.68497934*dimensionless(),1.6e-7*dimensionless())
+/// neutron-shielded proton magnetic moment ratio: (mu_n_over_mu_p_prime,quantity<dimensionless>,-0.68499694*dimensionless(),1.6e-7*dimensionless())
+/// neutron gyromagnetic ratio: (gamma_n,quantity<frequency_over_magnetic_flux_density>,1.83247185e8/second/tesla,4.3e1/second/tesla)
+
+/// proton mass: (m_p,quantity<mass>,1.672621637e-27*kilograms,8.3e-35*kilograms)
+/// proton-electron mass ratio: (m_p_over_m_e,quantity<dimensionless>,1836.15267247*dimensionless(),8.0e-7*dimensionless())
+/// proton-muon mass ratio: (m_p_over_m_mu,quantity<dimensionless>,8.88024339*dimensionless(),2.3e-7*dimensionless())
+/// proton-tau mass ratio: (m_p_over_m_tau,quantity<dimensionless>,0.528012*dimensionless(),8.6e-5*dimensionless())
+/// proton-neutron mass ratio: (m_p_over_m_n,quantity<dimensionless>,0.99862347824*dimensionless(),4.6e-10*dimensionless())
+/// proton charge to mass ratio: (e_over_m_p,quantity<electric_charge_over_mass>,9.57883392e7*coulombs/kilogram,2.4e0*coulombs/kilogram)
+/// proton molar mass: (M_p,quantity<mass_over_amount>,1.00727646677e-3*kilograms/mole,1.0e-13*kilograms/mole)
+/// proton Compton wavelength: (lambda_C_p,quantity<length>,1.3214098446e-15*meters,1.9e-24*meters)
+/// proton rms charge radius: (R_p,quantity<length>,0.8768e-15*meters,6.9e-18*meters)
+/// proton magnetic moment: (mu_p,quantity<energy_over_magnetic_flux_density>,1.410606662e-26*joules/tesla,3.7e-34*joules/tesla)
+/// proton-Bohr magneton ratio: (mu_p_over_mu_B,quantity<dimensionless>,1.521032209e-3*dimensionless(),1.2e-11*dimensionless())
+/// proton-nuclear magneton ratio: (mu_p_over_mu_N,quantity<dimensionless>,2.792847356*dimensionless(),2.3e-8*dimensionless())
+/// proton g-factor: (g_p,quantity<dimensionless>,5.585694713*dimensionless(),4.6e-8*dimensionless())
+/// proton-neutron magnetic moment ratio: (mu_p_over_mu_n,quantity<dimensionless>,-1.45989806*dimensionless(),3.4e-7*dimensionless())
+/// shielded proton magnetic moment: (mu_p_prime,quantity<energy_over_magnetic_flux_density>,1.410570419e-26*joules/tesla,3.8e-34*joules/tesla)
+/// shielded proton-Bohr magneton ratio: (mu_p_prime_over_mu_B,quantity<dimensionless>,1.520993128e-3*dimensionless(),1.7e-11*dimensionless())
+/// shielded proton-nuclear magneton ratio: (mu_p_prime_over_mu_N,quantity<dimensionless>,2.792775598*dimensionless(),3.0e-8*dimensionless())
+/// proton magnetic shielding correction: (sigma_p_prime,quantity<dimensionless>,25.694e-6*dimensionless(),1.4e-8*dimensionless())
+/// proton gyromagnetic ratio: (gamma_p,quantity<frequency_over_magnetic_flux_density>,2.675222099e8/second/tesla,7.0e0/second/tesla)
+/// shielded proton gyromagnetic ratio: (gamma_p_prime,quantity<frequency_over_magnetic_flux_density>,2.675153362e8/second/tesla,7.3e0/second/tesla)
+
+/// tau mass: (m_tau,quantity<mass>,3.16777e-27*kilograms,5.2e-31*kilograms)
+/// tau-electron mass ratio: (m_tau_over_m_e,quantity<dimensionless>,3477.48*dimensionless(),5.7e-1*dimensionless())
+/// tau-muon mass ratio: (m_tau_over_m_mu,quantity<dimensionless>,16.8183*dimensionless(),2.7e-3*dimensionless())
+/// tau-proton mass ratio: (m_tau_over_m_p,quantity<dimensionless>,1.89390*dimensionless(),3.1e-4*dimensionless())
+/// tau-neutron mass ratio: (m_tau_over_m_n,quantity<dimensionless>,1.89129*dimensionless(),3.1e-4*dimensionless())
+/// tau molar mass: (M_tau,quantity<mass_over_amount>,1.90768e-3*kilograms/mole,3.1e-7*kilograms/mole)
+/// tau Compton wavelength: (lambda_C_tau,quantity<length>,0.69772e-15*meters,1.1e-19*meters)
+
+/// triton mass: (m_t,quantity<mass>,5.00735588e-27*kilograms,2.5e-34*kilograms)
+/// triton-electron mass ratio: (m_t_over_m_e,quantity<dimensionless>,5496.9215269*dimensionless(),5.1e-6*dimensionless())
+/// triton-proton mass ratio: (m_t_over_m_p,quantity<dimensionless>,2.9937170309*dimensionless(),2.5e-9*dimensionless())
+/// triton molar mass: (M_t,quantity<mass_over_amount>,3.0155007134e-3*kilograms/mole,2.5e-12*kilograms/mole)
+/// triton magnetic moment: (mu_t,quantity<energy_over_magnetic_flux_density>,1.504609361e-26*joules/tesla,4.2e-34*joules/tesla)
+/// triton-Bohr magneton ratio: (mu_t_over_mu_B,quantity<dimensionless>,1.622393657e-3*dimensionless(),2.1e-11*dimensionless())
+/// triton-nuclear magneton ratio: (mu_t_over_mu_N,quantity<dimensionless>,2.978962448*dimensionless(),3.8e-8*dimensionless())
+/// triton g-factor: (g_t,quantity<dimensionless>,5.957924896*dimensionless(),7.6e-8*dimensionless())
+/// triton-electron magnetic moment ratio: (mu_t_over_mu_e,quantity<dimensionless>,-1.620514423e-3*dimensionless(),2.1e-11*dimensionless())
+/// triton-proton magnetic moment ratio: (mu_t_over_mu_p,quantity<dimensionless>,1.066639908*dimensionless(),1.0e-8*dimensionless())
+/// triton-neutron magnetic moment ratio: (mu_t_over_mu_n,quantity<dimensionless>,-1.55718553*dimensionless(),3.7e-7*dimensionless())
+
+// ------electromagnetic_constants
+/// elementary charge: (e,quantity<electric_charge>,1.602176487e-19*coulombs,4.0e-27*coulombs)
+/// elementary charge to Planck constant ratio: (e_over_h,quantity<current_over_energy>,2.417989454e14*amperes/joule,6.0e6*amperes/joule)
+/// magnetic flux quantum: (Phi_0,quantity<magnetic_flux>,2.067833667e-15*webers,5.2e-23*webers)
+/// conductance quantum: (G_0,quantity<conductance>,7.7480917004e-5*siemens,5.3e-14*siemens)
+/// Josephson constant: (K_J,quantity<frequency_over_electric_potential>,483597.891e9*hertz/volt,1.2e7*hertz/volt)
+/// von Klitzing constant: (R_K,quantity<resistance>,25812.807557*ohms,1.77e-5*ohms)
+/// Bohr magneton: (mu_B,quantity<energy_over_magnetic_flux_density>,927.400915e-26*joules/tesla,2.3e-31*joules/tesla)
+/// nuclear magneton: (mu_N,quantity<energy_over_magnetic_flux_density>,5.05078324e-27*joules/tesla,1.3e-34*joules/tesla)
+
+// ------physico-chemical_constants
+/// Avogadro constant: (N_A,quantity<inverse_amount>,6.022140857e23/mole,7.4e15/mole);
+/// atomic mass constant: (m_u,quantity<mass>,1.660539040e-27*kilograms,2.0e-35*kilograms);
+/// Faraday constant: (F,quantity<electric_charge_over_amount>,96485.33289*coulombs/mole,5.9e-4*coulombs/mole);
+/// molar gas constant: (R,quantity<energy_over_temperature_amount>,8.3144598*joules/kelvin/mole,4.8e-06*joules/kelvin/mole);
+/// Boltzmann constant: (k_B,quantity<energy_over_temperature>,1.38064852e-23*joules/kelvin,7.9e-30*joules/kelvin);
+/// Stefan-Boltzmann constant: (sigma_SB,quantity<power_over_area_temperature_4>,5.670367e-8*watts/square_meter/pow<4>(kelvin),1.3e-13*watts/square_meter/pow<4>(kelvin));
+/// first radiation constant: (c_1,quantity<power_area>,3.741771790e-16*watt*square_meters,4.6e-24*watt*square_meters);
+/// first radiation constant for spectral radiance: (c_1L,quantity<power_area_over_solid_angle>,1.191042953e-16*watt*square_meters/steradian,1.5e-24*watt*square_meters/steradian);
+/// second radiation constant: (c_2,quantity<length_temperature>,1.43877736e-2*meter*kelvin,8.3e-9*meter*kelvin);
+/// Wien displacement law constant : lambda_max T: (b,quantity<length_temperature>,2.8977729e-3*meter*kelvin,1.7e-9*meter*kelvin);
+/// Wien displacement law constant : nu_max/T: (b_prime,quantity<frequency_over_temperature>,5.8789238e10*hertz/kelvin,3.4e4*hertz/kelvin);
+
+// ------universal_constants
+/// speed of light: (c,quantity<velocity>,299792458.0*meters/second,0.0*meters/second);
+/// magnetic constant (exactly 4 pi x 10^(-7) - error is due to finite precision of pi): (mu_0,quantity<force_over_current_squared>,12.56637061435917295385057353311801153679e-7*newtons/ampere/ampere,0.0*newtons/ampere/ampere);
+/// electric constant: (epsilon_0,quantity<capacitance_over_length>,8.854187817620389850536563031710750260608e-12*farad/meter,0.0*farad/meter);
+/// characteristic impedance of vacuum: (Z_0,quantity<resistance>,376.7303134617706554681984004203193082686*ohm,0.0*ohm);
+/// Newtonian constant of gravitation: (G,quantity<volume_over_mass_time_squared>,6.67428e-11*cubic_meters/kilogram/second/second,6.7e-15*cubic_meters/kilogram/second/second);
+/// Planck constant: (h,quantity<energy_time>,6.62606896e-34*joule*seconds,3.3e-41*joule*seconds);
+/// Dirac constant: (hbar,quantity<energy_time>,1.054571628e-34*joule*seconds,5.3e-42*joule*seconds);
+/// Planck mass: (m_P,quantity<mass>,2.17644e-8*kilograms,1.1e-12*kilograms);
+/// Planck temperature: (T_P,quantity<temperature>,1.416785e32*kelvin,7.1e27*kelvin);
+/// Planck length: (l_P,quantity<length>,1.616252e-35*meters,8.1e-40*meters);
+/// Planck time: (t_P,quantity<time>,5.39124e-44*seconds,2.7e-48*seconds);
+}
+}
+```
 
 ------
 ### Configuration
