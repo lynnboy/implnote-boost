@@ -77,6 +77,34 @@ concept SymmetricFilter<F,Ch=char_type_of<F>::type> =
     {f.filter(i1,i2,o1,o2,flush)}->convertible_to<bool>;
     {f.close()}->void;
 };
+
+// archetypes
+struct device<Mode,Ch=char> {
+    using char_type = Ch;
+    struct category : Mode, device_tag, closable_tag, localizable_tag {};
+    void close(); void close(ios::openmode);
+    void imbue<Locale>(const Locale&);
+};
+struct wdevice<Mode,Ch=wchar_t> : device<Mode,Ch>{};
+using source=device<input>; using wsource=wdevice<input>;
+using sink=device<output>; using wsink=wdevice<output>;
+
+struct filter<Mode,Ch=char> {
+    using char_type = Ch;
+    struct category : Mode, filter_tag, closable_tag, localizable_tag {};
+    void close<Device>(Device&); void close<Device>(Device&, ios::openmode);
+    void imbue<Locale>(const Locale&);
+};
+struct wfilter<Mode,Ch=wchar_t> : filter<Mode,Ch>{};
+using input_filter=filter<input>; using input_wfilter=wfilter<input>;
+using output_filter=filter<output>; using output_wfilter=wfilter<output>;
+using seekable_filter=filter<seekable>; using seekable_wfilter=wfilter<seekable>;
+using dual_use_filter=filter<dual_use>; using dual_use_wfilter=wfilter<dual_use>;
+struct multichar_filter<Mode,Ch=char> : fitler<Mode,Ch> { struct category : base::category, multichar_tag{}; };
+struct multichar_wfilter<Mode,Ch=wchar_t> : multichar_filter<Mode,Ch>{};
+using multichar_input_filter=multichar_filter<input>; using multichar_input_wfilter=multichar_wfilter<input>;
+using multichar_output_filter=multichar_filter<output>; using multichar_output_wfilter=multichar_wfilter<output>;
+using multichar_dual_use_filter=multichar_filter<dual_use>; using multichar_dual_use_wfilter=multichar_wfilter<dual_use>;
 ```
 
 ------
@@ -1312,15 +1340,167 @@ using zstd_decompressor = basic_zstd_decompressor<>;
 ------
 ### Algorithms
 
-copy
+```c++
+streamsize copy<Source,Sink>(const Source& src, const Sink& snk, streamsize buffer_size=default_device_buffer_size);
+struct detail::copy_operation<Source,Sink> {
+    streamsize operator()();
+private: Source& src_; Sink& snk_; streamsize buffer_size_;
+};
+streamsize detail::copy_impl<Source,Sink>(Source src, Sink snk, streamsize buffer_size);
+
+void skip<Device>(Device& dev, stream_offset off);
+void skip<Filter,Device>(Filter& flt, Device& dev, stream_offset off, ios::openmode which=ios::in|ios::out);
+```
 
 ------
 ### Views
 
-combine, compose, invert, restrict, slice, tee
+```c++
+// combine
+struct detail::combined_device<Source,Sink> {
+    using in_category=category_of<Source>::type; using out_category=category_of<Sink>::type;
+    using char_type=char_type_of<Source>::type; using sink_char_type=char_type_of<Sink>::type;
+    struct category : bidirectional, device_tag, closable_tag, localizable_tag {};
+    ctor(const Source& src, const Sink& snk);
+    streamsize read(char_type* s, streamsize n);
+    streamsize write(const char_type* s, streamsize n);
+    void close(ios::openmode);
+    void imbue(const std::locale& loc);
+private: Source src_; Sink sink_;
+};
+struct detail::combined_filter<InputFilter,OutputFilter> {
+    using in_category=category_of<InputFilter>::type; using out_category=category_of<OutputFilter>::type;
+    using char_type=char_type_of<InputFilter>::type; using output_char_type=char_type_of<OutputFilter>::type;
+    struct category : multichar_bidirectional_filter_tag, closable_tag, localizable_tag {};
+    ctor(const InputFilter& in, const OutputFilter& out);
+    streamsize read<Source>(Source& src, char_type* s, streamsize n);
+    streamsize write<Sink>(Sink& snk, const char_type* s, streamsize n);
+    void close<Sink>(Sink& snk, ios::openmode);
+    void imbue(const std::locale& loc);
+private: InputFilter in_; OutputFilter out_;
+};
+struct detail::combination_traits<In,Out>
+    : if_<is_device<In>, combined_device<wrapped_type<In>::type,wrapped_type<Out>::type>, combined_filter<wrapped_type<In>::type,wrapped_type<Out>::type>>{};
+struct combination<In,Out> : combination_traits<In,Out>::type {
+    using in_type = wrapped_type<In>::type; using out_type = wrapped_type<Out>::type;
+    ctor(const in_type& in, const out_type& out);
+};
 
+struct detail::combine_traits<In,Out> { using type=combination<unwrapped_type<In>::type,unwrapped_type<Out>::type>; };
+combine_traits<In,Out>::type combine<In,Out>(const In& in, const Out& out);
 
-concepts, skip
+// compose
+struct detail::composite_mode<T1,T2,Mode1=mode_of<T1>::type,Mode2=mode_of<T2>::type>
+    : select< is_convertible<Mode2,Mode1>, Mode1,
+              is_convertible<Mode1,Mode2>, Mode2,
+              is_convertible<Mode2,input>, input, else_, output> {};
+class detail::composite_device<Filter,Device,Mode=composite_mode<Filter,Device>::type> {
+    using param_type=param_type<Device>::type;
+    using filter_mode=mode_of<Filter>::type; using device_mode=mode_of<Device>::type;
+    using value_type = select<is_direct<Device>, direct_adapter<Device>,
+                              is_std_io<Device>, Device&, else_, Device>::type;
+public: using char_type = char_type_of<Filter>::type;
+    struct category : Mode, device_tag, closable_tag, flushable_tag, localizable_tag, optimally_buffered_tag {};
+    ctor(const Filter& flt, param_type dev);
+    streamsize read(char_type* s, streamsize n);
+    streamsize write(const char_type* s, streamsize n);
+    streampos seek(stream_offset off, ios::seekdir way, ios::openmode which=ios::in|ios::out);
+    void close(); void close(ios::openmode which);
+    bool flush();
+    streamsize optimal_buffer_size() const;
+    void imbue<Locale>(const Locale& loc);
+    Filter& first(); Device& second();
+private: Filter filter_; value_type device_;
+};
+class detail::composite_filter<Filter1,Filter2,Mode=composite_mode<Filter1,Filter2>::type> {
+    using filter_ref = reference_wrapper<Filter2>;
+    using first_mode=mode_of<Filter1>::type; using second_mode=mode_of<Filter2>::type;
+public: using char_type = char_type_of<Filter1>::type;
+    struct category : Mode, filter_tag, multichar_tag, closable_tag, flushable_tag, localizable_tag, optimally_buffered_tag {};
+    ctor(const Filter1& flt1, const Filter2& flt2);
+    streamsize read<Source>(Source& src, char_type* s, streamsize n);
+    streamsize write<Sink>(Sink& snk, const char_type* s, streamsize n);
+    streampos seek<Device>(Device& dev, stream_offset off, ios::seekdir way, ios::openmode which=ios::in|ios::out);
+    void close<Device>(Device& dev); void close<Device>(Device& dev, ios::openmode which);
+    bool flush<Device>(Device& dev);
+    streamsize optimal_buffer_size() const;
+    void imbue<Locale>(const Locale& loc);
+    Filter1& first(); Filter2& second();
+private: Filter1 filter1_; Filter2 filter2_;
+};
+struct detail::composite_traits<Filter,FltOrDev> : if_<is_device<FltOrDev>, composite_device<Filter,FltOrDev>, composite_filter<Filter,FltOrDev>>{};
+struct composite<Filter,FltOrDev> : composite_traits<Filter,FltOrDev>::type {
+    using param_type=param_type<FltOrDev>::type;
+    ctor(const Filter& flt, param_type dev);
+};
+composite<Filter,FltOrDev> compose<Filter,FltOrDev>(const Filter& filter, const FltOrDev& fod);
+composite<Filter,std::basic_streambuf<Ch,Tr>> compose<Filter,Ch,Tr>(const Filter& filter, std::basic_streambuf<Ch,Tr>& sb);
+composite<Filter,std::basic_istream<Ch,Tr>> compose<Filter,Ch,Tr>(const Filter& filter, std::basic_istream<Ch,Tr>& is);
+composite<Filter,std::basic_ostream<Ch,Tr>> compose<Filter,Ch,Tr>(const Filter& filter, std::basic_ostream<Ch,Tr>& os);
+composite<Filter,std::basic_iostream<Ch,Tr>> compose<Filter,Ch,Tr>(const Filter& filter, std::basic_iostream<Ch,Tr>& io);
+
+// invert
+class inverse<Filter> {
+    using base_category=category_of<Filter>::type;
+    using filter_ref = reference_wrapper<Filter>;
+public: using char_type = char_type_of<Filter>::type; using int_type = int_type_of<Filter>::type;
+    using traits_type = char_traits<char_type>;
+    using mode = if_<is_convertible<base_category,input>, output,input>::type;
+    struct category: mode, filter_tag, multichar_tag, closable_tag {};
+    explicit ctor(const Filter& filter, streamsize buffer_size=default_filter_buffer_size);
+    streamsize read<Source>(Source& src, char_type* s, streamsize n);
+    streamsize write<Sink>(Sink& snk, const char_type* s, streamsize n);
+    void close<Device>(Device& dev);
+private: filter_ref filter(); buffer<char_type>& buf(); int& flags();
+    enum flags_ { f_read=1, f_write=2 };
+    struct impl {
+        ctor(const Filter& filter, streamsize n) : filter_{filter}, buf_{n}, flags_{0}{buf_.set(0,0);}
+        Filter filter_; buffer<char_type> buf_; int flags_;
+    };
+    shared_ptr<impl> pimpl_;
+};
+inverse<Filter> invert<Filter>(const Filter& f);
+
+// restrict/slice
+restriction<T> slice<T>(const T& t, stream_offset off, stream_offset len=-1) requires !is_std_io<T>;
+restriction<std::basic_streambuf<Ch,Tr>> slice<Ch,Tr>(std::basic_streambuf<Ch,Tr>& sb, stream_offset off, stream_offset len=-1);
+restriction<std::basic_istream<Ch,Tr>> slice<Ch,Tr>(std::basic_istream<Ch,Tr>& is, stream_offset off, stream_offset len=-1);
+restriction<std::basic_ostream<Ch,Tr>> slice<Ch,Tr>(std::basic_ostream<Ch,Tr>& os, stream_offset off, stream_offset len=-1);
+restriction<std::basic_iostream<Ch,Tr>> slice<Ch,Tr>(std::basic_iostream<Ch,Tr>& io, stream_offset off, stream_offset len=-1);
+
+// tee
+struct tee_filter<Device> : filter_adapter<Device> {
+    using param_type=param_type<Device>::type; using char_type = char_type_of<Device>::type;
+    struct category : dual_use_filter_tag, multichar_tag, closable_tag, flushable_tag, localizable_tag, optimally_buffered_tag {};
+    explicit ctor(param_type dev);
+    streamsize read<Source>(Source& src, char_type* s, streamsize n);
+    streamsize write<Sink>(Sink& snk, const char_type* s, streamsize n);
+    void close<Next>(Next& dev, ios::openmode);
+    bool flush<Sink>(Sink& snk);
+};
+pipeline<pipeline_segment<tee_filter<T0>>, C> operator|( const tee_filter<T0>& f, const C& c);
+
+struct tee_device<Device,Sink> {
+    using device_param=param_type<Device>::type; using sink_param=param_type<Sink>::type;
+    using device_value=value_type<Device>::type; using sink_value=value_type<Sink>::type;
+    using char_type = char_type_of<Device>::type;
+    using mode = if_<is_convertible<category_of<Device>::type,output>, output, input>::type;
+    struct category : mode, device_tag, closable_tag, flushable_tag, localizable_tag, optimally_buffered_tag {};
+    ctor(device_param device, sink_param sink);
+    streamsize read(char_type* s, streamsize n);
+    streamsize write(const char_type* s, streamsize n);
+    void close();
+    bool flush();
+    void imbue<Locale>(const Locale& loc);
+    streamsize optimal_buffer_size() const;
+private: device_value dev_; sink_value sink_;
+};
+
+tee_filter<Sink> tee<Sink>(<const> Sink& snk);
+tee_device<Device,Sink> tee<Device,Sink>(<const> Device& dev, <const> Sink& sink); // 2x2
+```
+
+concepts
 
 ------
 ### Details

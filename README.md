@@ -185,7 +185,6 @@ Boost C++ Libraries
   * STD: Proposal P0045, P0051
 
 * [`function_types`](function_types.md) (C++11) -- **Function Types** | _Boost.FunctionTypes provides functionality to classify, decompose and synthesize function, function pointer, function reference and pointer to member types._
-  * --
 
 * [`fusion`](fusion.md) (C++03) -- **Fusion** | _Library for working with tuples, including various containers, algorithms, etc._
   * --
@@ -237,7 +236,6 @@ Boost C++ Libraries
   * STD: `quoted` manipulator (C++14).
 
 * [`iostreams`](iostreams.md) (C++03) -- **Iostreams** | _Boost.IOStreams provides a framework for defining streams, stream buffers and i/o filters._
-  * --
 
 * [`iterator`](iterator.md) (C++11) -- **Iterator** | _The Boost Iterator Library contains two parts. The first is a system of concepts which extend the C++ standard iterator requirements. The second is a framework of components for building iterators based on these extended concepts and includes several useful iterator adaptors._
   * STD: `reverse_iterator`, `<ranges>`, `<generator>`
