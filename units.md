@@ -390,6 +390,157 @@ using {NAME}_dimension = derived_dimension<{B1},{n1},...>::type;
 ```
 
 ------
+### Base Units
+
+#### Angle Base Units
+
+```c++
+namespace angle;
+
+struct steradian_base_unit : base_unit<self, solid_angle_dimension, -1>; // "steradian", "sr"
+struct radian_base_unit : base_unit<self, plane_angle_dimension, -2>; // "radian", "rad"
+struct degree_base_unit : base_unit<self, radian_base_unit::dimension_type, -101>; // "degree", "deg"
+struct gradian_base_unit : base_unit<self, radian_base_unit::dimension_type, -102>; // "gradian", "grad"
+using arcminute_base_unit = scaled_base_unit<degree_base_unit, scale<60, static_rational<-1>>>; // "arcminute", "'"
+using arcsecond_base_unit = scaled_base_unit<degree_base_unit, scale<3600, static_rational<-1>>>; // "arcsecond", "\""
+using revolution_base_unit = scaled_base_unit<degree_base_unit, scale<360, static_rational<1>>>; // "revolution", "rev"
+```
+
+#### SI Base Units
+
+```c++
+namespace si;
+struct candela_base_unit : public base_unit<candela_base_unit, luminous_intensity_dimension, -3>; // "candela", "cd"
+struct mole_base_unit : public base_unit<mole_base_unit, amount_dimension, -4>; // "mole", "mol"
+struct kelvin_base_unit : public base_unit<kelvin_base_unit, temperature_dimension, -5>; // "kelvin", "K"
+struct ampere_base_unit : public base_unit<ampere_base_unit, current_dimension, -6>; // "ampere", "A"
+struct second_base_unit : public base_unit<second_base_unit, time_dimension, -7>; // "second", "s"
+using kilogram_base_unit = scaled_base_unit<cgs::gram_base_unit, scale<10, static_rational<3>>>;
+struct meter_base_unit : public base_unit<meter_base_unit, length_dimension, -9>; // "meter", "m"
+```
+
+#### CGS Base Units
+
+```c++
+namespace cgs;
+using biot_base_unit = scaled_base_unit<si::ampere_base_unit, scale<10, static_rational<+1>>>;
+struct gram_base_unit : base_unit<gram_base_unit, mass_dimension, -8>; // "gram", "g"
+using centimeter_base_unit =  scaled_base_unit<si::meter_base_unit, scale<10, static_rational<-2>>>;
+```
+
+#### Astronomical Base Units
+
+```c++
+namespace astronomical;
+struct light_second_base_unit : base_unit<self, si::meter_base_unit::dimension_type, -201>; // "light second", "lsc"
+using light_minute_base_unit = scaled_base_unit<light_second_base_unit, scale<60, static_rational<1>>>; // "light minute", "lmn"
+using light_hour_base_unit = scaled_base_unit<light_second_base_unit, scale<3600, static_rational<1>>>; // "light hour", "lhr"
+using light_day_base_unit = scaled_base_unit<light_second_base_unit, scale<86400, static_rational<1>>>; // "light day", "ldy"
+using light_year_base_unit = scaled_base_unit<light_second_base_unit, scale<31557600, static_rational<1>>>; // "light year", "ly"
+struct parsec_base_unit  : base_unit<self, si::meter_base_unit::dimension_type, -206>; // "parsec", "psc"
+struct astronomical_unit_base_unit : base_unit<self, si::meter_base_unit::dimension_type, -207>; // "astronomical unit", "a.u."
+```
+
+#### Temperature Base Units
+
+```c++
+namespace temperature;
+struct celsius_base_unit : base_unit<self, temperature_dimension, -1008>; // "celsius", "C"
+struct fahrenheit_base_unit : base_unit<self, temperature_dimension, -1007>; // "fahrenheit", "F"
+```
+
+#### Information Base Units
+
+```c++
+namespace information;
+struct bit_base_unit : base_unit<self, information_dimension, -700>; // "bit", "b"
+using byte_base_unit = scaled_base_unit<bit_base_unit, scale<2, static_rational<3>>>; // "byte", "B"
+struct nat_base_unit : base_unit<self, bit_base_unit::dimension_type, -702>; // "nat", "nat"
+struct hartley_base_unit : base_unit<self, bit_base_unit::dimension_type, -703>; // "hartley", "Hart"
+using shannon_base_unit = scaled_base_unit<bit_base_unit, scale<1, static_rational<1>>>; // "shannon", "Sh"
+```
+
+#### Imperial Base Units
+
+```c++
+namespace imperial;
+struct yard_base_unit : base_unit<self, si::meter_base_unit::dimension_type, -301>; // "yard", "yd"
+struct pound_base_unit : base_unit<self, cgs::gram_base_unit::dimension_type, -302>; // "pound", "lb"
+struct pint_base_unit : base_unit<self, si::volume::dimension_type, -303>; // "pint (imp.)", "pt"
+using grain_base_unit = scaled_base_unit<pound_base_unit, scale<7000, static_rational<-1>>>; // "grain", "grain"
+using ounce_base_unit = scaled_base_unit<pound_base_unit, scale<2, static_rational<-4>>>; // "ounce", "oz"
+using drachm_base_unit = scaled_base_unit<pound_base_unit, scale<16, static_rational<-2>>>; // "drachm", "drachm"
+using stone_base_unit = scaled_base_unit<pound_base_unit, scale<14, static_rational<1>>>; // "stone", "st"
+using quarter_base_unit = scaled_base_unit<pound_base_unit, scale<28, static_rational<1>>>; // "quarter", "quarter"
+using hundredweight_base_unit = scaled_base_unit<pound_base_unit, scale<112, static_rational<1>>>; // "hundredweight", "cwt"
+using ton_base_unit = scaled_base_unit<pound_base_unit, scale<2240, static_rational<1>>>; // "long ton", "t"
+using fluid_ounce_base_unit = scaled_base_unit<pint_base_unit, scale<20, static_rational<-1>>>; // "fluid ounce (imp.)", "fl oz"
+using gill_base_unit = scaled_base_unit<pint_base_unit, scale<4, static_rational<-1>>>; // "gill (imp.)", "gill"
+using quart_base_unit = scaled_base_unit<pint_base_unit, scale<2, static_rational<1>>>; // "quart (imp.)", "qt"
+using gallon_base_unit = scaled_base_unit<pint_base_unit, scale<8, static_rational<1>>>; // "gallon (imp.)", "gal"
+using thou_base_unit = scaled_base_unit<yard_base_unit, scale<36000, static_rational<-1>>>; // "thou", "thow"
+using inch_base_unit = scaled_base_unit<yard_base_unit, scale<36, static_rational<-1>>>; // "inch", "in"
+using foot_base_unit = scaled_base_unit<yard_base_unit, scale<3, static_rational<-1>>>; // "foot", "ft"
+using furlong_base_unit = scaled_base_unit<yard_base_unit, scale<220, static_rational<1>>>; // "furlong", "furlong"
+using mile_base_unit = scaled_base_unit<yard_base_unit, scale<1760, static_rational<1>>>; // "mile", "mi"
+using league_base_unit = scaled_base_unit<yard_base_unit, scale<5280, static_rational<1>>>; // "league", "league"
+```
+
+#### Metric Base Units
+
+```c++
+namespace metric;
+struct are_base_unit : base_unit<self, si::area::dimension_type, 10>; // "are", "a"
+struct barn_base_unit : base_unit<self, si::area::dimension_type, 11>; // "barn", "b"
+struct hectare_base_unit : base_unit<self, si::area::dimension_type, 12>; // "hectare", "ha"
+struct liter_base_unit : base_unit<self, si::volume::dimension_type, 13>; // "liter", "L"
+struct bar_base_unit : base_unit<self, si::pressure::dimension_type, 14>; // "bar", "bar"
+struct atmosphere_base_unit : base_unit<self, si::pressure::dimension_type, 33>; // "atmosphere", "atm"
+struct torr_base_unit : base_unit<self, si::presure::dimension_type, -401>; // "torr", "Torr"
+struct knot_base_unit : base_unit<self, si::velocity::dimension_type, -403>; // "knot", "kt"
+struct mmHg_base_unit : base_unit<self, si::presure::dimension_type, -404>; // "millimeters mercury", "mmHg"
+using minute_base_unit = scaled_base_unit<si::second_base_unit, scale<60, static_rational<1>>>; // "minute", "min"
+using hour_base_unit = scaled_base_unit<si::second_base_unit, scale<60, static_rational<2>>>; // "hour", "h"
+using day_base_unit = scaled_base_unit<si::second_base_unit, scale<86400, static_rational<1>>>; // "day", "d"
+using year_base_unit = scaled_base_unit<si::second_base_unit, scale<31557600, static_rational<1>>>; // "Julian year", "yr"
+using fermi_base_unit = scaled_base_unit<si::meter_base_unit, scale<10, static_rational<-15>>>; // "fermi", "fm"
+using micron_base_unit = scaled_base_unit<si::meter_base_unit, scale<10, static_rational<-6>>>; // "micron", "u"
+using nautical_mile_base_unit = scaled_base_unit<si::meter_base_unit, scale<1852, static_rational<1>>>; // "nautical mile", "nmi"
+using angstrom_base_unit = scaled_base_unit<si::meter_base_unit, scale<10, static_rational<-10>>>; // "angstrom", "A"
+using ton_base_unit = scaled_base_unit<si::kilogram_base_unit, scale<1000, static_rational<1>>>; // "metric ton", "t"
+```
+
+#### Imperial Base Units
+
+```c++
+namespace us;
+
+struct yard_base_unit : base_unit<self, si::meter_base_unit::dimension_type, -501>; // "yard", "yd"
+struct pound_base_unit : base_unit<self, cgs::gram_base_unit::dimension_type, -502>; // "pound", "lb"
+struct pint_base_unit : base_unit<self, si::volume::dimension_type, -503>; // "pint (U.S.)", "pt"
+struct pound_force_base_unit : base_unit<self, si::force::dimension_type, -600>; // "pound-force", "lbf"
+
+using grain_base_unit = scaled_base_unit<pound_base_unit, scale<7000, static_rational<-1>>>; // "grain", "grain"
+using dram_base_unit = scaled_base_unit<pound_base_unit, scale<16, static_rational<-2>>>; // "dram (U.S.)", "dr"
+using ounce_base_unit = scaled_base_unit<pound_base_unit, scale<2, static_rational<-4>>>; // "ounce", "oz"
+using hundredweight_base_unit = scaled_base_unit<pound_base_unit, scale<100, static_rational<1>>>; // "hundredweight (U.S.)", "cwt"
+using ton_base_unit = scaled_base_unit<pound_base_unit, scale<2000, static_rational<1>>>; // "short ton", "t"
+using minim_base_unit = scaled_base_unit<pint_base_unit, scale<7600, static_rational<-1>>>; // "minim (U.S.)", "minim"
+using fluid_dram_base_unit = scaled_base_unit<pint_base_unit, scale<2, static_rational<-7>>>; // "fluid dram (U.S.)", "fl dr"
+using teespoon_base_unit = scaled_base_unit<pint_base_unit, scale<96, static_rational<-1>>>; // "teespoon", "tsp"
+using tablespoon_base_unit = scaled_base_unit<pint_base_unit, scale<2, static_rational<-5>>>; // "tablespoon", "tbsp"
+using cup_base_unit = scaled_base_unit<pint_base_unit, scale<2, static_rational<-1>>>; // "cup", "c"
+using fluid_ounce_base_unit = scaled_base_unit<pint_base_unit, scale<16, static_rational<-1>>>; // "fluid ounce (U.S.)", "fl oz"
+using gill_base_unit = scaled_base_unit<pint_base_unit, scale<2, static_rational<-2>>>; // "gill (U.S.)", "gi"
+using quart_base_unit = scaled_base_unit<pint_base_unit, scale<2, static_rational<1>>>; // "quart (U.S.)", "qt"
+using gallon_base_unit = scaled_base_unit<pint_base_unit, scale<2, static_rational<3>>>; // "gallon (U.S.)", "gal"
+using mil_base_unit = scaled_base_unit<yard_base_unit, scale<36000, static_rational<-1>>>; // "mil", "mil"
+using inch_base_unit = scaled_base_unit<yard_base_unit, scale<36, static_rational<-1>>>; // "inch", "in"
+using foot_base_unit = scaled_base_unit<yard_base_unit, scale<3, static_rational<-1>>>; // "foot", "ft"
+using mile_base_unit = scaled_base_unit<yard_base_unit, scale<1760, static_rational<1>>>; // "mile", "mi"
+```
+
+------
 ### Unit Systems
 
 ```c++
@@ -740,6 +891,156 @@ struct {NAME}_t {
 /// Planck length: (l_P,quantity<length>,1.616252e-35*meters,8.1e-40*meters);
 /// Planck time: (t_P,quantity<time>,5.39124e-44*seconds,2.7e-48*seconds);
 }
+}
+```
+
+#### CGS System
+
+```c++
+namespace cgs {
+// system
+using system = make_system<centimeter_base_unit, gram_base_unit, si::second_base_unit, biot_base_unit>::type;
+using dimensionless = unit<dimensionless_type,system>;
+
+// units
+using acceleration = unit<acceleration_dimension,cgs::system>;
+constexpr static acceleration gal<s>;
+using area = unit<area_dimension,cgs::system>;
+constexpr static area square_centi{meter,metre}<s>;
+using current = unit<current_dimension,cgs::system>;
+constexpr static current biot<s>;
+static constexpr dimensionless cgs_dimensionless;
+using dynamic_viscosity = unit<dynamic_viscosity_dimension,cgs::system>;
+static constexpr dynamic_viscosity poise;
+using energy = unit<energy_dimension,cgs::system>;
+constexpr static energy erg<s>;
+using force = unit<force_dimension,cgs::system>;
+constexpr static force dyne<s>;
+using frequency = unit<frequency_dimension,cgs::system>;
+using kinematic_viscosity = unit<kinematic_viscosity_dimension,cgs::system>;
+constexpr static kinematic_viscosity stoke<s>;
+using length = unit<length_dimension,cgs::system>;
+constexpr static length centi{meter,metre}<s>;
+using mass = unit<mass_dimension,cgs::system>;
+constexpr static mass gram<me><s>;
+using mass_density = unit<mass_density_dimension,cgs::system>;
+using momentum = unit<momentum_dimension,cgs::system>;
+using power = unit<power_dimension,cgs::system>;
+using pressure = unit<pressure_dimension,cgs::system>;
+constexpr static pressure barye<s>;
+using time = unit<time_dimension,cgs::system>;
+constexpr static time second<s>;
+using velocity = unit<velocity_dimension,cgs::system>;
+constexpr static velocity centi{meter,metre}<s>_per_second;
+using volume = unit<volume_dimension,cgs::system>;
+constexpr static volume cubic_centi{meter,metre}<s>;
+using wavenumber = unit<wavenumber_dimension,cgs::system>;
+constexpr static wavenumber kayser<s>, reciprocal_centi{meter,metre}<s>;
+
+// io: for (NAME,N,S)
+std::string name_string(const reduce_unit<si::{NAME}>::type&) { return "{N}"; }
+std::string symbol_string(const reduce_unit<si::{NAME}>::type&) { return "{S}"; }
+// (acceleration,galileo,Gal), (current,biot,Bi), (dynamic_viscosity,poise,P),
+// (energy,erg,erg), (force,dyne,dyn), (kinematic_viscosity,stoke,St),
+// (pressure,barye,Ba), (wavenumber,kayser,K)
+}
+```
+
+#### Trigonometry and Angle System
+
+```c++
+namespace degree {
+using system = make_system<angle::degree_base_unit>::type;
+using dimensionless = unit<dimensionless_type,system>;
+using plane_angle = unit<plane_angle_dimension,system>;
+constexpr static plane_angle degree<s>;
+}
+
+namespace gradian {
+using system = make_system<angle::gradian_base_unit>::type;
+using dimensionless = unit<dimensionless_type,system>;
+using plane_angle = unit<plane_angle_dimension,system>;
+constexpr static plane_angle gradian<s>;
+}
+
+namespace revolution {
+using system = make_system<angle::revolution_base_unit>::type;
+using dimensionless = unit<dimensionless_type,system>;
+using plane_angle = unit<plane_angle_dimension,system>;
+constexpr static plane_angle revolution<s>;
+}
+```
+
+#### Temperature System
+
+```c++
+namespace celsius {
+using system = make_system<temperature::celsius_base_unit>::type;
+using temperature = unit<temperature_dimension,system>;
+constexpr static temperature degree<s>;
+}
+
+namespace fahrenheit {
+using system = make_system<temperature::fahrenheit_base_unit>::type;
+using temperature = unit<temperature_dimension,system>;
+constexpr static temperature degree<s>;
+}
+```
+
+#### Information System
+
+```c++
+namespace information {
+using system = make_system<byte_base_unit>::type;
+using dimensionless = unit<dimensionless_type,system>;
+
+using hu::bit::info = unit<information_dimension, make_system<bit_base_unit>::type>;
+constexpr static hu::bit::info bit<s>;
+using hu::byte::info = unit<information_dimension,system>;
+constexpr static hu::byte::info byte<s>;
+using hu::hartley::info = unit<information_dimension, make_system<hartley_base_unit>::type>;
+constexpr static hu::hartley::info hartley<s>;
+using hu::nat::info = unit<information_dimension, make_system<nat_base_unit>::type>;
+constexpr static hu::nat::info nat<s>;
+using hu::shannon::info = unit<information_dimension, make_system<shannon_base_unit>::type>;
+constexpr static hu::shannon::info shannon<s>;
+
+// prefixes: for (EXP,NAME):
+using {NAME}_pf_type = make_scaled_unit<dimensionless, scale<2,static_rational<{EXP}>>>::type;
+constexpr static {NAME}_pf_type {NAME};
+// (10,kibi), (20,mebi), (30,gibi), (40,tebi), (50,pebi), (60,exbi), (70,zebi), (80,yobi)
+}
+```
+
+#### Abstract System
+
+```c++
+namespace abstract {
+struct length_unit_tag : base_unit<length_unit_tag, length_dimension, -30> { };
+struct mass_unit_tag : base_unit<mass_unit_tag, mass_dimension, -29> { };
+struct time_unit_tag : base_unit<time_unit_tag, time_dimension, -28> { };
+struct current_unit_tag : base_unit<current_unit_tag, current_dimension, -27> { };
+struct temperature_unit_tag : base_unit<temperature_unit_tag, temperature_dimension, -26> { };
+struct amount_unit_tag : base_unit<amount_unit_tag, amount_dimension, -25> { };
+struct luminous_intensity_unit_tag : base_unit<luminous_intensity_unit_tag, luminous_intensity_dimension, -24> { };
+struct plane_angle_unit_tag : base_unit<plane_angle_unit_tag, plane_angle_dimension, -23> { };
+struct solid_angle_unit_tag : base_unit<solid_angle_unit_tag, solid_angle_dimension, -22> { };
+
+using system = make_system<length_unit_tag,mass_unit_tag,time_unit_tag,current_unit_tag,temperature_unit_tag,
+    amount_unit_tag,luminous_intensity_unit_tag,plane_angle_unit_tag,solid_angle_unit_tag>::type;
+
+using length = unit<length_dimension,system>;
+using mass = unit<mass_dimension,system>;
+using time = unit<time_dimension,system>;
+using current = unit<current_dimension,system>;
+using temperature = unit<temperature_dimension,system>;
+using amount = unit<amount_dimension,system>;
+using luminous_intensity = unit<luminous_intensity_dimension,system>;
+using plane_angle = unit<plane_angle_dimension,system>;
+using solid_angle = unit<solid_angle_dimension,system>;
+
+// for each (UNIT,NAME,SYM):
+struct base_unit_info<abstract::{UNIT}_unit_tag> { static std::string name(), symbol(); } // "[{NAME}]", "[{SYM}]"
 }
 ```
 
