@@ -146,6 +146,123 @@ public: ctor(int_rep num); ctor(special_values sv);
     friend date_type operator{+,-}(const date_type& d, const self& m); friend date_type operator{+,-}=(date_type& d, const self& m);
 private: int_rep _y;
 };
+
+struct c_time {
+    static std::tm* localtime(const std::time_t* t, std::tm* result);
+    static std::tm* gmtime(const std::time_t* t, std::tm* result);
+};
+
+struct day_clock<DateType> {
+    using ymd_type = DateType::ymd_type;
+    static DateType local_day(), universal_day();
+    static ymd_type local_day_ymd(), universal_day_ymd();
+};
+```
+
+#### Adjust & Functions
+
+```c++
+struct day_functor<DateType> {
+    using duration_type = DateType::duration_type;
+    ctor(int f);
+    duration_type get_<neg>_offset(const date_type&) const;
+private: int f_;
+};
+
+struct month_functor<DateType> {
+    using duration_type = DateType::duration_type; using cal_type = DateType::calendar_type;
+    using ymd_type = cal_type::ymd_type; using day_type = cal_type::day_type;
+    ctor(int f);
+    duration_type get_<neg>_offset(const date_type&) const;
+private: int f_; mutable short origDayOfMonth_;
+};
+
+struct week_functor<DateType> {
+    using duration_type = DateType::duration_type; using cal_type = DateType::calendar_type;
+    ctor(int f);
+    duration_type get_<neg>_offset(const date_type&) const;
+private: int f_;
+};
+
+struct year_functor<DateType> {
+    using duration_type = DateType::duration_type;
+    ctor(int f);
+    duration_type get_<neg>_offset(const date_type&) const;
+private: month_functor<date_type> _mf;
+};
+
+struct c_local_adjustor<TimeType> {
+    using time_duration_type = TimeType::time_duration_type;
+    using date_type = TimeType::date_type; using date_duration_type = date_type::duration_type;
+    static TimeType utc_to_local(const time_type& t);
+};
+
+struct year_based_generator<DateType> {
+    using calendar_type = DateType::calendar_type; using year_type = calendar_type::year_type;
+    ctor(); virtual ~dtor();
+    virtual DateType get_date(year_type y) const =0;
+    virtual std::string to_string() const =0;
+};
+
+struct partial_date<DateType> : public year_based_generator<DateType> {
+    using day_type = calendar_type::day_type; using month_type = calendar_type::month_type;
+    using duration_type = DateType::duration_type; using duration_rep = duration_type::duration_rep;
+    ctor(day_type d, month_type m); ctor(duration_rep days);
+    date_type get_date(year_type y) const override; date_type operator()(year_type y) const;
+    bool operator{==,<}(const self& rhs) const;
+    month_type month() const; day_type day() const;
+    std::string to_string() const override;
+private: day_type day_; month_type month_;
+};
+
+const char* nth_as_str(int ele);
+struct nth_kday_of_month<DateType> : public year_based_generator<DateType> {
+    using day_of_week_type = calendar_type::day_of_week_type; using month_type = calendar_type::month_type;
+    using duration_type = DateType::duration_type;
+    ctor(week_num week_no, day_of_week_type dow, month_type m);
+    date_type get_date(year_type y) const override;
+    month_type month() const; week_num nth_week() const; day_of_week_type day_of_week() const;
+    const char* nth_week_as_str() const; std::string to_string() const override;
+private: month_type month_; week_num wn_; day_of_week_type dow_;
+};
+
+struct {first,last}_kday_of_month<DateType> : public year_based_generator<DateType> {
+    using day_of_week_type = calendar_type::day_of_week_type; using month_type = calendar_type::month_type;
+    using duration_type = DateType::duration_type;
+    ctor(day_of_week_type dow, month_type m);
+    date_type get_date(year_type y) const override;
+    month_type month() const; day_of_week_type day_of_week() const;
+    std::string to_string() const override;
+private: month_type month_; day_of_week_type dow_;
+};
+
+struct first_kday_{after,before}<DateType> {
+    using calendar_type = DateType::calendar_type; using day_of_week_type = calendar_type::day_of_week_type;
+    using duration_type = DateType::duration_type;
+    ctor(day_of_week_type dow);
+    date_type get_date(year_type y) const;
+    day_of_week_type day_of_week() const;
+private: day_of_week_type dow_;
+};
+
+DateType::duration_type days_{until,before}_weekday <DateType,WeekdayType> (const DateType& d, const WeekdayType& wd);
+DateType {next,previous}_weekday <DateType,WeekdayType> (const DateType& d, const WeekdayType& wd);
+
+struct date_itr_base<DateType> {
+    using duration_type = DateType::duration_type; using value_type = DateType;
+    using iterator_category = std::input_iterator_tag;
+    ctor(DateType d); virtual ~dtor();
+    self& operator{++,--}();
+    virtual duration_type get_<neg>_offset(const DateType& current) const =0;
+    const DateType& operator*() const; const DateType* operator->() const;
+    bool operator{<,<=,>,>=,==,!=}(const self& d) const;
+private: DateType current_;
+};
+struct date_itr<OffsetFunctor,DateType> : date_itr_base<DateType> {
+    ctor(DateType d, int factor=1);
+private: duration_type get_<neg>_offset(const DateType& current) const override;
+    OffsetFunctor of_;
+};
 ```
 
 #### Utility
@@ -187,8 +304,7 @@ private: int_type value_; // wrap_min <= value_ <= wrap_max
 };
 ```
 
-adjust_functors, c_local_time_adjustor, c_time, date_clock_device,
-date_facet, date_format_simple, date_formatting_<{limited,locales}>, date_generators_<{formatter,parser}>, date_iterator, date_names_put,
+date_facet, date_format_simple, date_formatting_<{limited,locales}>, date_generators_{formatter,parser}, date_names_put,
 date_parsing, dst_rules, dst_translation_generators, filetime_functions, find_match, format_date_parser, gregorian_calendar,
 int_adapter, iso_format, local_time_adjustor, local_timezone_defs, microsec_time_clock, parse_format_base,
 period_{formatter,parser}, special_values_{formatter,parser}, string_convert, string_parse_tree, strings_from_facet
