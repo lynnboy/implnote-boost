@@ -1287,8 +1287,6 @@ std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr> (std::basic_ostream<Ch,Tr>& os, co
 std::basic_istream<Ch,Tr>& operator>> <Ch,Tr> (std::basic_istream<Ch,Tr>& os, {local_date_time,local_time_period}& ldt);
 ```
 
-tz_database
-
 ------
 ### Dependency
 
