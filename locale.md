@@ -5,9 +5,98 @@
 * commit: `3466ac7`, 2025-09-19
 
 ------
+### Common
+
+```c++
+std::string time_zone::global(<const std::string& new_tz>);
+```
+
+------
 ### Locale Categories
 
 #### Convert
+
+```c++
+struct conversion_base { enum conversion_type { normalization, upper_case, lower_case, case_folding, title_case }; };
+struct converter<Ch> : converter_base, std::locale::facet, facet_id<self> {
+    ctor(size_t refs=0);
+    virtual std::basic_string<Ch> convert(conversion_type how, const Ch* b, const Ch* e, int flags=0) const =0;
+};
+enum norm_type { norm_nfd, norm_nfc, norm_nfkd, norm_nfkc, norm_default=norm_nfc };
+std::basic_string<Ch> normalize<Ch>(const Ch* b, const Ch* e, norm_type n=norm_default, const std::locale& loc={});
+std::basic_string<Ch> normalize<Ch>(const std::basic_string<Ch>& str, norm_type n=norm_default, const std::locale& loc={});
+std::basic_string<Ch> normalize<Ch>(const Ch* str, norm_type n=norm_default, const std::locale& loc={});
+std::basic_string<Ch> {to_upper,to_lower,to_title,fold_case}<Ch>(const Ch* b, const Ch* e, const std::locale& loc={});
+std::basic_string<Ch> {to_upper,to_lower,to_title,fold_case}<Ch>(const std::basic_string<Ch>& str, const std::locale& loc={});
+std::basic_string<Ch> {to_upper,to_lower,to_title,fold_case}<Ch>(const Ch* str, const std::locale& loc={});
+
+// ICU impl
+void impl_icu::normalize_string(icu::UnicodeString& str, int flags);
+struct impl_icu::converter_impl<Ch> : converter<Ch> {
+    using string_type = std::basic_string<Ch>;
+    ctor(const cdata& d);
+    string_type convert(conversion_type how, const Ch* b, const Ch e, int flags=0) const override;
+private: icu::Locale locale_; std::string encoding_;
+};
+struct impl_icu::get_casemap_size_type<T>;
+struct impl_icu::is_casemap_func_const<Func>;
+struct impl_icu::raii_casemap<U8Char> {
+    using string_type = std::basic_string<U8Char>;
+    ctor(const std::string& locale_id); ~dtor(); // no copy
+    string_type convert<Conv>(Conv func, const U8Char* b, const U8Char* e) <const>; // cons if is_casemap_func_const<Conv>
+private: string_type do_convert<Conv>(Conv func, const U8Char* b, const U8Char* e) const;
+    UCaseMap* map_;
+};
+struct impl_icu::utf8_converter_impl<U8Char> : converter<U8Char> {
+    ctor(const cdata& d);
+    std::basic_string<U8Char> convert(conversion_type how, const Ch* b, const Ch e, int flags=0) const override;
+private: icu::Locale locale_; raii_casemap<U8Char> map_;
+};
+std::locale impl_icu::create_convert(const std::locale& in, const cdata& cd, char_facet_t type);
+
+// POSIX impl
+struct impl_posix::case_traits<Ch>{ static Ch {lower,upper}(Ch c, locale_t lc); }; // for char, wchar_t
+struct impl_posix::std::converter<Ch> : converter<Ch> {
+    using string_type = std::basic_string<Ch>; using ctype_type = std::ctype<Ch>;
+    ctor(std::shared_ptr<locale_t> lc, size_t refs=0);
+    string_type convert(conversion_type how, const Ch* b, const Ch e, int flags=0) const override;
+private: std::shared_ptr<locale_t> lc_;
+};
+struct impl_posix::utf8_converter<U8Char> : converter<U8Char> {
+    ctor(std::shared_ptr<locale_t> lc, size_t refs=0);
+    std::basic_string<U8Char> convert(conversion_type how, const Ch* b, const Ch e, int flags=0) const override;
+private: std::shared_ptr<locale_t> lc_;
+};
+std::locale impl_posix::create_convert(const std::locale& in, std::shared_ptr<locale_t> lc, char_facet_t type);
+
+// STD impl
+struct impl_std::converter<Ch> : converter<Ch> {
+    using string_type = std::basic_string<Ch>; using ctype_type = std::ctype<Ch>;
+    ctor(std::string& locale_name);
+    string_type convert(conversion_type how, const Ch* b, const Ch e, int flags=0) const override;
+private: std::locale base_;
+};
+struct impl_std::utf8_converter<U8Char> : converter<U8Char> {
+    using string_type = std::basic_string<U8Char>; using ctype_type = std::ctype<wchar_t>;
+    ctor(std::string& locale_name);
+    std::basic_string<U8Char> convert(conversion_type how, const Ch* b, const Ch e, int flags=0) const override;
+private: std::locale base_;
+};
+std::locale impl_std::create_convert(const std::locale& in, std::string& locale_name, char_facet_t type, utf8_support utf);
+
+// Win32 impl
+struct impl_win::wide_converter<Ch> : converter<wchar_t> {
+    ctor(const winlocale& lc, size_t refs=0);
+    string_type convert(conversion_type how, const Ch* b, const Ch e, int flags=0) const override;
+private: winlocale lc_;
+};
+struct impl_win::utf8_converter<U8Char> : converter<U8Char> {
+    ctor(const winlocale& lc, size_t refs=0);
+    std::basic_string<U8Char> convert(conversion_type how, const Ch* b, const Ch e, int flags=0) const override;
+private: wide_converter cvt_;
+};
+std::locale impl_win::create_convert(const std::locale& in, const winlocale& lc, char_facet_t type);
+```
 
 #### Collation
 
@@ -31,11 +120,155 @@ struct comparator<Ch,default_level=identical> {
     bool operator()(const std::basic_string<Ch>& l, r) const;
 private: std::locale locale_; const collator<Ch>& collator_; collate_level level_;
 };
+
+/// ICU impl
+struct impl_icu::collate_impl<Ch> : collator<Ch> {
+    int level_to_int(collate_level level) const;
+    int do_{utf8,ustring,real}_compare(collate_level level, const char* b1,e1,b2,e2, UErrorCode& status) const;
+    int do_compare(collate_level level, const char* b1,e1,b2,e2) const override;
+    std::vector<uint8_t> do_basic_transform(collate_level level, const Ch* b,e) const;
+    std::basic_string<Ch> do_transform(collate_level level, const Ch* b,e) const override;
+    long do_hash(collate_level level, const Ch* b,e) const override;
+    ctor(const cdata& d);
+    icu::Collator& get_collator(collate_level level) const;
+private: static constexpr int level_count = identical+1;
+    icu_std_converter<Ch> cvt_; icu::Locale locale_;
+    mutable thread_specific_ptr<icu::Collator> collates_[level_count];
+    bool is_utf8_;
+};
+std::locale impl_icu::create_collate(const std::locale& in, const cdata& cd, char_facet_t type);
+
+// POSIX impl
+struct impl_posix::coll_traits<Ch>;
+struct impl_posix::collator<Ch> : std::collate<Ch> {
+    using string_type = std::basic_string<Ch>;
+    ctor(std::shared_ptr<locale_t> l, size_t refs=0);
+    int do_compare(const Ch* lb,le,rb,re) const override;
+    long do_hash(const Ch* b,e) const override;
+    string_type do_transform(const Ch* b,e) const override;
+private: std::shared_ptr<locale_t> lc_;
+};
+std::locale impl_posix::create_collate(const std::locale& in, std::shared_ptr<locale_t> lc, char_facet_t type);
+
+// STD impl
+struct impl_std::utf8_collator_from_wide : std::collate<char> {
+    using wfacet = std::collate<wchar_t>;
+    ctor(const std::string& locale_name);
+    int do_compare(const Ch* lb,le,rb,re) const override;
+    long do_hash(const Ch* b,e) const override;
+    string_type do_transform(const Ch* b,e) const override;
+private: std::locale base_;
+};
+bool impl_std::collation_works(const std::locale& l);
+std::locale impl_std::create_collate(const std::locale& in, const std::string& locale_name, char_facet_t type, utf8_support utf);
+
+// Win32 impl
+struct impl_win::utf_collator<Ch> : collator<Ch> {
+    explicit ctor(winlocale lc);
+    int do_compare(collate_level level, const Ch* lb,le,rb,re) const override;
+    long do_hash(collate_level level, const Ch* b,e) const override;
+    string_type do_transform(collate_level level, const Ch* b,e) const override;
+private: winlocale base_;
+};
+std::locale impl_win::create_collate(const std::locale& in, const winlocale& lc, char_facet_t type);
 ```
 
 #### Formatting
 
+```c++
+enum flags::display_flags_type {
+    posix=0, number, currency, percent, date, time, datetime, strftime, spellout, ordinal, display_flags_mask=31,
+    currency_default=0x00, currency_iso=0x20, currency_national=0x40, currency_flags_mask=0x60,
+    time_default=0x000, time_short=0x080, time_medium=0x100, time_long=0x180, time_full=0x200, time_flags_mask=0x380,
+    date_default=0x0000, date_short=0x0400, date_medium=0x0800, date_long=0x0c00, date_full=0x1000, date_flags_mask=0x1c00,
+};
+enum flags::pattern_type { datetime_pattern, time_zone_id };
+enum flags::value_type { domain_id };
+
+struct ios_info {
+    ctor(); ctor(const self&); self& operator=(const self&); ~dtor();
+    static self& get(std::ios_base& ios);
+    void {display,currency,date,time}_flags(uint64_t flags); uint64_t {display,currency,date,time}_flags() const;
+    void domain_id(int); int domain_id() const;
+    void time_zone(const std::string&); const std::string& time_zone() const;
+    void date_time_pattern<Ch>(const std::basic_string<Ch>& str); std::basic_string<Ch> date_time_pattern<Ch>() const;
+    void on_imbue();
+private: uint64_t flags_; int domain_id_; std::string time_zone_; any_string datetime_;
+};
+std::ios_base& as::{posix,number,currency,percent,date,time,datetime,strftime,spellout,ordinal}(std::iso_base& ios);
+std::ios_base& as::currency_{default,iso,national}(std::iso_base& ios);
+std::ios_base& as::time_{default,short,medium,long,full}(std::iso_base& ios);
+std::ios_base& as::date_{default,short,medium,long,full}(std::iso_base& ios);
+struct detail::add_ftime<Ch> { std::basic_string<Ch> ftime; void apply(std::basic_ios<Ch>& ios) const; }; // <</>>
+add_ftime<Ch> as::ftime<Ch>(const {std::basic_string<Ch>&,Ch*} format);
+struct detail::set_timezone{std::string id;}; // <</>>
+std::ios_base& as::{gmt,local_time}(std::ios_base& ios);
+set_timezone as::time_zone(const {char*,std::string&} id);
+
+// ICU impl
+struct impl_icu::base_formatter { virtual ~dtor()=default; };
+struct impl_icu::formatter<Ch> : base_formatter {
+    using string_type = std::basic_string<Ch>;
+    virtual string_type format({double,int32_t,int64_t,uint64_t} value, size_t& code_points) const =0;
+    virtual size_t parse(const string_type& str, {double,int32_t,int64_t,uint64_t}& value) const =0;
+    static std::unique_ptr<formatter> create(std::ios_base& ios, const icu::Locale& locale, const std::string& encoding);
+};
+struct impl_icu::number_format<Ch> : formatter<Ch> {
+    ctor(icu::NumberFormat& fmt, const std::string& codepage, bool isNumberOnly=false);
+    string_type format({double,int32_t,int64_t,uint64_t} value, size_t& code_points) const override;
+    size_t parse(const string_type& str, {double,int32_t,int64_t,uint64_t}& value) const override;
+private: icu_std_converter<Ch> cvt_; icu::NumberFormat& icu_fmt_; const bool is_NumberOnly_;
+};
+struct impl_icu::date_format<Ch> : formatter<Ch> {
+    ctor({std::unique_ptr<icu::DateFormat>,icu::DateFormat&} fmt, const std::string& encoding);
+    string_type format({double,int32_t,int64_t,uint64_t} value, size_t& code_points) const override;
+    size_t parse(const string_type& str, {double,int32_t,int64_t,uint64_t}& value) const override;
+private: icu_std_converter<Ch> cvt_; std::unique_ptr<icu::DateFormat> icu_fmt_holder_; icu::DateFormat& icu_fmt_;
+};
+enum class impl_icu::format_len{Short,Medium,Long,Full};
+enum class impl_icu::num_fmt_type{number,sci,curr_nat,curr_iso,percent,spell,ordinal};
+struct impl_icu::formatters_cache : std::locale::facet {
+    static std::locale::id id;
+    ctor(const icu::Locale& locale);
+    icu::NumberFormat& number_format(num_fmt_type type) const;
+    const icu::UnicodeString& {date,time}_format(format_len f) const;
+    const icu::UnicodeString& date_time_format(format_len d, format_len t) const;
+    const icu::UnicodeString& default_{date,time,date_time}_format() const;
+    icu::SimpleDateFormat* date_formatter() const;
+private: static constexpr unsigned num_fmt_type_count=ordinal+1, format_len_count=Full+1;
+    mutable thread_specific_ptr<icu::NumberFormat> number_format_[num_fmt_type_count];
+    mutable thread_specific_ptr<icu::SimpleDateFormat> date_formatter_;
+    icu::UnicodeString date_format_[format_len_count], time_format_[format_len_count] date_time_format_[format_len_count][format_len_count],
+        default_date_format_, default_time_format_, default_date_time_format_;
+    icu::Locale locale_;
+};
+struct impl_icu::num_format<Ch> : std::num_put<Ch> {
+    using string_type = std::basic_string<Ch>; using formater_type = formatter<Ch>;
+    ctor(const cdata& d, size_t refs=0);
+protected:
+    iter_type do_put(iter_type out, std::ios_base& ios, Ch fill, {<unsigned><long>long,<long>double} val) const override;
+private: icu::Locale loc_; std::string enc_;
+};
+
+std::locale impl_icu::install_formatting_facets<Ch>(const std::locale& in, const cdata& cd);
+std::locale impl_icu::create_formatting(const std::locale& in, const cdata& cd, char_facet_t type);
+```
+
 #### Parsing
+
+```c++
+// ICU impl
+struct impl_icu::num_parse<Ch> : std::num_get<Ch> {
+    ctor(const cdata& d, size_t refs=0);
+protected:
+    using string_type = std::basic_string<Ch>; using formater_type = formatter<Ch>; using stream_type = std::basic_istream<Ch>;
+    iter_type do_get(iter_type in, iter_type end, std::ios_base& ios, std::ios_base::iostate& err,
+        {long,<unsigned>{short,int,<long>long},<long>double,float}& val) const override;
+private: icu::Locale loc_; std::string enc_;
+};
+std::locale impl_icu::install_parsing_facets<Ch>(const std::locale& in, const cdata& cd);
+std::locale impl_icu::create_parsing(const std::locale& in, const cdata& cd, char_facet_t type);
+```
 
 #### Codepage
 
@@ -187,27 +420,38 @@ std::locale create_boundary(const std::locale& in, const cdata& cd, char_facet_t
 ```
 
 ------
-### Details
+### Details & Utils
 
 ```c++
 struct detail::facet_id<Derived> { static std::locale::id id; };
 struct detail::is_supported_char<Ch>; // true_type for char/wchar_t/char{8,16,32}_t
+
+class detail::any_string {
+    struct base { virtual ~dtor()=default; virtual self* clone() const=0; }; // default all other 5 special members in protected
+    struct impl<Ch> : base { explicit ctor(basic_string_view<Ch> value); self* clone() const override; std::basic_string<Ch> s; };
+    std::unique_ptr<const base> s_;
+public: ctor()=default; ctor(const self& other); ctor(self&&)=default; self& operator=(self other);
+    void set<Ch>(const basic_string_view<Ch> s); std::basic_string<Ch> get() const;
+};
+
+Ch* util::str_end<Ch>(Ch* str);
+bool util::is_{upper,lower,numeric}_ascii(const char c);
+char util::to_char(unsigned char c);
 ```
 
-conversion, date_time_<facet>, encoding_<errors,utf>, format<ting>, generator,
-generic_codecvt, gnu_gettext, hold_ptr, info, localization_backend, message, time_zone, utf, utf8_codecvt, util
+date_time_<facet>, encoding_<errors,utf>, format, generator,
+generic_codecvt, gnu_gettext, hold_ptr, info, localization_backend, message, utf, utf8_codecvt, util
 
-detail/: allocator_traits, any_string, encoding
-util/: locale_data, string
+detail/: allocator_traits, encoding
+util/: locale_data
 
 encoding/: codepage, {i,u,w}conv_converter
-icu/: all_generator, cdata, codecvt, collator, conversion, date_time, formatter<s_cache>, icu_backend, icu_util, numeric, time_zone, uconv
-posix/: all_generator, codecvt, collate, converter, numeric, posix_backend
+icu/: all_generator, cdata, codecvt, date_time, icu_backend, icu_util, time_zone, uconv
+posix/: all_generator, codecvt, numeric, posix_backend
 shared/: date_time, format<ting>, generator, iconv_codecvt, ids, ios_prop, localization_backend, message, mo_hash, mo_lambda, std_collate_adapter
-std/: all_generator, codecvt, collate, converter, numeric, std_backend
+std/: all_generator, codecvt, numeric, std_backend
 util/: codecvt_converter, default_locale, encoding, foreach_char, gregorian, iconv, info, locale_data, make_std_unique, numeric_<conversion>, timezone, win_codepages
-win32/: all_generator, api, collate, converter, lcid, numeric, win_backend
-
+win32/: all_generator, api, lcid, numeric, win_backend
 
 ------
 ### Dependency
