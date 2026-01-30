@@ -173,7 +173,7 @@ private: winlocale base_;
 std::locale impl_win::create_collate(const std::locale& in, const winlocale& lc, char_facet_t type);
 ```
 
-#### Formatting
+#### Formatting & Parsing
 
 ```c++
 enum flags::display_flags_type {
@@ -249,15 +249,6 @@ protected:
     iter_type do_put(iter_type out, std::ios_base& ios, Ch fill, {<unsigned><long>long,<long>double} val) const override;
 private: icu::Locale loc_; std::string enc_;
 };
-
-std::locale impl_icu::install_formatting_facets<Ch>(const std::locale& in, const cdata& cd);
-std::locale impl_icu::create_formatting(const std::locale& in, const cdata& cd, char_facet_t type);
-```
-
-#### Parsing
-
-```c++
-// ICU impl
 struct impl_icu::num_parse<Ch> : std::num_get<Ch> {
     ctor(const cdata& d, size_t refs=0);
 protected:
@@ -266,15 +257,405 @@ protected:
         {long,<unsigned>{short,int,<long>long},<long>double,float}& val) const override;
 private: icu::Locale loc_; std::string enc_;
 };
+
+std::locale impl_icu::install_formatting_facets<Ch>(const std::locale& in, const cdata& cd);
 std::locale impl_icu::install_parsing_facets<Ch>(const std::locale& in, const cdata& cd);
+std::locale impl_icu::create_formatting(const std::locale& in, const cdata& cd, char_facet_t type);
 std::locale impl_icu::create_parsing(const std::locale& in, const cdata& cd, char_facet_t type);
+
+// POSIX impl
+struct impl_posix::num_format<Ch> : util::base_num_format<Ch> {
+    ctor(std::shared_ptr<locale_t> lc, size_t refs=0);
+protected:
+    iter_type do_format_currency(bool intl, iter_type out, std::ios_base&, Ch, long double val) const override;
+    std::ostreambuf_iterator<{char|wchar_t}> write_it(std::ostreambuf_iterator<{char|wchar_t}> out, const char* ptr, size_t n) const;
+private: std::shared_ptr<locale_t> lc_;
+};
+struct impl_posix::time_put_posix<Ch> : public std::time_put<Ch> {
+    ctor(std::shared_ptr<loclae_t> lc, size_t refs=0);
+    using string_type = std::basic_string<Ch>;
+    iter_type do_put(iter_type out, std::ios_base&, Ch, const std::tm* tm, char format, char modifier) const override;
+private: std::shared_ptr<locale_t> lc_;
+};
+
+struct impl_posix::ctype_posix<{char|wchar_t}> : public std::ctype<{char|wchar_t}> {
+    ctor(std::shared_ptr<locale_t> lc);
+    bool do_is(mask m, {char|wchar_t} c) const;
+    const {char|wchar_t}* do_is(const {char|wchar_t}* b, e, mask* m) const;
+    const {char|wchar_t}* do_scan_{is,not}(mask m, const {char|wchar_t}* b, e) const;
+    {char|wchar_t} to{upper,lower}({char|wchar_t} c) const; const {char|wchar_t}* to{upper,lower}(char* b, e) const;
+private: std::shared_ptr<locale_t> lc_;
+};
+
+struct impl_posix::basic_numpunct { std::string grouping, thousands_sep, decimal_point; ctor(<locale_t> lc); };
+
+struct impl_posix::num_punct_posix<Ch> : std::numpunct<Ch> {
+    using string_type = std::basic_string<Ch>;
+    ctor(locale_t lc, size_t refs=0);
+    void to_str(std::string& s1, std::<w>string& s2, locale_t lc);
+    Ch do_decimal_point() const override; Ch do_thou() const override;
+    std::string do_grouping() const override;
+    string_type do_{true,false}name() const override;
+private: string_type decimal_point_, thousands_sep_; std::string grouping_;
+};
+
+std::locale impl_posix::create_formatting(const std::locale& in, std::shared_ptr<locale_t> lc, char_facet_t type)
+std::locale impl_posix::create_parsing(const std::locale& in, std::shared_ptr<locale_t> lc, char_facet_t type)
+
+// STD impl
+struct impl_std::time_put_from_base<Ch> : std::time_put<Ch> {
+    ctor(const std::locale& base);
+    iter_type do_put(iter_type out, std::iso_base&, Ch fill, const std::tm* tm, char format, char modifier) const override;
+private: const std::time_put<Ch>& base_facet_; mutable std::basic_ios<Ch> base_ios_;
+};
+struct impl_std::utf8_time_put_from_wide : std::time_put<char> {
+    ctor(const std::locale& base, size_t refs=0);
+    iter_type do_put(iter_type out, std::iso_base&, Ch fill, const std::tm* tm, char format, char modifier) const override;
+private: std::locale base_;
+};
+struct impl_std::utf8_numpunct_from_wide : std::numpunct<char> {
+    ctor(const std::locale& base, size_t refs=0);
+    char do_{decimal_point,thousands_sep}() const override;
+    std::string do_{grouping,{true,false}name}() const override;
+private: std::string truename_, false_name; char thousands_sep_, decimal_point_; std::string grouping_;
+};
+struct impl_std::utf8_moneypunct_from_wide<intl> : std::moneypunct<char,intl> {
+    ctor(const std::locale& base, size_t refs=0);
+    char do_{decimal_point,thousands_sep}() const override;
+    std::string do_{grouping,curr_symbol,{positive,negative}_sign}() const override;
+    int do_frac_digits() const override;
+    std::money_base::pattern do_{pos,neg}_format() const override;
+private: char thousands_sep_, decimal_point_;
+    std::string grouping_, curr_symbol_, positive_sign_, negative_sign_;
+    int frac_digits; std::money_base::pattern pos_format_, neg_format_;
+};
+struct impl_std::utf8_numpunct : std::numpunct_byname<char> {
+    ctor(const std::string& name, size_t refs=0);
+    char do_thousands_sep() const override;
+    std::string do_grouping() const override;
+};
+struct impl_std::utf8_moneypunct<intl> : std::moneypunct_byname<char,intl> {
+    ctor(const std::string& name, size_t refs=0);
+    char do_thousands_sep() const override;
+    std::string do_grouping() const override;
+};
+std::locale impl_std::create_basic_parsing<Ch>(const std::locale& in, const std::string& locale_name);
+std::locale impl_std::create_basic_formatting<Ch>(const std::locale& in, const std::string& locale_name);
+std::locale impl_std::create_formatting(const std::locale& in, const std::string& locale_name, char_facet_t type, utf8_support utf);
+std::locale impl_std::create_parsing(const std::locale& in, const std::string& locale_name, char_facet_t type, utf8_support utf);
+
+// Win32 impl
+struct impl_win::num_format<Ch> : util::base_num_format<Ch> {
+    ctor(const winlocale& lc, size_t refs=0);
+private: iter_type do_format_currency(bool, iter_type out, std::ios_base& ios, Ch fill, long double val) const override;
+    winlocale lc_;
+};
+struct impl_win::time_put_win<Ch> : std::time_put<Ch> {
+    ctor(const winlocale& lc, size_t refs=0);
+    using string_type = std::basic_string<Ch>;
+    iter_type do_put(iter_type out, std::ios_base&, Ch, const std::tm* tm, char format, char) const override;
+private: winlocale lc_;
+};
+struct impl_win::num_punct_win<Ch> : std::numpunct<Ch> {
+    using string_type = std::basic_string<Ch>;
+    ctor(const winlocale& lc, size_t refs=0);
+    void to_str(std::wstring& s1, std::<w>string& s2);
+    Ch do_{decimal_point,thousands_sep}() const override;
+    std::string do_grouping() const override;
+    string_type do{true,false}name() const override;
+private: string_type decimal_point_, thousands_sep_; std::string grouping_;
+};
+std::locale impl_win::create_formatting(const std::locale& in, const winlocale& lc, char_facet_t type);
+std::locale impl_win::create_parsing(const std::locale& in, const winlocale& lc, char_facet_t type);
 ```
 
-#### Codepage
+#### Message
+
+```c++
+using count_type = long long;
+struct message_format<Ch> : std::locale_facet, facet_id<self> {
+    using char_type = Ch; using string_type = std::basic_string<Ch>;
+    ctor(size_t refs=0);
+    virtual const char_type* get(int domain_id, const char_type* context, const char_type* id, <count_type n>) const =0;
+    virtual int domain(const std::string& domain) const =0;
+    virtual const char_type* convert(const char_type* msg, string_type& buffer) const =0;
+};
+struct basic_message<Ch> {
+    using char_type = Ch; using string_type = std::basic_string<Ch>; using facet_type = message_format<Ch>;
+    ctor(); ctor(self {const&|&&})<noexcept> =default; self& operator=(self {const&|&&}) <noexcept(...)> =default;
+    explicit ctor(<const char_type* context>, const {char_type*|string_type&} id);
+    explicit ctor(<const char_type* context>, const {char_type*|string_type&} single, const {char_type*|string_type&} plural, count_type n);
+    void swap(self& other) noexcept(...); friend void swap(self& x, self& y) noexcept(...);
+    operator string_type() const; string_type str() const;
+    string_type str(<const std::locale& loc>, const std::string& domain_id) const;
+    string_type str(const std::locale& loc, <int id>) const;
+    void write(std::basic_ostream<char_type>& out) const;
+private: count_type n_; const char_type *c_id_, *c_context_, *c_plural_; string_type id_, context_, plural_;
+};
+using message = basic_message<char>; using wmessage = basic_message<wchar_t>; using u{8,16,32}message = basic_message<char{8,16,32}_t>;
+std::basic_ostream<Ch>& operator<< <Ch> (std::basic_ostream<Ch>& out, const basic_message<Ch>& msg);
+basic_message<Ch> translate<Ch> (<const Ch* context>, const Ch* msg);
+basic_message<Ch> translate<Ch> (<const Ch* context>, const Ch* single, const Ch* plural, count_type n);
+basic_message<Ch> translate<Ch> (<const std::basic_string<Ch>& context>, const std::basic_string<Ch>& msg);
+basic_message<Ch> translate<Ch> (<const std::basic_string<Ch>& context>, const std::basic_string<Ch>& single, const std::basic_string<Ch>& plural, count_type n);
+std::basic_string<Ch> gettext<Ch> (const Ch* id, const std::locale& loc={});
+std::basic_string<Ch> ngettext<Ch> (const Ch* s, const Ch* p, count_type n, const std::locale& loc={});
+std::basic_string<Ch> dgettext<Ch> (const char* domain, const Ch* id, const std::locale& loc={});
+std::basic_string<Ch> dngettext<Ch> (const char* domain, const Ch* s, const Ch* p, count_type n, const std::locale& loc={});
+std::basic_string<Ch> pgettext<Ch> (const Ch* context, const Ch* id, const std::locale& loc={});
+std::basic_string<Ch> npgettext<Ch> (const Ch* context, const Ch* s, const Ch* p, count_type n, const std::locale& loc={});
+std::basic_string<Ch> dpgettext<Ch> (const char* domain, const Ch* context, const Ch* id, const std::locale& loc={});
+std::basic_string<Ch> dnpgettext<Ch> (const char* domain, const Ch* context, const Ch* s, const Ch* p, count_type n, const std::locale& loc={});
+
+struct as::detail::set_domain{ std::string domain_id; };
+std::basic_ostream<Ch>& as::detail::operator<< <Ch> (std::basic_ostream<Ch>& out, const set_domain& dom);
+set_domain as::domain(const std::string& id);
+
+// gettext impl
+namespace gnu_gettext {
+struct messages_info {
+    ctor();
+    std::string language, country, variant, encoding, locale_category;
+    struct domain { std::string name, encoding; ctor(); ctor(const std::string& n); bool operator{==,!=}(const self& other) const; };
+    using domains_type = std::vector<domain>;
+    domains_type domains; std::vector<std::string> paths;
+    using callback_type = std::function<std::vector<char>(const std::string& file_name, const std::string& encoding)>;
+    callback_type callback;
+    std::vector<std::string> get_catalog_paths() const;
+private: std::vector<std::string> get_lang_folders() const;
+};
+message_format<Ch>* create_messages_facet<Ch>(const messages_info& info) requires is_supported_char<Ch>;
+
+struct lambda::expr {
+    using value_type = long long;
+    virtual ~dtor()=default;
+    virtual value_type operator()(value_type n) const=0;
+};
+using lambda::expr_ptr = std::unique_ptr<expr>;
+struct lambda::plural_expr {
+    ctor()=default; explicit ctor(expr_ptr p);
+    value_type operator()(expr::value_type n) const;
+    explicit operator bool() const;
+private: expr_ptr p_;
+};
+plural_expr lambda::compile(const char* c_expression);
+
+struct pj_winberger_hash {
+    using state_type = uint32_t;
+    static constexpr state_type initial_state=0;
+    static state_type update_state(state_type value, {char c,const char* p,const char* b,e});
+};
+pj_winberger_hash::state_type pj_winberger_hash_function(const char* {ptr|b,e});
+
+struct c_file {FILE* handle; ~dtor(){if (handle) fclose(handle);} ctor(const std::string& file_name, const std::string& encoding); };
+std::vector<char> read_file(FILE* file);
+struct mo_file {
+    ctor(std::vector<char> data);
+    string_view find(const char* context_in, const char* key_in) const;
+    static bool key_equals(const char* real_key, const char* cntx, const char* key);
+    const char* key(unsigned id) const;
+    string_view value(unsigned id) const;
+    bool has_hash() const;
+    size_t size() const; bool empty() const;
+private: uint32_t keys_offset_, translations_offset_, hash_size_, hash_offset_;
+    const std::vector<char> data_; bool native_byteorder_; size_t size_;
+};
+struct mo_file_use_traits<Ch> {
+    static constexpr bool in_use = false; // true for char and char8_t
+    using string_view_type = basic_string_view<Ch>;
+    static stringview_type use(const mo_file&, const Ch*, const Ch*); // throws by default; work for char and char8_t
+};
+
+struct converter<Ch> : conv::utf_encoder<Ch> {ctor(std::string&,std::string in_enc); using base::operator();};
+struct converter<char> : conv::narrow_converter> {ctor(std::string& out_enc,std::string in_enc); using base::operator();};
+
+struct message_key<Ch> {
+    using string_type = std::basic_string<Ch>;
+    ctor(const string_type& c={}); ctor(const Ch* c, const Ch* k);
+    bool operator{<,==,!=}(const self& other) const;
+    const Ch* context() const; const Ch* key() const;
+private: string_type context_, key_; const Ch *c_context_, *c_key_;
+};
+struct hash_function<Ch> {size_t operator()(const message_key<Ch>& msg) const;};
+const Ch* runtime_conversion<Ch>(const Ch* msg, std::basic_string<Ch>& buf, bool do_conv, const std::string& locale_encoding, const std::string& key_encoding);
+
+class mo_message<Ch> : message_format<Ch> {
+    using key_type = message_key<Ch>; using catalog_type = std::unordered_map<key_type,string_type,hash_function<Ch>>;
+    struct domain_data_type {std::unique_ptr<mo_file> mo_catalog; catalog_type catalog; lambda::plural_expr plural_form;};
+public: using string_view_type = mo_file_use_traits<Ch>::string_view_type;
+    ctor(const messages_info& info);
+    const Ch* get(int domain_id, const Ch* context, const Ch* in_id, <count_type n>) const override;
+    int domain(const std::string& domain) const override;
+    const Ch* convert(const Ch* msg, string_type& buf) const override;
+private: std::map<std::string,unsigned> domains_; std::vector<domain_data_type> domain_data_;
+    std::string locale_encodings_, key_encodings_; bool key_conversion_required_;
+};
+}
+
+std::locale install_message_facet(const std::locale& in, const char_facet_t type, const util::locale_data& data, const std::vector<std::string>& domains,paths);
+```
+
+#### Codepage, Encoding
+
+```c++
+struct detail::charset_converter<ChIn,ChOut> {
+    using char_in_type=ChIn; using char_out_type=ChOut; using string_type=std::basic_string<ChOut>;
+    virtual ~dtor()=default;
+    virtual string_type convert(const ChIn* b,e) =0;
+    string_type convert(const basic_string_view<ChIn> text);
+};
+using detail::narrow_converter = charset_converter<char,char>;
+using detail::utf_encoder<Ch> = charset_converter<char,Ch>;
+using detail::utf_decoder<Ch> = charset_converter<Ch,char>;
+enum class detail::conv_backend{Default,IConv,ICU,WinAPI};
+std::unique_ptr<utf_encoder<Ch>> detail::make_utf_encoder<Ch>(const std::strnig& charset, method_type how, conv_backend impl=Default);
+std::unique_ptr<utf_decoder<Ch>> detail::make_utf_decoder<Ch>(const std::strnig& charset, method_type how, conv_backend impl=Default);
+std::unique_ptr<narrow_converter> detail::make_narrow_converter(const std::string& src_encoding,target_encoding, method_type how, conv_backend impl=Default);
+
+namespace conv {
+struct conversion_error: std::runtime_error {ctor();};
+struct invalid_charset: std::runtime_error {ctor();};
+enum method_type {skip,stop,default_method=skip};
+
+std::basic_string<Ch1,std::char_traits<Ch1>,A> utf_to_utf<Ch1,Ch2,A=std::allocator<Ch1>,[A2]>
+    ({const Ch2* b,e|const Ch2* str|const std::basic_string<Ch2,std::char_traits<Ch2>,{A|A2}>& str}, <method_type how=default_method>, const A& alloc={});
+
+std::basic_string<Ch> :to_utf({const char* b,e|const char* text|const std::string& text}, const std::string& charset, method_type how=default_method);
+std::basic_string<Ch> :to_utf({const char* b,e|const char* text|const std::string& text}, const std::locale& loc, method_type how=default_method);
+std::string from_utf<Ch>({const Ch* b,e|const std::basic_string<Ch>& text|const Ch* text}, const std::string& charset, method_type how=default_method);
+std::string from_utf<Ch>({const Ch* b,e|const std::basic_string<Ch>& text|const Ch* text}, const std::locale& loc, method_type how=default_method);
+std::string between({const char* b,e|const char* text|const std::strnig& text}, const std::string& to_encoding,from_encoding, method_type how=default_method);
+struct utf_encoder<Ch> {
+    using char_type = Ch; using string_type = std::basic_string<Ch>;
+    ctor(const std::string& charset, method_type how=default_method);
+    string_type convert({const char* b,e|const string_view text}) const; string_type operator()(const string_view text) const;
+private: std::unique_ptr<detail::utf_encoder<Ch>> impl_;
+};
+struct utf_decoder<Ch> {
+    using char_type = Ch; using stringview_type = std::basic_string_view<Ch>;
+    ctor(const std::string& charset, method_type how=default_method);
+    std::string convert({const char* b,e|const stringview_type text}) const; std::string operator()(const stringview_type text) const;
+private: std::unique_ptr<detail::utf_decoder<Ch>> impl_;
+};
+struct narrow_converter {
+    ctor(const std::string& src_encoding, target_encoding, method_type how=default_method);
+    std::string convert({const char* b,e|const string_view text}) const; std::string operator()(const string_view text) const;
+private: std::unique_ptr<detail::narrow_converter> impl_;
+};
+}
+
+struct generic_codecvt_base { enum initial_conversion_state{to_unicode_state,from_unicode_state}; };
+struct generic_codecvt<Ch,CodecvtImpl,charSize=sizeof(Ch)>;
+struct generic_codecvt<Ch,CodecvtImpl,{2,4}>; : std::codecvt<Ch,char,std::mbstate_t>, generic_codecvt_base {
+    using uchar=Ch;
+    ctor(size_t refs=0);
+    const CodecvtImpl& implementation() const;
+protected:
+    std::codecvt_base::result do_unshift(std::mbstate_t& s, char* from,from_end, char*& next) const override;
+    int do_{encoding,max_length,always_noconv}() const noexcept override;
+    int do_length(std::mbstate_t& std_state, const char* from,from_end, size_t max) const override;
+    std::codecvt_base::result do_in(std::mbstate_t& s, const char* from,from_end, const char*& from_next, uchar* to,to_end, uchar*& to_next) const override;
+    std::codecvt_base::result do_in(std::mbstate_t& s, const uchar* from,from_end, const uchar*& from_next, char* to,to_end, char*& to_next) const override;
+};
+struct generic_codecvt<char,CodecvtImpl,1>; : std::codecvt<char,char,std::mbstate_t>, generic_codecvt_base {
+    using uchar=char;
+    ctor(size_t refs=0);
+    const CodecvtImpl& implementation() const;
+};
+
+namespace utf {
+using code_point = uint32_t;
+constexpr code_point illegal=0xFFFFFFFFu, incomplete=0xFFFFFFFEu;
+using len_or_error = code_point;
+bool is_valid_codepoint(code_point v);
+
+struct utf_traits<Ch,size=sizeof(Ch)>;
+struct utf_traits<Ch,1> {
+    using char_type=Ch;
+    static constexpr int max_width=4;
+    static int {trait_length,width}(char_type ci);
+    static bool is_{trail,lead}(char_type ci);
+    static code_point decode<It>(It& p, It e);
+    static code_point decode_valid<It>(It& p);
+    static It encode<It>(code_point v, It out);
+};
+struct utf_traits<Ch,2> {
+    using char_type=Ch;
+    static bool is_{first,second}_surrogate(uint16_t x);
+    static code_point combine_surrogate(uint16_t w1, uint16_t w2);
+    static int {trait_length,width}(char_type c);
+    static bool is_{trail,lead}(char_type c);
+    static constexpr int max_width=2;
+    static code_point decode<It>(It& p, It e);
+    static code_point decode_valid<It>(It& p);
+    static It encode<It>(code_point v, It out);
+};
+struct utf_traits<Ch,4> {
+    using char_type=Ch;
+    static int {trail_length,width}(char_type c);
+    static bool is_{trail,lead}(char_type c);
+    static constexpr int max_width=1;
+    static code_point decode<It>(It& p, It e);
+    static code_point decode_valid<It>(It& p);
+    static It encode<It>(code_point v, It out);
+};
+
+struct utf8_codecvt<Ch> : generic_codecvt<Ch,self> {
+    struct state_type{};
+    ctor(size+t refs=0);
+    static int max_encoding_length();
+    static state_type initial_state(initial_conversion_state);
+    static utf::code_point to_unicode(state_type&, const char*& b, const char* e);
+    static utf::len_or_error from_unicode(state_type&, utf::code_point u, char* b, const char* e);
+};
+}
+
+// ICU impl
+struct impl_icu::uconv_converter : util::base_converter {
+    ctor(const std::string& encoding);
+    bool is_thread_safe() const override;
+    self* clone() const override;
+    utf::code_point to_unicode(const char*& b, const char* e) override;
+    utf::len_or_error from_unicode(utf::code_point u, char* b, const char* e) override;
+    int max_len() const override;
+private: std::string encoding_; uconv cvt_;
+};
+std::unique_ptr<util::base_converter> impl_icu::create_uconv_converter(const std::string& encoding);
+std::locale impl_icu::create_codecvt(const std::locale& in, const std::string& encoding, char_facet_t type);
+
+struct impl_icu::icu_handle {
+    explicit ctor(UConverter* h=nullptr); self& operator=(UConverter* h); ~dtor(); // no copy, allow move
+    operator UConverter*() const; explicit operator bool() const;
+private: UConverter* h_;
+};
+struct impl_icu::uconv {
+    ctor(const std::string& charset, cpcvt_type cvt_type=skip); // no copy
+    int max_char_size() const;
+    std::basic_string<U8Char> go<U8Char=char>(const UChar* buf, int length, int max_size) const;
+    size_t cut(size_t n, const char* b,e) const;
+private: icu_handle cvt_;
+};
+struct impl_icu::icu_std::converter<Ch,char_size=sizeof(Ch)>;
+struct impl_icu::icu_std::converter<Ch,{1,2,4}>{
+    using string_type = std::basic_string<Ch>;
+    ctor(const std::string& charset, cpcvt_type cvt_type=skip);
+    icu::UnicodeString icu_<checked>(const Ch* b,e) const;
+    string_type std(const icu::UnicodeString& str) const;
+    size_t cut(const icu::UnicodeString& str, const Ch* b,e, size_t n, size_t from_u=0, size_t from_char=0) const;
+private:
+    uconv cvt_; const int max_len_; // for 1
+    cpcvt_type mode_; // for 2 and 4
+};
+
+// POSIX impl
+std::locale impl_posix::create_codecvt(const std::locale& in, const std::string encoding, char_facet_t type);
+
+// STD impl
+std::locale impl_std::codecvt_bychar(const std::locale& in, const std::string& locale_name);
+std::locale impl_std::create_codecvt(const std::locale& in, const std::string& locale_name, char_facet_t type, utf8_support utf);
+```
 
 #### Calendar
-
-#### Message
 
 #### Information
 
@@ -437,21 +818,109 @@ public: ctor()=default; ctor(const self& other); ctor(self&&)=default; self& ope
 Ch* util::str_end<Ch>(Ch* str);
 bool util::is_{upper,lower,numeric}_ascii(const char c);
 char util::to_char(unsigned char c);
+
+struct util::formatting_size_traits<Ch> { static size_t size(const std::basic_string<Ch>& s, const std::locale&); }; // spec for char
+struct util::base_num_format<Ch> : std::num_put<Ch> {
+    using string_type = std::basic_string<Ch>;
+    ctor(size_t refs=0);
+protected:
+    iter_type do_put(iter_type out, std::ios_base& ios, Ch fill, {<unsigned><long>long,<long>double} val) const override;
+};
+struct util::base_num_parse<Ch> : std::num_get<Ch> {
+    ctor(size_t refs=0);
+protected:
+    using string_type = std::basic_string<Ch>;
+    iter_type do_get(iter_type in, iter_type end, std::ios_base& ios, std::ios_base::iostate& err, {<unsigned><long>long,<long>double} val) const override;
+};
+
+std::string util::get_system_locale(bool use_utf8_on_windows=false);
+std::locale create_info(const std::locale& in, const std::string& name);
+struct util::base_converter {
+    static constexpr utf::code_point illegal=illegal, incomplete=incomplete;
+    virtual ~dtor();
+    virtual int max_len() const{return 1;}
+    virtual bool is_thread_safe() const {return false;}
+    virtual self* clone() const { return new self{}; }
+    virtual utf::code_point to_unicode(const char*& b, const char* e);
+    virtual utf::len_or_error from_unicode(utf::code_point u, char* b, const char* e);
+};
+std::unique_ptr<base_converter> util::create_{utf8,simple}_converter();
+std::locale util::create_codecvt(const std::locale& in, std::unique_ptr<base_converter> cvt, char_facet_t type);
+std::locale util::create_utf8_codecvt(const std::locale& in, char_facet_t type);
+std::locale util::create_simpl_codecvt(const std::locale& in, const std::string& encoding, char_facet_t type);
+
+struct util::utf8_converter : base_converter {
+    int max_len() const override;
+    self* clone() const override;
+    utf::code_point to_unicode(const char*& b, const char* e) override;
+    utf::len_or_error from_unicode(utf::code_point u, char* b, const char* e) override;
+};
+struct util::simple_converter_impl {
+    static constexpr int hash_table_size = 1024;
+    ctor(const std::string& encoding);
+    utf::code_point to_unicode(const char*& b, const char* e) const;
+    utf::len_or_error from_unicode(utf::code_point u, char* b, const char* e) const;
+private: utf::code_point to_unicode_tbl_[256]; unsigned char from_unicode_tbl_[hash_table_size];
+};
+struct util::simple_converter : base_converter {
+    ctor(const std::string& encoding);
+    int max_len() const override {return 1;}
+    bool is_thread_safe() const override {return true;}
+    base* clone() const override {return new self(*this);}
+    utf::code_point to_unicode(const char*& b, const char* e) override;
+    utf::len_or_error from_unicode(utf::code_point u, char* b, const char* e) override;
+private: simple_converter_impl cvt_;
+};
+
+struct util::simple_codecvt<Ch> : public generic_codecvt<Ch,self> {
+    ctor(const std::string& encoding, size_t ref=0);
+    struct state_type{};
+    static state_type initial_state(initial_conversion_state);
+    static int max_encoding_length() {return 1;}
+    utf::code_point to_unicode(const char*& b, const char* e) const;
+    utf::len_or_error from_unicode(utf::code_point u, char* b, const char* e) const;
+private: simple_converter_impl cvt_;
+};
+
+const char* util::simple_encoding_table[] ={...}; // cp1250..cp1257, iso88591..9,13,15, koi8r, koi8u, usascii, windows1250...1257
+std::vector<std::string> util::get_simple_encodings();
+bool util::is_simple_encoding(const std::string& encoding);
+std::unique_ptr<base_converter> util::create_simple_converter(const std::string& encoding);
+std::unique_ptr<base_converter> util::create_utf8_converter();
+
+struct util::code_converter<Ch,threadSafe> : generic_codecvt<Ch,self> {
+    using base_converter_ptr = std::unique_ptr<base_converter>; using state_type = base_converter_ptr;
+    ctor(base_converter_ptr cvt, size_t refs=0);
+    int max_encoding_length() const;
+    base_converter_ptr initial_state(initial_conversion_state) const;
+    utf::code_point to_unicode(const char*& b, const char* e) const;
+    utf::len_or_error from_unicode(utf::code_point u, char* b, const char* e) const;
+private: base_converter_ptr cvt_;
+};
+
+static std::locale util::do_create_codecvt<Ch>(const std::locale& in, std::unique_ptr<base_converter> cvt);
+std::locale util::create_codecvt(const std::locale& in, std::unique_ptr<base_converter> cvt, char_facet_t type);
+std::locale util::create_utf8_codecvt(const std::locale& in, char_facet_t type);
+std::locale util::create_simple_codecvt(const std::locale& in, const std::string& encoding, char_facet_t type);
+
+struct util::locale_data {
+    ctor(); explicit ctor(const std::string& locale_name);
+    const std::string& {language,script,country,encoding,variant}() const;
+    locale_data& encoding(std::string new_encoding, bool uppercase=true);
+    bool is_utf8() const;
+    bool parse(const std::string& locale_name);
+    std::string to_string() const;
+private: std::string language_, script_, country_, encoding_, variant_; bool utf8_;
+};
+
+const char* util::utf_name<Ch>();
+struct util::is_char8_t<T>;
+std::string util::normalize_encoding(string_view encoding);
+bool util::are_encodings_equal(const std::string& l,r);
+std::vector<std::string> util::get_simple_encodings();
+int util::encoding_to_windows_codepage(string_view encoding);
+
 ```
-
-date_time_<facet>, encoding_<errors,utf>, format, generator,
-generic_codecvt, gnu_gettext, hold_ptr, info, localization_backend, message, utf, utf8_codecvt, util
-
-detail/: allocator_traits, encoding
-util/: locale_data
-
-encoding/: codepage, {i,u,w}conv_converter
-icu/: all_generator, cdata, codecvt, date_time, icu_backend, icu_util, time_zone, uconv
-posix/: all_generator, codecvt, numeric, posix_backend
-shared/: date_time, format<ting>, generator, iconv_codecvt, ids, ios_prop, localization_backend, message, mo_hash, mo_lambda, std_collate_adapter
-std/: all_generator, codecvt, numeric, std_backend
-util/: codecvt_converter, default_locale, encoding, foreach_char, gregorian, iconv, info, locale_data, make_std_unique, numeric_<conversion>, timezone, win_codepages
-win32/: all_generator, api, lcid, numeric, win_backend
 
 ------
 ### Dependency
