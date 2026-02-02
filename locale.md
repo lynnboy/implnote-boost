@@ -5,13 +5,6 @@
 * commit: `3466ac7`, 2025-09-19
 
 ------
-### Common
-
-```c++
-std::string time_zone::global(<const std::string& new_tz>);
-```
-
-------
 ### Locale Categories
 
 #### Convert
@@ -120,6 +113,16 @@ struct comparator<Ch,default_level=identical> {
     bool operator()(const std::basic_string<Ch>& l, r) const;
 private: std::locale locale_; const collator<Ch>& collator_; collate_level level_;
 };
+
+struct std_collate_adapter<Ch,Base> : public std::collate<Ch> {
+    explicit ctor<...Args>(Args&&...args);
+protected:
+    int do_compare(const Ch* b,e, const Ch* b2,e2) const override;
+    string_type do_transform(const Ch* b,e) const override;
+    long do_hash(const Ch* b,e) const override;
+    Base base_;
+};
+static std::locale create_collators<Ch,CollatorImpl,...Args>(const std::locale& in, Args&&...args);
 
 /// ICU impl
 struct impl_icu::collate_impl<Ch> : collator<Ch> {
@@ -363,7 +366,7 @@ struct impl_win::num_punct_win<Ch> : std::numpunct<Ch> {
     Ch do_{decimal_point,thousands_sep}() const override;
     std::string do_grouping() const override;
     string_type do{true,false}name() const override;
-private: string_type decimal_point_, thousands_sep_; std::string grouping_;
+private: string_type decimal_point _, thousands_sep_; std::string grouping_;
 };
 std::locale impl_win::create_formatting(const std::locale& in, const winlocale& lc, char_facet_t type);
 std::locale impl_win::create_parsing(const std::locale& in, const winlocale& lc, char_facet_t type);
@@ -610,6 +613,25 @@ struct utf8_codecvt<Ch> : generic_codecvt<Ch,self> {
 };
 }
 
+// iconv
+struct iconv_handle { iconv_t h_;
+    explicit ctor(iconv_t h={-1}); self& operator=(iconv_t h); ~dtor(); // no copy, allow move
+    operator iconv_t() const; explicit operator bool() const;
+};
+using <non>const_iconv_ptr_type = size_t (*)(iconv_t, <const>char**, size_t*, char**, size_t*);
+size_t call_iconv(iconv_t d, const char{*|**} in, size_t* insize, char{**|*} out, size_t* outsize);
+
+struct mb2_iconv_converter : util::base_converter {
+    ctor(const std::string& encoding); ctor(const self& other);
+    bool is_thread_safe() const override;
+    self* clone() const override;
+    utf::code_point to_unicode(const char*& b, const char* e) override;
+    utf::len_or_error from_unicode(utf::code_point u, char* b, const char* e) override;
+    int max_len() const override;
+private: std::array<uint32_t,256> first_byte_table_; std::string encoding_; iconv_handle to_utf_, from_utf_;
+};
+std::unique_ptr<util::base_converter> create_iconv_converter(const std::string& encoding);
+
 // ICU impl
 struct impl_icu::uconv_converter : util::base_converter {
     ctor(const std::string& encoding);
@@ -654,10 +676,6 @@ std::locale impl_posix::create_codecvt(const std::locale& in, const std::string 
 std::locale impl_std::codecvt_bychar(const std::locale& in, const std::string& locale_name);
 std::locale impl_std::create_codecvt(const std::locale& in, const std::string& locale_name, char_facet_t type, utf8_support utf);
 ```
-
-#### Calendar
-
-#### Information
 
 #### Boundary
 
@@ -800,10 +818,222 @@ private: icu::Locale locale_; std::string encoding_;
 std::locale create_boundary(const std::locale& in, const cdata& cd, char_facet_t type);
 ```
 
+#### Calendar
+
+```c++
+enum period::marks::period_mark { invalid,
+    era, year, extended_year, month, day, day_of_year, day_of_week, day_of_week_in_month, day_of_week_local,
+    hour, hour_12, am_pm, minute, second, week_of_year, week_of_month, first_day_of_week };
+struct period::period_type {
+    ctor(period_mark m=invalid);
+    period_mark mark() const;
+    bool operator{==,!=}(const self& other) const;
+private: period_mark mark_;
+};
+
+struct posix_time {int64_t seconds; uint32_t nanoseconds;};
+struct abstract_calendar {
+    enum value_type {absolute_minimum, actual_minimum, greatest_minimum, current, least_maximum, actual_maximum, absolute_maximum };
+    enum update_type { move, roll };
+    enum calendar_option_type { is_gregorian, is_dst };
+    virtual self* clone() const =0;
+    virtual void set_value(period_mark m, int value) =0;
+    virtual void normalize() =0;
+    virtual int get_value(period_mark m, value_type v) const =0;
+    virtual void set_time(const posix_time& p) =0;
+    virtual posix_time get_time() const =0;
+    virtual double get_time_ms() const =0;
+    virtual void set_option(calendar_option_type opt, int v) =0;
+    virtual int get_option(calendar_option_type opt) const =0;
+    virtual void adjust_value(period_mark m, update_type u, int difference) =0;
+    virtual int difference(const self& other, period_mark m) const =0;
+    virtual void set_timezone(const std::string& tz) =0;
+    virtual std::string get_timezone() const =0;
+    virtual bool same(const self* other) const =0;
+    virtual ~dtor()=default;
+};
+struct calendar_facet : std::locale::facet, facet_id<self> {
+    ctor(size_t refs=0);
+    virtual abstract_calendar* create_calendar() const =0;
+};
+
+std::string time_zone::global(<const std::string& new_tz>);
+
+struct date_time_error : std::runtime_error { ctor(const std::string& e); };
+struct date_time_period {
+    period_type type; int value;
+    self operator{+,-}() const;
+    ctor(period_type f={}, int v=1);
+};
+
+{period_type,date_time_period} period::{invalid,era,<extended>_year,month,day,
+    day_of_year,day_of_week_<in_month,local>,hour_<12>,am_pm,
+    minute,second,week_of_{year,month},first_day_of_week}(int v);
+date_time_period period::{january,february,march,april,may,june,july,august,september,october,november,december}();
+date_time_period period::{sunday,monday,tuesday,wednesday,thursday,friday,saturday}();
+date_time_period period::{am,pm}();
+date_time_period period::operator{+,-}(period_type f);
+date_time_period period::operator*<T>({period_type,date_time_period} f, T v);
+date_time_period period::operator*<T>(T v, {period_type,date_time_period} f);
+
+struct date_time_period_set {
+    ctor(); ctor(period_type f); ctor(const date_time_period& fl);
+    void add(date_time_period f);
+    size_t size() const;
+    const date_time_period& operator[](size_t n) const;
+private: std::array<date_time_period,4> basic_; std::array<date_time_period> periods_;
+};
+date_time_period_set operator{+,-}(const date_time_period_set& a, const date_time_period_set& b);
+
+struct calendar {
+    ctor(); ~dtor(); // copy
+    ctor(std::ios_base& ios); ctor(<const std::locale& l>, <const std::string& zone>);
+    int <greatest>_minimum(period_type f) const;
+    int <least>_maximum(period_type f) const;
+    int first_day_of_week() const;
+    const std::locale& get_locale() const;
+    const std::string& get_time_zone() const;
+    bool is_gregorian() const;
+    bool operator{==,!=}(const self& other) const;
+private: std::locale locale_; std::string tz_; hold_ptr<abstract_calendar> impl_;
+};
+
+struct date_time {
+    ctor(); // copy and move
+    ctor(const self& other, const date_time_period_set& set);
+    ctor(<double time>, <const calendar& cal>);
+    ctor(const date_time_period_set& set, <const calendar& cal>); self& operator=(const date_time_period_set& f);
+    void set(period_type f, int v); int get(period_type f) const;
+    int operator/(period_type f) const;
+    date_time operator{+,-}({period_type,const date_time_period,const date_time_period_set&} f) const;
+    date_time& operator{+=,-=}({period_type,const date_time_period,const date_time_period_set&} f);
+    date_time operator{<<,>>}({period_type,const date_time_period,const date_time_period_set&} f) const;
+    date_time& operator{<<=,>>=}({period_type,const date_time_period,const date_time_period_set&} f);
+    double time() const; void time(double v);
+    std::string timezone() const;
+    bool operator{==,!=,<,>,<=,>=}(const self& other) const;
+    void swap(self& other) noexcept;
+    int difference(const self& other, period_type f) const;
+    int minimum(period_type f) const; int maximum(period_type f) const;
+    bool is_in_daylight_saving_time() const;
+private: hold_ptr<abstract_calendar> impl_;
+};
+void swap(date_time& left, date_time& right) noexcept;
+std::basic_ostream<Ch>& operator<< <Ch> (std::basic_ostream<Ch>& out, const date_time& t);
+std::basic_istream<Ch>& operator>> <Ch> (std::basic_istream<Ch>& in, date_time& t);
+
+struct date_time_duration {
+    ctor(const date_time& first, const date_time& second);
+    int get(period_type f) const;
+    int operator/(period_type f) const;
+    const date_time& {start,end}() const;
+private: const date_time &s_, &e_;
+};
+date_time_duration operator-(const date_time& later, const date_time& earlier);
+
+int period::{era,<extended>_year,month,day,
+    day_of_year,day_of_week_<in_month,local>,hour_<12>,am_pm,
+    minute,second,week_of_{year,month},first_day_of_week}(const date_time_<duration>& dt);
+
+struct util::gregorian_calendar : abstract_calendar {
+    ctor(const std::string& terr);
+    self* clone() const override;
+    void set_value(period_mark m, int value) override;
+    void normalize() override;
+    int get_week_number(int day, int wday) const;
+    int get_value(period_mark m, value_type v) const override;
+    void set_time(const posix_time& p) override;
+    posix_time get_time() const override;
+    double get_time_ms() const override;
+    void set_option(calendar_option_type opt, int) override;
+    int get_option(calendar_option_type opt) const override;
+    void adjust_value(period_mark m, update_type u, int difference) override;
+    int get_diff(period_mark m, int diff, const self* other) const;
+    int difference(const abstract_calendar& other_cal, period_mark m) const override;
+    void set_timezone(const std::string& tz) override;
+    std::string get_timezone() const override;
+    bool same(const abstract_calendar* other) const override;
+private: int first_day_of_week_; time_t time_; std::tm tm_, tm_updated_;
+    bool normalized_, is_local_; int tzoff_; std::string time_zone_name_;
+};
+abstract_calendar* util::create_gregorian_calendar(const std::string& terr);
+struct util::gregorian_facet : calendar_facet {
+    ctor(const std::string& terr, size_t refs=0);
+    abstract_calendar* create_calendar() const override;
+private: std::string terr_;
+};
+std::locale util::install_gregorian_calendar(const std::locale& in, const std::string& terr);
+
+// ICU impl
+UCalendarDateFields impl_icu::to_icu(period_mark f);
+struct impl_icu::calendar_impl : abstract_calendar {
+    ctor(const cdata& dat); ctor(const self& other)
+    self* clone() const override
+    void set_value(period_mark p, int value) override;
+    int get_value(period_mark p, value_type type) const override;
+    void normalize() override;
+    void set_time(const posix_time& p) override;
+    posix_time get_time() const override;
+    double get_time_ms() const override;
+    void set_option(calendar_option_type opt, int) override;
+    int get_option(calendar_option_type opt) const override;
+    void adjust_value(period_mark p, update_type u, int difference) override;
+    int difference(const abstract_calendar& other, period_mark m) const override;
+    void set_timezone(const std::string& tz) override;
+    std::string get_timezone() const override;
+    bool same(const abstract_calendar* other) const override;
+private: using guard = unique_lock<mutex>;
+    mutable mutex lock_; std::string encoding_; hold_ptr<icu::Calendar> calendar_;
+};
+
+struct impl_icu::icu_calendar_facet : calendar_facet {
+    ctor(const cdata& d, size_t refs=0);
+    abstract_calendar* create_calendar() const override;
+private: cdata cdata_;
+};
+std::locale impl_icu::create_calendar(const std::locale& in, const cdata& d);
+icu::TimeZone* impl_icu::get_time_zone(const std::string& time_zone);
+```
+
+#### Information
+
+```c++
+struct info : std::locale::facet, facet_id<self> {
+    enum string_property { language_property, country_property, variant_property, encoding_property, name_property };
+    enum integer_property { utf8_property };
+    ctor(size_t refs=0);
+    std::string {language,country,variant,encoding,name}() const;
+    bool utf8() const;
+protected:
+    virtual std::string get_string_property(string_property v) const =0;
+    virtual int get_integer_property(integer_property v) const =0;
+};
+
+struct simple_info : info {
+    ctor(const std::string& name, size_t refs=0);
+    std::string get_string_property(string_property v) const override;
+    int get_integer_property(integer_property v) const override;
+private: locale_data d; std::stringname_;
+};
+std::locale create_info(const std::locale& in, const std::string& name);
+```
+
 ------
 ### Details & Utils
 
 ```c++
+struct hold_ptr<T> {
+    ctor(); explicit ctor(T* p); ~dtor(); // no copy, allow move
+    T <const>* get() <const>;
+    explicit operator bool() const;
+    T <const>& operator*() <const>;
+    T <const>* operator->() <const>;
+    T* release();
+    void reset(T* p=nullptr);
+    void swap(self& other) noexcept;
+private: T* ptr_;
+};
+
 struct detail::facet_id<Derived> { static std::locale::id id; };
 struct detail::is_supported_char<Ch>; // true_type for char/wchar_t/char{8,16,32}_t
 
@@ -818,6 +1048,10 @@ public: ctor()=default; ctor(const self& other); ctor(self&&)=default; self& ope
 Ch* util::str_end<Ch>(Ch* str);
 bool util::is_{upper,lower,numeric}_ascii(const char c);
 char util::to_char(unsigned char c);
+
+bool util::try_to_int<Int>(string_view s, Int& value);
+bool util::try_scientific_to_int<Int>(const string_view s, Int& value);
+bool util::try_parse_icu<Int>(icu::Formattable& fmt, Int& value); // for icu
 
 struct util::formatting_size_traits<Ch> { static size_t size(const std::basic_string<Ch>& s, const std::locale&); }; // spec for char
 struct util::base_num_format<Ch> : std::num_put<Ch> {
@@ -920,6 +1154,221 @@ bool util::are_encodings_equal(const std::string& l,r);
 std::vector<std::string> util::get_simple_encodings();
 int util::encoding_to_windows_codepage(string_view encoding);
 
+std::unique_ptr<T> make_std_unique<T,...Args>(Args&&...args);
+
+struct windows_encoding { const char* name, unsigned codepage, was_tested; };
+bool operator< (const windows_encoding& l, const char* name);
+static windows_encoding all_windows_encodings[] = {...}; // for Win32
+
+int util::parse_tz(const std::string& tz);
+
+struct impl::ios_prop<Property> {
+    static Property& get(std::ios_base& ios);
+    static void global_init();
+};
+```
+
+### Generator & Backends
+
+```c++
+enum class char_facet_t : uint32_t { nochar=0, char_f=1, wchar_f=2, char8_f=4, char16_f=8, char32_f=16 };
+constexpr char_facet_t character_facet_first = char_f, character_facet_last=char32_f, all_characters={0xFFFFFFFFu};
+enum class category_t : uint32_t { convert=1, collation=2, formatting=4, parsing=8, message=16, codepage=32, boundary=64, calendar=0x10000, information=0x20000 };
+constexpr category_t per_character_facet_first=convert, per_character_facet_last=boundary,
+    non_character_facet_first=calendar, non_character_facet_last=information,
+    category_first=convert, category_last=information, all_categories={0xFFFFFFFFu};
+struct generator {
+    ctor(); ctor(const localization_backend_manager&); ~dtor();
+    void categories(category_t cats); category_t categories() const;
+    void characters(char_facet_t chars); char_facet_t characters() const;
+    void add_messages_domain(const std::string& domain);
+    void set_default_message_domain(const std::string& domain);
+    void clear_domains();
+    void add_messages_path(const std::string& path);
+    void clear_paths();
+    void clear_cache();
+    void locale_cache_enabled(bool on); bool locale_cache_enabled() const;
+    bool use_ansi_encoding() const; void use_ansi_encoding(bool enc);
+    std::locale generate(<const std::locale& base>, const std::string& id) const;
+    std::locale operator()(const std::string& id) const;
+private: struct data {
+        ctor(const localization_backend_manager& mgr);
+        mutable std::map<std::string, std::locale> cached; mutable mutex cached_lock;
+        category_t cats; char_facet_t chars;
+        bool caching_enabled, use_ansi_encoding;
+        std::vector<std::string> paths, domains;
+        std::map<std::string,std::vector<std::string>> options;
+        localization_backend_manager backend_manager;
+    };
+    hold_ptr<data> d;
+};
+char_facet_t operator{|,^}(const char_facet_t lhs, const char_facet_t rhs);
+bool operator&(const char_facet_t lhs, const char_facet_t rhs);
+char_facet_t& operator++(char_facet_t& v);
+category_t operator{|,^}(const category_t lhs, const category_t rhs);
+bool operator&(const category_t lhs, const category_t rhs);
+category_t& operator++(category_t& v);
+
+struct localization_backend { // copy is protected
+    ctor(); virtual ~dtor();
+    virtual self* clone() const =0;
+    virtual void set_option(const std::string& name, const std::string& value) =0;
+    virtual void clear_options() =0;
+    virtual std::locale install(const std::locale& base, category_t category, char_facet_t type) =0;
+};
+struct localization_backend_manager {
+    ctor(); ~dtor(); // copy and move
+    std::unique_ptr<localization_backend> create() const;
+    void add_backend(const std::string& name, std::unique_ptr<localization_backend> backend);
+    void remove_all_backends();
+    std::vector<std::string> get_all_backends() const;
+    void select(const std::string& backend_name, category_t category=all_categories);
+    static self* global(<const self&>);
+private: class impl {
+        ctor(); ctor(const self& other); self& operator=(const self&)=delete;
+        localization_backend* create() const;
+        int find_backend(const std::string& name) const;
+        void add_backend(const std::string& name, std::unique_ptr<localization_backend> ptr);
+        void select(const std::string& backend_name, category_t category=all_categories);
+        void remove_all_backends();
+        std::vector<std::string> get_all_backends() const;
+    private: struct actual_backend : localization_backend {
+            ctor(const std::vector<std::reference_wrapper<const localization_backend>>& backends, const std::vector<int>& index);
+            self* clone() const override;
+            void set_option(const std::string& name, const std::string& value) override;
+            void clear_options() override;
+            std::locale install(const std::locale& l, category_t category, char_facet_t type) override;
+        private: std::vector<std::pair<std::string,std::unique_ptr<localization_backend>>> all_backends_;
+            std::vector<int> default_backends_;
+        };
+    };
+    hold_ptr<impl> pimpl_;
+};
+
+// ICU impl
+struct impl_icu::cdata : locale_data {
+    ctor();
+    void set(const std::string& id);
+    const base& data();
+    icu::Locale& locale() const;
+private: icu::Locale locale_;
+};
+struct impl_icu::icu_localization_backend : localization_backend {
+    ctor(); ctor(const self& other);
+    self* clone() const override;
+    void set_option(const std::string& name, const std::string& value) override;
+    void clear_options() override;
+    void prepare_data();
+    std::locale install(const std::locale& base, category_t category, char_facet_t type) override;
+private: std::vector<std::string> paths_, domains_; std::string locale_id_, real_id_;
+    cdata data_; bool invalid_, use_ansi_encoding_;
+};
+std::unique_ptr<localization_backend> impl_icu::create_localization_backend();
+
+// POSIX impl
+struct impl_posix::posix_localization_backend : localization_backend {
+    ctor(); ctor(const self& other);
+    self* clone() const override;
+    void set_option(const std::string& name, const std::string& value) override;
+    void clear_options() override;
+    void prepare_data();
+    std::locale install(const std::locale& base, category_t category, char_facet_t type) override;
+private: std::vector<std::string> paths_, domains_; std::string locale_id_, real_id_;
+    locale_data data_; bool invalid_; std::shared_ptr<locale_t> lc_;
+};
+std::unique_ptr<localization_backend> impl_posix::create_localization_backend();
+
+// STD impl
+enum class impl_std::utf8_support { none, native, from_wide };
+struct impl_std::std_localization_backend : localization_backend {
+    ctor(); ctor(const self& other);
+    self* clone() const override;
+    void set_option(const std::string& name, const std::string& value) override;
+    void clear_options() override;
+    void prepare_data();
+    std::locale install(const std::locale& base, category_t category, char_facet_t type) override;
+private: std::vector<std::string> paths_, domains_; std::string locale_id_, name_, in_use_id_;
+    locale_data data_; utf8_support utf_mode_; bool invalid_, use_ansi_encoding_;
+};
+std::unique_ptr<localization_backend> impl_std::create_localization_backend();
+
+// Win32 impl
+struct impl_win::numeric_info { std::wstring thousands_sep, decimal_point; std::string grouping; };
+DWORD impl_win::collation_level_to_flag(collate_level level);
+struct winlocale {
+    explicit ctor(unsigned locale_id=0); explicit ctor(const std::string& name);
+    bool is_c() const;
+    unsigned lcid;
+};
+numeric_info impl_win::wcsnumformat_l(const winlocale& l);
+std::wstring impl_win::win_map_string_l(unsigned flags, const wchar_t* b,e, const winlocale& l);
+int impl_win::wcscoll_l(collate_level level, const wchar_t* lb,le, const wchar_t* rb,re, const winlocale& l);
+std::wstring impl_win::wcsfmon_l(double value, const winlocale& l);
+std::wstring impl_win::wcs_format_{date,time}_l(const wchar_t* format, SYSTEMTIME const* tm, const winlocale& l);
+std::wstring impl_win::wcsfold(const wchar_t* b,e);
+std::wstring impl_win::wcsnormalize(norm_type norm, const wchar_t* b,e);
+std::wstring impl_win::wcsxfrm_l(collate_level level, const wchar_t* b,e, const winlocale& l);
+std::wstring impl_win::tow{upper,lower}_l(const wchar_t* b,e, const winlocale& l);
+std::wstring impl_win::wcsftime_l(char c, const std::tm* tm, const winlocale& l);
+
+unsigned impl_win::locale_to_lcid(const std::string& locale_name);
+
+struct impl_win::winapi_localization_backend : localization_backend {
+    ctor(); ctor(const self);
+    self* clone() const override;
+    void set_option(const std::string& name, const std::string& value) override;
+    void clear_options() override;
+    void prepare_data();
+    std::locale install(const std::locale& base, category_t category, char_facet_t type) override;
+private: std::vector<std::string> paths_, domains_; std::string locale_id_, real_id_;
+    locale_data data_; bool invalid_; winlocale lc_;
+};
+std::unique_ptr<localization_backend> impl_win::create_localization_backend();
+```
+
+####
+
+```c++
+struct detail::formattible<Ch> {
+    using stream_type = std::basic_ostream<Ch>;
+    using writer_type = void (*)(stream_type& out, const void* ptr);
+    ctor() noexcept; explicit ctor<T>(const T& value) noexcept;
+    friend stream_type& operator<< (stream_type& out, const formattible& fmt);
+private: const void* pointer_; writer_type writer_;
+};
+struct detail::format_parser {
+    ctor(std::ios_base& ios, void*, void(*imbuer)(void*,const std::locale&)); ~dtor() // no copy
+    unsigned get_position();
+    void set_one_flag(const std::string& key, const std::string& value);
+    void set_flag_with_str<Ch>(const std::string& key, const std::basic_string<Ch>& value);
+    void restore();
+private: std::ios_base& ios_;
+    struct data{
+        unsigned position; std::streamsize precision; std::ios_base::fmtflags flags;
+        ios_info info; std::locale saved_locale; bool restore_locale;
+        void* cookie; void (*imbuer)(void*, const std::locale&);
+    };
+    hold_ptr<data> d;
+};
+struct basic_format<Ch> {
+    using char_type = Ch; using message_type = basic_message<Ch>; using formattible_type = formattible<Ch>;
+    using string_type = std::basic_string<Ch>; using stream_type = std::basic_ostream<Ch>;
+    ctor(const string_type& format_string); ctor(const message_type& trans); // no copy, allow move
+    basic_format& operator&<Formattible>(const Formattible& object);
+    string_type str(const std::locale& loc={}) const;
+    void write(stream_type& out) const;
+private:
+    struct format_guard {
+        ctor(format_parser& fmt); ~dtor(); void restore();
+    private: format_parser& fmt_; bool restored_;
+    };
+    static constexpr unsigned base_params_=8;
+    message_type message_; string_type format_; bool translate_;
+    formattible_type parameters_[base_params_]; unsigned parameters_count_; std::vector<formattible_type> ext_params_;
+};
+std::basic_ostream<Ch>& operator<< <Ch> (std::basic_ostream<Ch>& out, const basic_format<Ch>& fmt);
+
+using <w,u8,u16,u32>format = basic_format<{char,wchar_t,char8_t,char16_t,char32_t}>;
 ```
 
 ------
