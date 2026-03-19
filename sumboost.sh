@@ -3,19 +3,20 @@
 cd ~/boost/libs
 
 #mv ~/boost.list ~/boost.list2
-#du -sb */include */src smart_ptr/extras/src numeric/*/include | sort -n > ~/boost.list
+#du -sb */include */src numeric/*/include | sort -n > ~/boost.list
 
 read -r -d '' list << EOM
     static_assert
-    conversion
-    lambda2
     #disjoint_sets
+    lambda2
     assert
+    conversion
     #compatibility
     array
     typeof
     ratio
     throw_exception
+    parameter_python
     logic
     tokenizer
     io
@@ -28,75 +29,70 @@ read -r -d '' list << EOM
     tuple
     any
     scope_exit
+    describe
     integer
-    convert
     assign
+    convert
     function
     property_map_parallel
     coroutine2
-    type_index
-    exception
+    bloom
+    bind
     concept_check
+    type_index
     functional
-    optional
     detail
+    variant2
+    exception
     #chrono/stopwatches
     crc
+    compat
     endian
-    lexical_cast
     #signals
-    uuid
+    lexical_cast
     multi_array
+    optional
+    stacktrace
     flyweight
     #tr1
+    stl_interfaces
     format
     lockfree
     numeric/conversion
-    pool
-    system
-    numeric/interval
-    dynamic_bitset
-    statechart
-    iterator
-    tti
-    coroutine
-    predef
-    dll
-    core
-    winapi
-    sort
-    parameter
-#
-    parameter_python
-    describe
-    bloom
-    bind
-    variant2
-    compat
-    stacktrace
-    stl_interfaces
     nowide
+    pool
     scope
     yap
+    system
+    numeric/interval
+    statechart
+    dynamic_bitset
     mp11
-    leaf
+    iterator
     variant
-    redis
+    uuid
     static_string
+    smart_ptr
     callable_traits
     signals2
     local_function
     program_options
+    leaf
     heap
+    tti
+    coroutine
     safe_numerics
     hash2
+    predef
+    dll
     poly_collection
     ptr_container
     utility
     circular_buffer
+    core
     hof
     fiber
-    smart_ptr
+    redis
     property_tree
     mqtt5
     chrono
@@ -109,38 +105,43 @@ read -r -d '' list << EOM
     type_erasure
     config
     move
+    winapi
     metaparse
     algorithm
     accumulators
     mpi
     filesystem
-    context
+    sort
     multi_index
+    context
     icl
     range
     iostreams
     function_types
     units
+    parameter
     date_time
     locale
     vmd
+#
+    openmethod
     outcome
     unordered
     regex
     serialization
     python
-    charconv
     xpressive
+    charconv
     graph_parallel
     process
     random
     type_traits
     numeric/odeint
     test
-    json
-    url
-    pfr
     msm
+    json
+    pfr
+    url
     thread
     wave
     atomic
@@ -152,13 +153,14 @@ read -r -d '' list << EOM
     intrusive
     proto
     mysql
+    decimal
     beast
     log
     qvm
-    container
     graph
     multiprecision
     numeric/ublas
+    container
     hana
     mpl
     asio
