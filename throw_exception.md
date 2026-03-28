@@ -45,6 +45,7 @@ struct detail::error_info_container { // interface for `error_info` containers
   virtual void add_ref() const = 0;
   virtual void release() const = 0;
   virtual refcount_ptr<error_info_container> clone() const = 0;
+  virtual void serialize_to(encoder&) const{}
 };
 
 class exception {

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/histogram`
 * repo: `boostorg/histogram`
-* commit: `3afe76f`, 2025-06-13
+* commit: `5e9b7b1`, 2025-11-28
 
 ------
 ### Concepts

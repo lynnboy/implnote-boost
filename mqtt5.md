@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/mqtt5`
 * repo: `boostorg/mqtt5`
-* commit: `150ba94`, 2025-09-19
+* commit: `7c6ec4f`, 2026-02-25
 
 ------
 ### Common Parts
@@ -159,8 +159,6 @@ public: ctor(); ctor(std::string topic, std::string message, qos_e qos=at_most_o
 };
 
 using detail::byte_citer = std::string::const_iterator;
-using detail::time_stamp = std::chrono::time_point<std::chrono::steady_clock>;
-using detail::duration = time_stamp::duration;
 struct detail::credentials {
     std::string client_id; std::optional<std::string> username; std::optional<std::string> password;
     ctor(); ctor(std::string client_id, std::string username, std::string password);
@@ -179,6 +177,9 @@ struct detail::mqtt_ctx {
 using detail::serial_num_t = uint32_t;
 constexpr serial_num_t detail::no_serial = 0;
 enum class detail::send_flag { none=0, throttled=1, prioritized=2, terminal=4 };
+using detail::timer_type = asio::steady_timer;
+using detail::resolver_type = asio::ip::tcp::resolver;
+using detail::duration = timer_type::duration;
 ```
 
 ##### Control Packet
@@ -221,6 +222,7 @@ constexpr bool has_at_tls_handshake<T>; // detect T::at_tls_handshake(error_code
 constexpr bool has_at_ws_handshake<T>; // detect T::at_ws_handshake(error_code, asio::ip::tcp::endpoint)
 constexpr bool has_at_connack<T>; // detect T::at_connack(reason_code, bool, const connack_props&)
 constexpr bool has_at_disconnect<T>; // detect T::at_disconnect(reason_code, const disconnect_props&)
+constexpr bool has_at_transport_error<T>; // detect T::at_transport_error(error_code)
 
 enum class log_level : uint8_t { error=1, warning, info, debug };
 class logger { constexpr static auto prefix = "[Boost.MQTT5]"; log_level _level;
@@ -231,6 +233,7 @@ public: ctor(log_level level=info);
     void at_ws_handshake(error_code ec, asio::ip::tcp::endpoint ep);
     void at_connack(reason_code rc, bool session_present, const connack_props& ca_props);
     void at_disconnect(reason_code rc, const disconnect_props& dc_props);
+    void at_transport_error(error_code ec);
 };
 
 class detail::log_invoke<LoggerType> { LoggerType _logger;
@@ -423,7 +426,7 @@ public: ctor<Handler>(std::shared_ptr<client_service> svc_ptr, DisconnectContext
 class detail::terminal_disconnect_op<ClientService,Handler> {
     using client_service = ClientService; using handler_type = Handler;
     static constexpr uint8_t seconds = 5;
-    std::shared_ptr<client_service> _svc_ptr; std::unique_ptr<asio::steady_timer> _timer; handler_type _handler;
+    std::shared_ptr<client_service> _svc_ptr; std::unique_ptr<timer_type> _timer; handler_type _handler;
 public: ctor(std::shared_ptr<client_service> svc_ptr, Handler&& handler); // allow move, no copy
     using allocator_type = asio::associated_allocator_t<Handler>;
     allocator_type get_allocator() const noexcept { return asio::get_associated_allocator(_handler); }
@@ -490,8 +493,10 @@ class detail::publish_send_op<ClientService,Handler,qos_type> {
     using client_service = ClientService; using handler_type = cancellable_handler<Handler,client_service::executor_type>;
     struct on_publish{}; struct on_puback{}; struct on_pubrec{}; struct on_pubrel{}; struct on_pubcomp{};
     std::shared_ptr<client_service> _svc_ptr; handler_type _handler; serial_num_t _serial_num;
-    error_code validate_publish(const std::string& topic, const std::string& payload, retain_e retain, const publish_props& props) const;
-    error_code validate_props(const publish_props& props) const;
+    struct validation_context { retain_e retain; uint16_t topic_alias;} _validation_ctx;
+    static error_code validate_publish(const std::string& topic, const std::string& payload, const publish_props& props);
+    static error_code validate_props(const publish_props& props);
+    error_code validate_with_connack_props(size_t packet_size) const;
     void on_malformed_packet(const std::string& reason);
     void complete<q=qos_type>(error_code ec, uint16_t=0) requires q==at_most_once;
     void complete_immediate<q=qos_type>(error_code ec, uint16_t) requires q==at_most_once;
@@ -557,7 +562,6 @@ class detail::read_op<Owner,Handler> {
     struct on_read{}; struct on_reconnect{};
     Owner& _owner; handler_type _handler;
     void complete(error_code ec, size_t bytes_read);
-    static bool should_reconnect(error_code ec);
 public: ctor(Owner& owner, Handler&& handler); // allow move, no copy
     using allocator_type = asio::associated_allocator_t<Handler>;
     allocator_type get_allocator() const noexcept { return asio::get_associated_allocator(_handler); }
@@ -655,9 +659,11 @@ class detail::subscribe_op<ClientService,Handler> {
     using client_service = ClientService; using handler_type = cancellable_handler<Handler, ClientService::executor_type>;
     struct on_subscribe{}; struct on_suback{};
     std::shared_ptr<client_service> _svc_ptr; handler_type _handler; size_t _num_topics{0};
-    error_code validate_subscribe(const std::vector<subscribe_topic>& topics, const subscribe_props& props) const;
-    error_code validate_topic(const subscribe_topic& topic) const;
-    error_code validate_props(const subscribe_props& props) const;
+    struct validation_context { bool has_wildcard{false}, is_shared{false}, has_subid{false}; } _validation_ctx;
+    error_code validate_with_connack_props(size_t packet_size) const;
+    static error_code validate_subscribe(const std::vector<subscribe_topic>& topics, const subscribe_props& props, validation_context& ctx);
+    static error_code validate_topic(const subscribe_topic& topic, validation_context& ctx);
+    static error_code validate_props(const subscribe_props& props, validation_context& ctx);
     static std::vector<reason_code> to_reason_codes(std::vector<uint8_t> codes);
     void on_malformed_packet(const std::string& reason);
     void complete_immediate(error_code ec, uint16_t packet_id);
@@ -714,7 +720,6 @@ class detail::write_op<Owner,Handler> {
     struct on_write{}; struct on_reconnect{};
     Owner& _owner; handler_type _handler;
     void complete(error_code ec, size_t bytes_written);
-    static bool should_reconnect(error_code ec);
 public: ctor(Owner& owner, Handler&& handler); // allow move, no copy
     using allocator_type = asio::associated_allocator_t<Handler>;
     allocator_type get_allocator() const noexcept { return asio::get_associated_allocator(_handler); }
@@ -948,7 +953,7 @@ class detail::client_service<StreamType,TlsContext=std::monostate,LoggerType=noo
     using receive_channel = asio::experimental::basic_channel<executor_type, channel_traits<>, void(error_code, std::string, std::string, publish_props)>;
     executor_type _executor; log_invoke<logger_type> _log; stream_context_type _stream_context; stream_type _stream;
     packet_id_allocator _pid_allocator; replies _replies; async_sender<self> _async_sender;
-    std::string _read_buff; data_span _active_span; receive_channel _rec_channel; asio::steady_timer _ping_timer, _sentry_timer;
+    std::string _read_buff; data_span _active_span; receive_channel _rec_channel; timer_type _ping_timer, _sentry_timer;
     ctor(const self& other);
 public: using executor_type = stream_type::executor_type;
     explicit ctor(const executor_type& ex, tls_context_type tls_context={}, logger_type logger={});
@@ -960,6 +965,7 @@ public: using executor_type = stream_type::executor_type;
     void brokers(std::string hosts, uint16_t default_port); // forward to _stream
     void authenticator<Auth>(Auth&& authenticator) requires is_authenticator<Auth>::value; // forward to _stream_context
     uint16_t negotiated_keep_alive() const { return connack_property(server_keep_alive).value_or(_stream_context.mqtt_context().keep_alive); }
+    size_t max_packet_size() const { return connack_property(maximum_packet_size).value_or(default_max_send_size); }
     void keep_alive(uint16_t seconds) { if (!is_open()) _stream_context.mqtt_context().keep_alive = seconds; }
     const auto& connect_property<p>(<p> prop) const; // forward to _stream_context
     void connect_property<p>(<p> prop, value_type_t<p> value) const; // forward to _stream_context
@@ -968,6 +974,7 @@ public: using executor_type = stream_type::executor_type;
     const auto& connack_properties(); // forward to _stream_context
     void open_stream() { _stream.open(); }
     bool is_open() const { return _stream.is_open(); }
+    bool was_connected() const { return _stream.was_connected(); }
     decltype(auto) async_shutdown<Token>(Token&& token) { return _stream.async_shutdown(std::forward<Token>(token)); }
     void cancel() { if (!_stream.is_open()) return;
         _ping_timer.cancel(); _sentry_timer.cancel();
@@ -1092,9 +1099,9 @@ public: ctor(Owner& owner, Handler&& handler); // allow move, no copy
 
 class detail::endpoints<LoggerType> {
     using logger_type = LoggerType;
-    asio::ip::tcp::resolver _resolver; asio::steady_timer& _connect_timer;
+    resolver_type _resolver; timer_type& _connect_timer;
     std::vector<authority_path> _servers; int _current_host{-1}; log_invoke<logger_type>& _log;
-public: ctor<Executor>(Executor ex, asio::steady_timer& timer, log_invoke<logger_type>& log); // no copy
+public: ctor<Executor>(Executor ex, timer_type& timer, log_invoke<logger_type>& log); // no copy
     void clone_servers(const self& other) { _servers = other.servers; }
     using executor_type = asio::ip::tcp::resolver::executor_type;
     executor_type get_executor() noexcept { return _resolver.get_executor(); }
@@ -1107,7 +1114,7 @@ public: ctor<Executor>(Executor ex, asio::steady_timer& timer, log_invoke<logger
 class detail::autoconnect_stream<StreamType,StreamContext=std::monostate,LoggerType=noop_logger> {
     using stream_ptr = std::shared_ptr<stream_type>;
     executor_type _stream_executor; async_mutex _conn_mtx;
-    asio::steady_timer _read_timer, _connect_timer; endpoints<logger_type> _endpoints;
+    timer_type _read_timer, _connect_timer; endpoints<logger_type> _endpoints;
     stream_ptr _stream_ptr; stream_context_type& _stream_context; log_invoke<logger_type>& _log;
     log_invoke<logger_type>& log() { return _log; }
     static void open_lowest_layer(const stream_ptr& sptr, asio::ip::tcp protocol);

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/stacktrace`
 * repo: `boostorg/stacktrace`
-* commit: `cf59922`, 2025-09-09
+* commit: `9025373`, 2026-01-04
 
 ------
 #### `basic_stacktrace` API

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/property_tree`
 * repo: `boostorg/property_tree`
-* commit: `2669458`, 2025-06-30
+* commit: `7a7b02b`, 2026-02-06
 
 ------
 ### Common Parts
@@ -628,10 +628,6 @@ class xml_document<Ch=char>: public xml_node<Ch>, public memory_pool<Ch>;
 #### Boost.Serialization
 
 * `<boost/serialization/**/*.hpp>`
-
-#### Boost.StaticAssert
-
-* `<boost/static_assert.hpp>`
 
 #### Boost.ThrowException
 

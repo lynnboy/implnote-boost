@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/variant2`
 * repo: `boostorg/variant2`
-* commit: `8caa1a3`, 2025-01-12
+* commit: `dde1a3a`, 2026-02-25
 
 ------
 #### `variant`

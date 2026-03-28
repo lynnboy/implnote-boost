@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/program_options`
 * repo: `boostorg/program_options`
-* commit: `902aaed`, 2025-09-13
+* commit: `cb9af10`, 2026-02-24
 
 ------
 ### API
@@ -389,10 +389,6 @@ std::vector<std::<w>string> split_winmain(const std::<w>string& cmdline);
 #### Boost.SmartPtr
 
 * `<boost/shared_ptr.hpp>`
-
-#### Boost.StaticAssert
-
-* `<boost/static_assert.hpp>`
 
 #### Boost.ThrowException
 

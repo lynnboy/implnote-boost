@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/bimap`
 * repo: `boostorg/bimap`
-* commit: `f64de6d`, 2025-01-28
+* commit: `705a7ca`, 2026-01-24
 
 ------
 #### Tags
@@ -1043,10 +1043,6 @@ const data_type_by<Tag,Bimap>::type& get<Tag,Bimap>(const views::unordered_map_v
 #### Boost.Preprocessor
 
 * `<boost/preprocessor/cat.hpp>`
-
-#### Boost.StaticAssert
-
-* `<boost/static_assert.hpp>`
 
 #### Boost.ThrowException
 

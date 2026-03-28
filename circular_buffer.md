@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/circular_buffer`
 * repo: `boostorg/circular_buffer`
-* commit: `0320ba3`, 2025-05-03
+* commit: `5d8bebb`, 2026-02-03
 
 ------
 ### Circular Buffer
@@ -212,10 +212,6 @@ public: ctor(){};
 
 * `<boost/move/adl_move_swap.hpp>`
 * `<boost/move/move.hpp>`
-
-#### Boost.StaticAssert
-
-* `<boost/static_assert.hpp>`
 
 #### Boost.ThrowException
 

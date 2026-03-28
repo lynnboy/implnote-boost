@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/context`
 * repo: `boostorg/context`
-* commit: `230d5fe`, 2025-09-24
+* commit: `456f4b1`, 2026-03-10
 
 ------
 #### Stack Allocation

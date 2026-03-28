@@ -2,18 +2,15 @@
 
 * lib: `boost/libs/bind`
 * repo: `boostorg/bind`
-* commit: `a541a8d`, 2024-12-13
+* commit: `8cc29fc`, 2026-01-04
 
 ------
 #### Placeholders
 
-* Header `<boost/is_placeholder.hpp>`
 * Header `<boost/bind/placeholders.hpp>`
 * Header `<boost/bind/std::placeholders.hpp>`
 
 ```c++
-struct is_placeholder<T> { enum _vt{ value = 0 }; }; // primary
-
 struct arg<I> { // constructible from any I'th placeholder
     constexpr arg(){}
     constexpr arg <T> (T const&) requires I==is_placeholder<T>::value {}

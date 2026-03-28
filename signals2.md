@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/signals2`
 * repo: `boostorg/signals2`
-* commit: `5dcb2af`, 2025-03-21
+* commit: `571b9c6`, 2026-02-07
 
 ------
 ### API
@@ -88,7 +88,7 @@ struct last_value<void> { using result_type = void;
 struct optional_last_value<T> { using result_type = optional<T>;
     optional<T> operator()<InIt>(InIt first, InIt last) const {
         optional<T> value;
-        while (first!=last){ try { value=move_if_not_lvalue_reference<T>(*first); } catch(const expired_slot&){} ++first; }
+        while (first!=last){ try { value.emplace(move_if_not_lvalue_reference<T>(*first)); } catch(const expired_slot&){} ++first; }
         return value;
     }
 };
@@ -399,7 +399,7 @@ class detail::slot_call_iterator_t<Function,Iterator,ConnectionBody>
 public: ctor(Iterator iter_in, Iterator end_in, cache_type& c)
     : iter{iter_in}, end{end_in}, cache{&c}, callable_iter{end_in} { lock_next_callable(); }
   reference dereference() const {
-    if (!cache->result) try{ cache->result = cache->f(*iter);} cache(...){(*iter)->disconnect(); throw;}
+    if (!cache->result) try{ cache->result.emplace(cache->f(*iter));} cache(...){(*iter)->disconnect(); throw;}
     return cache->result.get();
   }
   void increment() { ++iter; lock_next_callable(); cache->result.reset(); }

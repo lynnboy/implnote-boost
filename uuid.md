@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/uuid`
 * repo: `boostorg/uuid`
-* commit: `bbbb204`, 2025-09-19
+* commit: `9c5f195`, 2026-01-24
 
 ------
 ### UUID library
@@ -30,6 +30,14 @@ struct uuid_clock { // API for v1, v6 timestamp/clock, meets std's Clock concept
   static std::time_point<std::system_clock,duration> to_sys(time_point const&) noexcept;
   static time_point from_timestamp(uint64_t) noexcept; // factory conv
   static uint64_t to_timestamp(time_point const&) noexcept;
+};
+
+class invalid_uuid : public std::runtime_error {
+  ptrdiff_t pos_; from_chars_error err_;
+public:
+  ctor(ptrdiff_t pos, from_chars_err);
+  ptrdiff_t position() const noexcept;
+  from_chars_error error() const noexcept;
 };
 
 struct uuid {
@@ -106,7 +114,7 @@ constexpr uuid nil_uuid() noexcept { return {{}}; }
 class string_generator {
   [[noreturn]] void throw_invalid(int ipos, char const* err) const; // throw runtime_error
   constexpr It::value_type get_next_char<It> (It& b It e, int& ipos) const;
-  // get_value(c) for hex digit, is_dash, is_open_brace, is_close_brace, all for both char and wchar_t
+  // is_dash, is_open_brace, is_close_brace, all for both char and wchar_t
 public:
   using result_type = uuid;
   constexpr uuid operator() <It> (It b, It e) const;
@@ -175,6 +183,10 @@ Ch* detail::to_chars<Ch> (uuid const& u, Ch* out) noexcept; // "XXXXXXXX-XXXX-XX
 OutIt to_chars<OutIt> (uuid const&, OutIt out); // fill
 bool to_chars<Ch> (uuid const&, Ch* f, Ch* l) noexcept; // check l-f >= 36 and fill
 Ch* to_chars<Ch,N> (uuid const&, Ch(*)[N]) noexcept; // requires N >= 37
+
+enum class from_chars_error { none, unexpected_end_of_input, hex_digit_expected, dash_expected };
+struct from_chars_result<Ch> { Ch const* ptr; from_chars_error ec; };
+from_chars_result<Ch> from_chars<Ch>(Ch const* first, Ch const* last, uuid& u) noexcept;
 
 std::basic_ostream<Ch,Tr>& operator<< <Ch,Tr> (std::basic_ostream<Ch,Tr>&, uuid const&);
 std::basic_istream<Ch,Tr>& operator>> <Ch,Tr> (std::basic_istream<Ch,Tr>&, uuid const&);
@@ -246,7 +258,7 @@ public:
 
 #### Boost.Config
 
-* `<boost/config.hpp>`, `<boost/config/workaround.hpp>`
+* `<boost/config.hpp>`
 
 #### Boost.ThrowException
 

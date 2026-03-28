@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/exception`
 * repo: `boostorg/exception`
-* commit: `95b1ead`, 2025-05-03
+* commit: `0bb2696`, 2026-02-02
 
 ------
 ### Exception Storing Arbitrary Error Info
@@ -13,8 +13,14 @@
 Header `<boost/exception/info.hpp>`
 
 ```c++
+struct detail::error_info_base {
+  virtual std::string name_value_string() const=0;
+  virtual error_info* clone() const=0;
+  virtual void serialize_to(encoder &) const=0;
+  virtual ~dtor() noexcept{}
+};
 template <class Tag, class T>
-class error_info {
+class error_info : error_info_base {
 public:
   typedef T value_type;
   error_info(value_type const & value);   error_info(value_type && value);
@@ -24,8 +30,10 @@ public:
 private:
   virtual std::string name_value_string() const;
   virtual error_info* clone() const;
+  virtual void serialize_to(encoder &) const;
   operator=(error_info const &) = delete; operator=(error_info &&) = delete;
 };
+exception_serialization::serialize<Enc,T,...Deprioritize>(Enc&, T const&, char const*, Deprioritize...) requires(...) {}
 to_string(error_info<Tag,T> const &) -> std::string;
 ```
 
@@ -156,6 +164,9 @@ char const* diagnostic_information_what(boost::exception const& ex, bool verbose
 std::string current_exception_diagnostic_information(bool verbose=true);
 std::string diagnostic_information(exception_ptr const& p, bool verbose=true);
 std::string to_string(exception_ptr const& p); // indent each line of diagnostic information with two spaces
+
+void serialize_diagnostic_information_to<T,Enc>(T const& e, Enc& enc);
+void serialize_current_exception_diagnostic_information_to<Enc>(Enc& enc);
 ```
 
 * Firstly, detect base instance of `boost::exception` and `std::exception`.
@@ -165,6 +176,25 @@ std::string to_string(exception_ptr const& p); // indent each line of diagnostic
 * Then follows dumping of every `error_info` item stored in the `boost::exception`.
 * The generated diagnostic information string is cached in `boost::exception` instance along with `error_info` list.
 * `diagnostic_information_what` is called by custom exception to be used as implementation for `what()`.
+
+------
+### Exception JSON Serialization
+
+```c++
+struct exception_serialization::encoder_adl{};
+class detail::encoder : exception_serialization::encoder_adl { // no copy
+  typeinfo const * type_;
+  void * e_;
+protected:
+  explicit ctor<Enc>(Enc* e) noexcept;
+public:
+  Enc* get<Enc>() noexcept;
+  bool dispatch<...Fn>(Fn&&...fn);
+  struct encoder_adaptor<Enc> : encoder { explicit ctor(Enc& e) noexcept; };
+};
+```
+
+Based on hlohmann::json_encoder
 
 ------
 ### Dependency

@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/filesystem`
 * repo: `boostorg/filesystem`
-* commit: `ce7a835`, 2025-08-29
+* commit: `510de7f`, 2026-02-27
 
 ------
 #### Common Parts

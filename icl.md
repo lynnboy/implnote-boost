@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/icl`
 * repo: `boostorg/icl`
-* commit: `e2b50ef`, 2025-09-19
+* commit: `dd96c80`, 2025-12-16
 
 ------
 #### Concepts

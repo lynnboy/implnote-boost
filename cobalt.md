@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/cobalt`
 * repo: `boostorg/cobalt`
-* commit: `694d9c4`, 2025-09-11
+* commit: `0fae829`, 2026-02-28
 
 ------
 #### Concepts
@@ -1415,7 +1415,7 @@ using asio::buffer_copy; using asio::buffer_size;
 
 struct mutable_buffer_sequence {
   size_t buffer_count() const {return tail_.size()+1u;}
-  ctor(asio::mutable_registered_buffer buffer={}); ctor(mutable_buffer head); ctor(const self& rhs);
+  ctor(asio::mutable_registered_buffer buffer={}); ctor(mutable_buffer head); ctor(const self& rhs) noexcept;
   self& operator=(const self& rhs); ~dtor(){}
   ctor<T>(const T& value) requires(std::constructible_from<std::span<const mutable_buffer>, const T&>)
   ctor(std::span<const mutable_buffer> spn);
@@ -1700,6 +1700,8 @@ struct serial_port final : stream {
   [[nodiscard]] system::result<void> set_flow_control(flow_control ctrl); [[nodiscard]] system::result<flow_control> get_flow_control();
   using parity = asio::serial_port_base::parity::type;
   [[nodiscard]] system::result<void> set_parity(parity p); [[nodiscard]] system::result<parity> get_parity();
+  using stop_bits = asio::serial_port_base::stop_bits::type;
+  [[nodiscard]] system::result<void> set_stop_bits(stop_bits p); [[nodiscard]] system::result<stop_bits> get_stop_bits();
   using native_handle_type = asio::basic_serial_port<executor>::native_handle_type;
   native_handle_type native_handle() {return serial_port_.native_handle();}
 
@@ -1767,7 +1769,7 @@ struct boost::process::is_writable_pipe<writable_pipe> : std::true_type{};
 [[noreturn]] void detail::throw_bad_endpoint_access(source_location const& loc);
 
 struct protocol_type {
-  using family_t = decltype(AF_INET); using type_t=decltype(SOCK_STREAM); using protocol_t=decltype(IPOROTO_TCP);
+  using family_t = int; using type_t=int; using protocol_t=int;
   constexpr family_t family() const noexcept{return family_;}
   constexpr type_t type() const noexcept{return type_;}
   constexpr protocol_t protocol() const noexcept{return protocol_;}

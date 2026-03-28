@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/dynamic_bitset`
 * repo: `boostorg/dynamic_bitset`
-* commit: `11be69a`, 2025-09-19
+* commit: `6cb5dde`, 2026-02-18
 
 ------
 ### Dynamic bitset

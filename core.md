@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/core`
 * repo: `boostorg/core`
-* commit: `c6b098d`, 2025-08-26
+* commit: `a90a319`, 2026-01-22
 
 ------
 ### `address_of`
@@ -620,6 +620,13 @@ Header `<boost/core/detail/string_view.hpp>`
 Standard: `string_view` (C++17)
 
 ------
+### `is_placeholder`
+
+Header `<boost/is_placeholder.hpp>`
+
+Standard: `<bind>` (C++11)
+
+------
 ### Dependency
 
 #### Boost.Config
@@ -632,10 +639,6 @@ Standard: `string_view` (C++17)
 
 * `<boost/assert.hpp>`
 * `<boost/current_function.hpp>`
-
-### Boost.StaticAssert
-
-* `<boost/static_assert.hpp>`
 
 ### Boost.ThrowException
 

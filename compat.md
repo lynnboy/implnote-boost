@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/compat`
 * repo: `boostorg/compat`
-* commit: `a5a56ee`, 2025-09-05
+* commit: `349fb92`, 2026-01-24
 
 ------
 #### `<type_traits>`
@@ -90,7 +90,8 @@ constexpr auto bind_{back|front} <F,...A> (F&& f, A&&... a) -> bind_back_<decay_
 * Header `<boost/compat/function_ref.hpp>`
 
 ```c++
-struct nontype_t<auto v> { explicit nontype_t() = default; };
+struct nttp_holder<auto v> { explicit ctor() = default; };
+struct nontype_t<auto v> : nttp_holder<v> { explicit ctor() = default; };
 union detail::thunk_storage<noEx> { void* pobj_; void(*pfn_)() noexcept(noEx); };
 
 // invokes
@@ -125,11 +126,11 @@ public: struct fp_tag{}; struct obj_tag{}; struct mem_fn_tag{};
         invoke_(&invoke_function_holder<noEx,F*,R,Args...>::invoke_function) {}
     ctor<F> (obj_tag, F&& fn) noexcept  : thunk_{.pobj_=(void*)std::addressof(fn)},
         invoke_(&invoke_object_holder<const_,noEx,F,R,Args...>::invoke_object) {}
-    ctor<auto f,F=decltype(f)> (mem_fn_tag, nontype_t<f>)            : thunk_{.pobj_=nullptr},
+    ctor<auto f,F=decltype(f)> (mem_fn_tag, nttp_holder<f>)            : thunk_{.pobj_=nullptr},
         invoke_(&invoke_mem_fn_holder<F{f},const_,noEx,R,Args...>::invoke_mem_fn) {}
-    ctor<auto f,U,F=decltype(f)> (mem_fn_tag, nontype_t<f>, U&& obj) : thunk_{.pobj_=(void*)std::addressof(obj)},
+    ctor<auto f,U,F=decltype(f)> (mem_fn_tag, nttp_holder<f>, U&& obj) : thunk_{.pobj_=(void*)std::addressof(obj)},
         invoke_(&invoke_target_mem_fn_holder<F{f},U,const_,noEx,R,Args...>::invoke_mem_fn) {}
-    ctor<auto f,T,F=decltype(f)> (mem_fn_tag, nontype_t<f>, T* obj)  : thunk_{.pobj_=(void*)obj},
+    ctor<auto f,T,F=decltype(f)> (mem_fn_tag, nttp_holder<f>, T* obj)  : thunk_{.pobj_=(void*)obj},
         invoke_(&invoke_ptr_mem_fn_holder<F{f},T,const_,noEx,R,Args...>::invoke_mem_fn) {}
     // copy-ctor, copy-assign =default
     R operator()(Args...args) [const] noexcept(noEx) { return invoke_(thunk_, std::forward<Args>(args)...); } // dispatch
@@ -144,12 +145,12 @@ struct function_ref<R(Args...) [const][noexcept]>
     ctor <F,T=remove_reference_t<F>> (F&& fn) noexcept
         requires (!is_same_v<remove_cvref_t<F>, function_ref> && !is_member_pointer_v<T> && is_invocable_r_v<R,T&,Args...>)
         : base(obj_tag{}, fn) {}
-    ctor <auto f,F=decltype(f)>     (nontype_t<f> x) noexcept requires (is_invocable_r_v<R,F,Args...>)
+    ctor <auto f,F=decltype(f)>     (nttp_holder<f> x) noexcept requires (is_invocable_r_v<R,F,Args...>)
         : base(mem_fn_tag{}, x) {}
-    ctor <auto f,U,T=remove_reference_t<U>,F=decltype(f)> (nontype_t<f> x, U&& obj) noexcept
+    ctor <auto f,U,T=remove_reference_t<U>,F=decltype(f)> (nttp_holder<f> x, U&& obj) noexcept
         requires (!is_rvalue_reference_v<U&&> && is_invocable_r_v<R,F,T&,Args...>)
         : base(mem_fn_tag{}, x, std::forward<U>(obj)) {}
-    ctor <auto f,T,F=decltype(f)>   (nontype_t<f> x, T* obj) noexcept
+    ctor <auto f,T,F=decltype(f)>   (nttp_holder<f> x, T* obj) noexcept
         requires (!is_rvalue_reference_v<U&&> && is_invocable_r_v<R,F,T&,Args...>)
         : base(mem_fn_tag{}, x, obj) {}
 

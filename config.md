@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/config`
 * repo: `boostorg/config`
-* commit: `25cbeb8`, 2025-09-23
+* commit: `423423e`, 2026-02-03
 
 ------
 ### Assert Standard Version And Language/Library Features
@@ -67,12 +67,13 @@ Then `pragma comment(lib, ...)`
 ------
 ### Misc
 
-* `<boost/conig/helper_macros.hpp>`: `STRINGIZE(x)`, `JOIN(x,y)`
+* `<boost/config/helper_macros.hpp>`: `STRINGIZE(x)`, `JOIN(x,y)`
 * `<boost/config/pragma_message.hpp>`: `PRAGMA_MESSAGE(x)` compile time message
 * `<boost/config/header_deprecated.hpp>`: `HEADER_DEPRECATED(a)`: this header deprecated by `a`
 * `<boost/config/requires_threads.hpp>`: issue error if no Threading
 * `<boost/config/warning_disable.hpp>`: MSVC: disable:4996, INTEL: disable:1786
 * `<boost/config/workaround.hpp>`: `WORKAROUND(symbol,test)`, `TESTED_AT(value)`
+* `<boost/static_assert.hpp>`: `STATIC_ASSERT(...)`
 * `<boost/version.hpp>`: `VERSION`: `108900`, `LIB_VERSION`: `"1_89"`, boost version
 
 ------

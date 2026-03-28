@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/lexical_cast`
 * repo: `boostorg/lexical_cast`
-* commit: `a16040a`, 2025-08-22
+* commit: `4b0d10a`, 2026-01-26
 
 ------
 ### Lexical Type Cast API
@@ -86,15 +86,10 @@ Target lexical_cast<Target>(const Ch* s, std::size_t n) // Ch is every supported
 
 * `<boost/core/cmath.hpp>`
 * `<boost/core/snprintf.hpp>`
-* `<boost/core/enable_if.hpp>`
 
 #### Boost.ThrowException
 
 * `<boost/throw_exception.hpp>`
-
-#### Boost.TypeTraits
-
-* `<boost/type_traits/*.hpp>`
 
 ------
 ### Standard Facilities

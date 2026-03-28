@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/dll`
 * repo: `boostorg/dll`
-* commit: `c6d1c7f`, 2025-08-26
+* commit: `a719764`, 2026-01-04
 
 ------
 ### Dynamic Library Supporting API

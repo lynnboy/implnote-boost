@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/locale`
 * repo: `boostorg/locale`
-* commit: `3466ac7`, 2025-09-19
+* commit: `9d3c2c9`, 2026-03-03
 
 ------
 ### Locale Categories

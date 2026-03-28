@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/static_string`
 * repo: `boostorg/static_string`
-* commit: `7a53b7f`, 2025-04-17
+* commit: `e9313d`, 2025-12-19
 
 ------
 
@@ -38,19 +38,14 @@ constexpr void detail::copy_with_traits<Tr,InputIt,Ch>(InputIt first, InputIt la
 class detail::static_string_base<n,Ch,Tr>{ // constexpr
     using size_type = smallest_width<n>; using value_type = Tr::char_type;
     using pointer = value_type*; using const_pointer = const value_type*;
-    size_type size_=0; value_type data_[n+1]{};
-public: ctor() noexcept {};
-    <const>_pointer data_impl() <const> noexcept { return data_; }
-    size_t size_impl() const noexcept { return size_; }  size_t set_size(size_t n) noexcept { return size_ = size_type{n}; }
-    void term_impl() noexcept { Tr::assign(data_[size_], value_type{}); }
+    struct size { class basic_static_string{...}; };
+    struct data { class basic_static_string{...}; };
 };
 class detail::static_string_base<0,Ch,Tr>{ // constexpr
     using value_type = Tr::char_type; using pointer = value_type*;
     static constexpr const value_type null_{};
-public: ctor() noexcept {};
-    pointer data_impl() const noexcept { return const_cast<pointer>(&null_); }
-    size_t size_impl() const noexcept { return 0; }  size_t set_size(size_t n) noexcept { return 0; }
-    void term_impl() noexcept {}
+    struct size { class basic_static_string{...}; };
+    struct data { class basic_static_string{...}; };
 };
 
 int detail::lexicographical_compare<Ch,Tr>(const Ch* s1, size_t n1, const Ch* s2, size_t n2) noexcept {
@@ -74,7 +69,7 @@ InIt detail::find_first_of<InIt,FwdIt,BPred>(InIt first, InIt last, FwdIt s_firs
 bool detail::ptr_in_range<T>(const T* src_first, const T* src_last, const T* ptr);
 [[noreturn]] void detail::throw_exception(const char* msg);
 
-class basic_static_string<n,Ch,Tr=std::char_traits<Ch>> : private static_string_base<n,Ch,Tr> {
+class basic_static_string<n,Ch,Tr=std::char_traits<Ch>> : public static_string_base<n,Ch,Tr>::size::basic_static_string, data::basic_static_string {
     self& term() noexcept { this->term_impl(); return *this; }
     self& assign_char(value_type, std)
     size_type read_back<InIt>(bool overwrite_null, InIt first, InIt last);
@@ -233,6 +228,7 @@ public: using traits_type = Tr; using value_type = Tr::char_type;
 
     void resize(size_type n) { resize(n, value_type{}); }
     void resize(size_type n, value_type c);
+    void resize_and_overwrite<Op>(size_type n, Op op);
     void swap(self& s) noexcept; void swap<m>(self<m,Ch,Tr>& s);
     self& replace<m>(size_type pos1, size_type n1, const self<m,Ch,Tr>& str) { return replace_unchecked(pos1, n1, str.data(), str.size()); }
     self& replace(size_type pos1, size_type n1, const self& str) { return replace(pos1, n1, str.data(), str.size()); }
@@ -326,7 +322,7 @@ std::basic_ostream<Ch,Tr>& operator<< <n,Ch,Tr> (std::basic_ostream<Ch,Tr>& os, 
 static_[w]string<int::digits10 + 2> to_static_[w]string(int value) noexcept { return to_static_[w]string_int_impl<int::digits10 + 2>(value); } // (unsigned) long, long long,
 static_[w]string<float::max_digits10 + 4> to_static_[w]string(float value) noexcept { return to_static_[w]string_float_impl<float::max_digits10 + 4>(value); } // double, long double
 
-basic_static_string<const Ch(&)[n]> -> basic_static_string<n,Ch,std::char_traits<Ch>>;
+basic_static_string<const Ch(&)[n]> -> basic_static_string<n-1,Ch,std::char_traits<Ch>>;
 
 size_t hash_value<n,Ch,Tr>(const self<n,Ch,Tr>& str) { return boost::hash_range(str.begin(), str.end()); }
 struct std::hash<basic_static_string<n,Ch,Tr>> {
@@ -353,10 +349,6 @@ struct std::hash<basic_static_string<n,Ch,Tr>> {
 #### Boost.Core
 
 * `<boost/core/detail/string_view.hpp>`
-
-#### Boost.StaticAssert
-
-* `<boost/static_assert.hpp>`
 
 #### Boost.ThrowException
 

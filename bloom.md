@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/bloom`
 * repo: `boostorg/bloom`
-* commit: `d4b5eb6`, 2025-09-14
+* commit: `7eda52e`, 2025-10-20
 
 ------
 
@@ -23,6 +23,7 @@ using detail::is_array_of<T[N],Tr> = Tr<T>;
 using detail::array_size<T> = std::integral_constant<size_t,0>; // primary, default
 using detail::array_size<T[N]> = std::integral_constant<size_t,N>;
 using detail::is_power_of_two<N> = std::bool_constant<N!=0 && (N & N-1) == 0>;
+using detail::is_forward_iterator<It> = std::bool_constant<std::forward_iterator<It>>;
 
 constexpr size_t detail::constexpr_bit_width(size_t x);
 uint64_t detail::mulx64(uint64_t x) noexcept { uint128_t x = x*0x9E3779B97F4A7C15ull; return x.hi^x.lo; }
@@ -133,7 +134,8 @@ public:
     static constexpr size_t k=K, stride=Stride?Stride:used_value_size;
     using allocator_type = Alloc;
     using size_type = size_t; using difference_type = ptrdiff_t;
-    using pointer = unsigned char*; using const_pointer = const unsigned char*;
+    using <const>_pointer = <const> unsigned char*;
+    static constexpr size_t bulk_insert_size, bulk_may_contain_size=(64+prefetched_cachelines-1)/prefetched_cachelines;
 
     explicit ctor(size_t m=0, const allocator_type& a={});
     ctor(size_t n, double fpr, const allocator_type& a); // m = unadjusted_capacity_for(n,fpr)
@@ -146,6 +148,7 @@ public:
     span<[const]unsigned char> array() [const] noexcept { return { ar.data? ar.array : nullptr, capacity()/CHAR_BIT }; }
 
     void insert(uint64_t hash);
+    void bulk_insert<HashStream>(HashStream h, size_t n);
     void swap(filter_core& x) noexcept;
     void clear() noexcept; void reset(size_t m=0); void reset(size_t n, double fpr);
 
@@ -153,6 +156,7 @@ public:
     filter_core& operator|= (const filter_core& x);
 
     bool may_contain(uint64_t hash) const;
+    void bulk_may_contain<HashStream,F>(HashStream h, size_t n, F f) const;
 };
 bool operator== <K,Subfilter,S,A> (const filter_core<K,Subfilter,S,A>& x, const filter_core<K,Subfilter,S,A>& y);
 
@@ -212,6 +216,7 @@ void swap<T,K,SF,S,H,A> (filter<T,K,SF,S,H,A>& x, filter<T,K,SF,S,H,A>& y);
 #### Boost.Core
 
 * `<boost/core/allocator_traits.hpp>`
+* `<boost/core/bit.hpp>`
 * `<boost/core/empty_value.hpp>`
 * `<boost/core/span.hpp>`
 

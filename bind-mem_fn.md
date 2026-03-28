@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/bind`
 * repo: `boostorg/bind`
-* commit: `a541a8d`, 2024-12-13
+* commit: `8cc29fc`, 2026-01-04
 
 ------
 #### `mem_fn`

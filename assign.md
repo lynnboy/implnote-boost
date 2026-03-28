@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/assign`
 * repo: `boostorg/assign`
-* commit: `83ca9df`, 2025-06-28
+* commit: `ed93877`, 2026-02-03
 
 ------
 ### `list_inserter` and functions
@@ -126,10 +126,6 @@ Header `<boost/assign/ptr_list_of.hpp>`
 #### Boost.Config
 
 * `<boost/config.hpp>`, `<boost/detail/workaround.hpp>`
-
-#### Boost.StaticAssert
-
-* `<boost/static_assert.hpp>`
 
 #### Boost.TypeTraits
 

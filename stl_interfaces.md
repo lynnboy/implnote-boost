@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/stl_interfaces`
 * repo: `boostorg/stl_interfaces`
-* commit: `9bf4c92`, 2025-07-14
+* commit: `48375e9`, 2025-11-01
 
 ------
 ### Iterator Interface
@@ -359,14 +359,14 @@ struct detail::view_closure<std::semiregular Func, std::copy_constructible...T>
 using range_adaptor_closure<D> = std::ranges::range_adaptor_closure<D>;
 
 struct closure<F> : range_adaptor_closure<closure<F>> {
-    constexpr ctor(F f) : f_{f}{}; // init
+    constexpr ctor(F f) : f_{std::move(f)}{}; // init
     constexpr decltype(auto) operator() <T> (T&& t) {const&|&&} requires std::invocable<F{const&|&&},T>
     { return <std::move>(f_)((T&&) t); }
 private: [[no_unique_address]] F f_;
 };
 
 struct adaptor<F> {
-    constexpr ctor(F f) : f_{f}{}; // init
+    constexpr ctor(F f) : f_{std::move(f)}{}; // init
     constexpr auto operator() <...Args> (Args&&...args) const {
         if constexpr (std::is_invocable_v<F const&, Args...>) return f_((Args&&)args...);
         else return closure{bind_back(f_, (Args&&)args...)};

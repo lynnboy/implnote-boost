@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/multi_index`
 * repo: `boostorg/multi_index`
-* commit: `e2b50ef`, 2025-09-19
+* commit: `a47c9f5`, 2026-01-24
 
 ------
 #### Index
@@ -24,8 +24,8 @@ public: using value_type = index_node_type::value_type; using ctor_args = tuples
     using insert_return_type = insert_return_type<iterator,node_type>;
     using tag_list = TagList;
 protected: using ctor_args_list = tuples::cons<ctor_args, base::ctor_args_list>;
-    using index_type_list = mpl::push_front<base::index_type_list, sequenced_index>::type;
-    using <const>_iterator_type_list = mpl::push_front<base::<const>_iterator_type_list, <const>_iterator>::type;
+    using index_type_list = type_list_push_front<base::index_type_list, sequenced_index>;
+    using <const>_iterator_type_list = type_list_push_front<base::<const>_iterator_type_list, <const>_iterator>;
 private: using value_param_type = call_traits<value_type>::param_type;
 public: self& operator=(const self& x); self& operator=(std::initializer_list<value_type> list);
     void assign<InIt>(InIt first, InIt last); void assign(std::initializer_list<value_type> list);
@@ -98,8 +98,8 @@ public: using value_type = index_node_type::value_type; using ctor_args = tuples
     using insert_return_type = insert_return_type<iterator,node_type>;
     using tag_list = TagList;
 protected: using ctor_args_list = tuples::cons<ctor_args, base::ctor_args_list>;
-    using index_type_list = mpl::push_front<base::index_type_list, random_access_index>::type;
-    using <const>_iterator_type_list = mpl::push_front<base::<const>_iterator_type_list, <const>_iterator>::type;
+    using index_type_list = type_list_push_front<base::index_type_list, random_access_index>;
+    using <const>_iterator_type_list = push_front<base::<const>_iterator_type_list, <const>_iterator>;
 private: using value_param_type = call_traits<value_type>::param_type;
 public: self& operator=(const self& x); self& operator=(std::initializer_list<value_type> list);
     void assign<InIt>(InIt first, InIt last); void assign(std::initializer_list<value_type> list);
@@ -174,8 +174,8 @@ public: using key_type=KeyFromValue::result_type; using value_type=index_node_ty
   using insert_return_type = insert_return_type<iterator,node_type>;
   using tag_list = TagList;
 protected: using ctor_args_list = tuples::cons<ctor_args,base::ctor_args_list>;
-  using index_type_list = mpl::push_front<base::index_type_list, hashed_index>::type;
-  using <const>_iterator_type_list = mpl::push_front<base::<const>_iterator_type_list, <const>_iterator>::type;
+  using index_type_list = type_list_push_front<base::index_type_list, hashed_index>;
+  using <const>_iterator_type_list = type_list_push_front<base::<const>_iterator_type_list, <const>_iterator>;
 private: using value_param_type = call_traits<value_type>::param_type; using key_param_type = call_traits<key_type>::param_type;
 public: self& operator=(const self& x); self& operator=(std::initializer_list<value_type> list);
   allocator_type get_allocator() const noexcept;
@@ -244,9 +244,9 @@ struct detail::null_augment_policy {
     static void {add|remove|copy|rotate_left|rotate_right}<Pointer>(Pointer,Pointer){}
     static bool invariant<Pointer>(Pointer){return true;}
 };
-struct ordered_<non>_unique<A1,A2=na,A3=na> {
+struct ordered_<non>_unique<A1,A2=void,A3=void> {
     using index_args=ordered_index_args<A1,A2,A3>;
-    using tag_list_type = index_args::tag_list_type::type;
+    using tag_list_type = index_args::tag_list_type;
     using key_from_value_type = index_args::key_from_value_type; using compare_type = index_args::compare_type;
     struct node_class<Super> { using type=ordered_index_node<null_augment_policy,Super>; };
     struct index_class<SuperMeta> { using type=ordered_index<key_from_value_type,compare_type,SuperMeta,tag_list_type,ordered_<non>_unique_tag,null_augment_policy>; };
@@ -268,7 +268,7 @@ struct detail::rank_policy {
     static void {add|remove|copy|rotate_left|rotate_right}<Pointer>(Pointer,Pointer){}
     static bool invariant<Pointer>(Pointer){return true;}
 };
-struct ranked_<non>_unique<A1,A2=na,A3=na> {
+struct ranked_<non>_unique<A1,A2=void,A3=void> {
     using index_args=ordered_index_args<A1,A2,A3>;
     using tag_list_type = index_args::tag_list_type::type;
     using key_from_value_type = index_args::key_from_value_type; using compare_type = index_args::compare_type;
@@ -285,29 +285,29 @@ namespace detail{
 struct key_equal_to<KeyFromValue> { using type=std::equal_to<KeyFromValue::result_type>; };
 struct key_equal_to<tuples::null_type> { using type=tuples::null_type; };
 struct nth_composite_key_equal_to<CompositeKey,n> { using type=key_equal_to<nth_key_from_value<CompositeKey,N>::type>::type; };
-struct generic_operator_equal{bool operator<T,Q>(const T& x, const Q& y) const{return x==y;}};
+struct cons_generic_operator_equal{self get_{head,tail}()const{return{};} bool operator<T,Q>(const T& x, const Q& y) const{return x==y;}};
 using generic_operator_equal_tuple = tuple<generic_operator_equal,...>; // 10 elements
 // and compare_x_x
-struct equal_ckey_ckey_{terminal|normal}<KeyCons1,Value1,KeyCons2,Value2,EqualCons> {static bool compare(const KeyCons1&,const Value1&, const KeyCons2&, const Value2&, const EqualCons&);};
-struct equal_ckey_ckey<KeyCons1,Value1,KeyCons2,Value2,EqualCons> : mpl::if_<..., equal_ckey_ckey_terminal<__>,equal_ckey_ckey_normal<__>>::type{};
-struct equal_ckey_cval_{terminal|normal}<KeyCons,Value,ValCons,,CompareCons>
-{static bool compare(const KeyCons&, const Value&, const ValCons&, const CompareCons&);
- static bool compare(const ValCons&, const KeyCons&, const Value&, const CompareCons&);};
-struct equal_ckey_cval<KeyCons,Value,ValCons,,CompareCons> : mpl::if_<..., equal_ckey_cval_terminal<__>,equal_ckey_cval_normal<__>>::type{};
+bool equal_ckey_ckey<V1,V2,EqCons>(const null_type&,const V1&, const null_type&, const V2&, const EqCons&) { return true; }
+bool equal_ckey_ckey<KC1,V1,KC2,V2,EqCons>(const KC1& c1,const V1& v1, const KC2& c2, const V2& v2, const EqCons& eq); // get_head, then get_tail
+bool equal_ckey_cval<V,EqCons>(const null_type&,const V&, const null_type&, const EqCons&) { return true; }
+bool equal_ckey_cval<KC,V,VC,EqCons>(const KC& c,const V& v, const VC& vc, const EqCons& eq); // get_head, then get_tail
+bool equal_cval_ckey<V,EqCons>(const null_type&, const null_type&, const V&, const EqCons&) { return true; }
+bool equal_cval_ckey<VC,KC,V,EqCons>(const VC& vc,const KC& c,const V& v, const EqCons& eq); // get_head, then get_tail
 
-struct hash_ckey_{terminal|normal}<KeyCons,Value,HashCons> {static size_t hash(const KeyCons&,const Value&, const HashCons&, size_t carry);};
-struct hash_ckey<KeyCons,Value,HashCons> : mpl::if_<..., hash_ckey_terminal<__>,hash_ckey_normal<__>>::type{};
-struct hash_cval_{terminal|normal}<ValCons,HashCons> {static size_t hash(const ValCons&, const HashCons&, size_t carry);};
-struct hash_cval<ValCons,HashCons> : mpl::if_<..., hash_ckey_terminal<__>,hash_ckey_normal<__>>::type{};
+size_t hash_ckey<V>(const null_type&, const V&, const null_type&, size_t carry) { return carry; }
+size_t hash_ckey<KC,V,HC>(const KC& c, const V& v, const HC& h, size_t carry); // get_head, then get_tail
+size_t hash_cval(const null_type&, const null_type&, size_t carry) { return carry; }
+size_t hash_cval<VC,HC>(const VC& vc, const HC& h, size_t carry=0) // get_head, then get_tail
 }
 
 struct composite_key_result<CompositeKey> {
   using composite_key_type=CompositeKey; using value_type = CompositeKey::value_type;
   const composite_key_type& composite_key; const value_type& value;
 };
-struct composite_key<Value,...KeyFromValue> : private tuple<KeyFromValue...> {
-  using key_extractor_tuple=base; using value_type=Value; using result_type=composite_key_result<composite_key>;
-  ctor(KeyFromValue...k); ctor(const key_extractor_tuple& x);
+struct composite_key<Value,KFV,...KFVs> : private augmented_stdtuple<KFV,KFVs...> {
+  using key_extractor_tuple=std::tuple<KFV,KFVs...>; using value_type=Value; using result_type=composite_key_result<composite_key>;
+  using base::ctor; ctor(); ctor(const self&);
   <const> key_extractor_tuple& key_extractors() <const>;
   result_type operator()<ChainedPtr>(const ChainedPtr& x) const;
   result_type operator()(const value_type& x) const;
@@ -319,17 +319,17 @@ bool operator{==|<}<CompKey,...Value>(const tuple<Value...>& x, const composite_
 // and !=, >, <=, >=
 
 // and compare key_comps
-struct composite_key_equal_to<...Pred> : private tuple<Pred...> {
-  using key_eq_tuple=base;
-  ctor(const Pred&...k); ctor(const key_eq_tuple& x);
+struct composite_key_equal_to<Pred,...Preds> : private augmented_stdtuple<Pred,Preds...> {
+  using key_eq_tuple=std::tuple<Pred,Preds...>;
+  using base::ctor; ctor(); ctor(const self&);
   <const> key_eq_tuple& key_eqs() <const>;
   bool operator()<CompKey1,CompKey2>(const composite_key_result<CompKey1>& x, const composite_key_result<CompKey1>& y) const;
   bool operator()<CompKey,...Value>(const tuple<Value...>& x, const composite_key_result<CompKey>& y) const;
   bool operator()<CompKey,...Value>(const composite_key_result<CompKey>& x, const tuple<Value...>& y) const;
 };
-struct composite_key_hash<...Hash> : private tuple<Hash...> {
-  using key_hasher_tuple=base;
-  ctor(const Hash&...k); ctor(const key_hasher_tuple& x);
+struct composite_key_hash<Hash,...Hashs> : private augmented_stdtuple<Hash,Hashs...> {
+  using key_hasher_tuple=std::tuple<Hash,Hashs...>;
+  using base::ctor; ctor(); ctor(const self&);
   <const> key_hasher_tuple& key_hash_functions() <const>;
   size_t operator()<CompKey>(const composite_key_result<CompKey>& x) const;
   size_t operator()<...Value>(const tuple<Value...>& x) const;
@@ -348,7 +348,7 @@ struct detail::non_const_identity_base<Type> { using result_type=Type;
   <const> Type& operator()(<const> Type& x) const;
   <const> Type& operator()(const reference_wrapper<<const> Type>& x)const;
 };
-struct identity<Type>: mpl::if_c<is_const_v<Type>, const_identity_base<Type>, non_const_identity_base<Type>>::type {};
+struct identity<Type>: mp_if<is_const<Type>, const_identity_base<Type>, non_const_identity_base<Type>> {};
 
 struct detail::<non>_<const>_ref_global_fun_base<Value,Type,Type(*p)(Value)> {
   using result_type = remove_reference_t<Type>;
@@ -364,14 +364,14 @@ struct detail::<non>_const_member_base<Class,Type,Type Class::*mp> {
     Type& operator()(const Class& x) const;
     Type& operator()(const reference_wrapper<<const> Class>& x) const;
 };
-struct member<Class,Type,Type Class::*mp> : mpl::if_c<is_const_v<Type>, const_member_base<__>, non_const_member_base<__>>::type{};
+struct member<Class,Type,Type Class::*mp> : mp_if<is_const<Type>, const_member_base<__>, non_const_member_base<__>> {};
 struct detail::<non>_const_member_offset_base<Class,Type,offset> {
     using result_type = Type;
     Type& operator()<ChainedPtr>(const ChainedPtr& x) const;
     Type& operator()(const Class& x) const;
     Type& operator()(const reference_wrapper<<const> Class>& x) const;
 };
-struct member_offset<Class,Type,offset> : mpl::if_c<is_const_v<Type>, const_member_offset_base<__>, non_const_offset_base<__>>::type{};
+struct member_offset<Class,Type,offset> : mp_if<is_const<Type>, const_member_offset_base<__>, non_const_offset_base<__>> {};
 
 struct detail::<const>_mem_fun_impl<Class,Type,MFPtr,mp> {
     using result_type = remove_reference_t<Type>;
@@ -405,10 +405,7 @@ struct detail::key_impl<keys...> {
     using value_type = least_generic<std::decay_t<key_impl<keys>::value_type>...>::type;
     using type = composite_key<value_type, key_impl<keys>::type...>;
 };
-struct detail::composite_key_size<_=composite_key<void,void>>;
-struct detail::composite_key_size<composite_key<Args...>> { static constexpr auto value=sizeof...(Args)-1; };
-struct detail::limited_size_key_impl<...keys> { using type = key_impl<keys...>::type; };
-using key<...keys> = limited_size_key_impl<keys...>::type;
+using key<...keys> = key_impl<keys...>::type;
 ```
 
 #### Multi Index Container
@@ -417,9 +414,9 @@ using key<...keys> = limited_size_key_impl<keys...>::type;
 struct detail::unequal_alloc_move_ctor_tag{};
 
 class multi_index_container<Value,ISpecList=indexed_by<ordered_unique<identity<Value>>>,
-    Alloc=std::allocator<Value>,  _alloc=rebind_alloc_for<Alloc,multi_index_node_type<Value,ISpecList,Alloc>::type>::type>
-    : private base_from_member<_alloc>, header_holder<allocator_traits<_alloc>::pointer, self>, multi_index_base_type<__>
-{ using node_allocator=rebind_alloc_for<Alloc,base::index_node_type>::type;
+    Alloc=std::allocator<Value>,  _alloc=allocator_rebind_t<Alloc,multi_index_node_type<Value,ISpecList,Alloc>::type>>
+    : private base_from_member<_alloc>, header_holder<allocator_pointer_t<_alloc>, self>, multi_index_base_type<__>
+{ using node_allocator=allocator_rebind_t<Alloc,base::index_node_type>;
     using node_alloc_traits=allocator_traits<node_allocator>;
     using bfm_allocator=base_from_member<node_allocator>;
     using bfm_header = header_holder<node_pointer, self>;
@@ -433,7 +430,7 @@ class multi_index_container<Value,ISpecList=indexed_by<ordered_unique<identity<V
     allocator_type get_allocator() const noexcept;
     struct nth_index<n> { using type = mpl::at_c<index_type_list,n>::type; };
     <const> nth_index<n>::type& get() <const> noexcept;
-    struct index<Tag> { using iter=mpl::find_if<index_type_list,has_tag<Tag>>::type; using type=mpl::deref<iter>::type; };
+    struct index<Tag> { using pos=mp11::mp_find_if_q<index_type_list,has_tag<Tag>>; using type=mp11::mp_at<index_type_list,pos>; };
     <const> index<Tag>::type& get() <const> noexcept;
     struct nth_index_<const>_iterator<n> { using type = nth_index<n>::type::<const>_iterator; };
     nth_index_<const>_iterator<n>::type project<n,It>(It it) <const>;
@@ -469,10 +466,10 @@ protected:
 private: size_type node_count;
 };
 
-struct nth_index<MICont,n> { using type = mpl::at_c<MICont::index_type_list,n>::type; };
+struct nth_index<MICont,n> { using type = mp11::mp_at_c<MICont::index_type_list,n>; };
 <const> nth_index<multi_index_container<Value,ISpecList,Alloc>,n>::type& get<n,Value,ISpecList,Alloc>(<const> multi_index_container<Value,ISpecList,Alloc>& m) noexcept;
 
-struct index<MICont,Tag> { using iter=mpl::find_if<index_type_list,has_tag<Tag>>::type; using type=mpl::deref<iter>::type; };
+struct index<MICont,Tag> { using pos=mp11::mp_find_if_q<index_type_list,has_tag<Tag>>; using type=mp11::mp_at<index_type_list,pos>; };
 <const> index<multi_index_container<Value,ISpecList,Alloc>,Tag>::type& get<Tag,Value,ISpecList,Alloc>(<const> multi_index_container<Value,ISpecList,Alloc>& m) noexcept;
 
 struct nth_index_<const>_iterator<MICont,n> { using type = nth_index<MICont,n>::type::<const>_iterator; };
@@ -490,6 +487,21 @@ void swap<V,ISL,A> (multi_index_container<V,ISL,A>& x, multi_index_container<V,I
 
 ```c++
 namespace detail;
+struct tag_marker{};
+struct is_tag<T>{static constexpr bool value=is_base_and_derived<tag_marker,T>::value;};
+struct tag<...Ts> : private tag_marker {};
+using mp11_tag_list<TagList> = TagList;
+using empty_type_list = mp_list<>;
+using type_list_push_front<TL,T> = mp_push_front<TL,T>;
+using mpl_to_mp11_list<TypeList> = ...;
+
+using is_convertible_to_cref<T,U> = std::is_convertible<T,constU&>;
+struct are_convertible_to_crefs<FromList,ToList>;
+struct augmented_stdtuple<...Ts> : std::tuple<Ts...> {
+    ctor<...Args> (Args&&..args) requires are_convertible_to_crefs<Args&&...>;
+    ctor(const base& x); ctor(const boost_tuple_arg& x);
+};
+
 struct any_container_view <CIt> {
     ctor<Cont>(const Cont& x) : px{&x}, pt{vtable_for<Cont>()}{}
     const void* container() const { return px; }
@@ -524,13 +536,11 @@ void swap<T,A>(auto_space<T,A>& x, auto_space<T,A>& y);
 
 struct bad_archive_exception : std::runtime_error;
 
-struct index_applier {
-    struct apply<ISpecMeta,SuperMeta> { using index_specifier = ISpecMeta::type; using type = index_specifier::index_class<SuperMeta>::type; };
-};
+using nth_layer_index<n,Mp11ISpecList,SM> = mp_at<Mp11ISpecList,n>::index_class<SM>::type;
 struct nth_layer<n,Value,ISpecList,Alloc> {
-    constexpr static int length = mpl::size<ISpecList>::value;
-    using type = mpl::eval_if_c<n==length, mpl::identity<index_base<Value,ISpecList,Alloc>>,
-                                           mpl::apply2<index_applier, at_c<ISpecList,n>, nth_layer<n+1,Value,ISpecList,Alloc>>>::type;
+    using Mp11ISpecList = mp11_index_list<ISpecList>;
+    using type = mp_eval_if_c<n==mp_size<Mp11ISpecList>::value, index_base<Value,ISpecList,Alloc>,
+        nth_layer_index, mp_int<n>, Mp11ISpecList, nth_layer<n+1,Value,ISpecList,Alloc>>>;
 };
 struct multi_index_base_type<Value,ISpecList,Alloc> : nth_layer<0,Value,ISpecList,Alloc>{};
 
@@ -570,7 +580,7 @@ void load_construct_data<Ar,Alloc>(Ar&,bucket_array<Alloc>*, unsigned) { throw_e
 struct cons_stdtuple_ctor_terminal { using result_type=tuples::null_type; static result_type create<StdTuple>(const StdTuple&); };
 struct cons_stdtuple_ctor_normal<StdTuple,n> { using result_type=cons_stdtuple<StdTuple,n>; static result_type create(const StdTuple& t); };
 struct cons_stdtuple_ctor<StdTuple,n=0> :
-    mpl::if_c<(n < std::tuple_size_v<StdTuple>), cons_stdtuple_ctor_normal<StdTuple,n>, cons_stdtuple_ctor_terminal>::type{};
+    mp_if_c<(n < std::tuple_size_v<StdTuple>), cons_stdtuple_ctor_normal<StdTuple,n>, cons_stdtuple_ctor_terminal> {};
 struct cons_stdtuple<StdTuple,n> {
     using head_type=std::tuple_element_t<n,StdTuple>;
     using tail_ctor=cons_stdtuple_ctor<StdTuple,n+1>; using tail_type = tail_ctor::result_type;
@@ -616,17 +626,15 @@ private: Node *node, *begin_chunk, *end; Pred pred;
 };
 bool operator{==|!=}<N,P>(const duplicates_iterator<N,P>& x, const duplicates_iterator<N,P>& y);
 
-struct has_tag<Tag> { struct apply<Idx> : mpl::contains<Idx::tag_list,Tag>{}; };
+struct has_tag<Tag> { using fn<Index> = mp_contains<Index::tag_list,Tag>; };
 
-struct index_args_default_hash<KeyFromValue> { using type = hash<KeyFromValue::result_type>; };
-struct index_args_default_pred<KeyFromValue> { using type = std::equal_to<KeyFromValue::result_type>; };
 struct hashed_index_args<A1,A2,A3,A4> { using full_form = is_tag<A1>;
-    using tag_list_type = mpl::if_<full_form,A1,tag<>>::type;
-    using key_from_value_type = mpl::if_<full_form,A2,A1>::type;
-    using supplied_hash_type = mpl::if_<full_form,A3,A2>::type;
-    using hash_type = mpl::eval_if<is_na<supplied_hash_type>, index_args_default_hash<key_from_value_type>, identity<supplied_hash_type>>::type;
-    using supplied_pred_type = mpl::if_<full_form,A4,A3>::type;
-    using pred_type = mpl::eval_if<is_na<supplied_pred_type>, index_args_default_pred<key_from_value_type>, identity<supplied_pred_type>>::type;
+    using tag_list_type = mp_if<full_form,A1,tag<>>;
+    using key_from_value_type = mp_if<full_form,A2,A1>;
+    using supplied_hash_type = mp_if<full_form,A3,A2>;
+    using hash_type = mp_eval_if_c<!is_void_v<supplied_hash_type>, supplied_hash_type, boost::hash, key_from_value_type::result_type>;
+    using supplied_pred_type = mp_if<full_form,A4,A3>;
+    using pred_type = mp_eval_if_c<!is_void_v<supplied_pred_type>, supplied_pred_type, std::equal_to, key_from_value_type::result_type>;
 };
 
 struct hashed_index_global_iterator_tag{}; struct hashed_index_local_iterator_tag{};
@@ -716,10 +724,9 @@ struct index_access_sequence_terminal{ctor(void*){}};
 struct index_access_sequence_normal<MICont,n> {
   MICont* p; nth_index<MICont,n>::type& get(); index_access_sequence<MICont,n+1> next();
 };
-struct index_access_sequence_base<MICont,n>
-  : mpl::if_c<(n<mpl::size<MICont::index_type_list>::type::value),
-    index_access_sequence_normal<MICont,n>, index_access_sequence_terminal> {};
-struct index_access_sequence<MICont,n> : index_access_sequence_base<MICont,n>::type {};
+using index_access_sequence_base<MICont,n> = mp_if_c<(n<mp_size<MICont::index_type_list>::value),
+    index_access_sequence_normal<MICont,n>, index_access_sequence_terminal>;
+struct index_access_sequence<MICont,n> : index_access_sequence_base<MICont,n> {};
 
 struct lvalue_tag{}; struct rvalue_tag{}; struct emplaced_tag{};
 
@@ -731,7 +738,7 @@ protected:
   using ctor_args_list = null_type;
   using final_allocator_type = rebind_alloc_for<Alloc,Alloc::value_type>::type;
   using final_node_handle_type = node_handle<final_node_type, final_allocator_type>;
-  using index_type_list=mpl::vector0<>; using <const>_iterator_type_list=mpl::vector0<>;
+  using index_type_list=empty_type_list; using <const>_iterator_type_list=empty_type_list;
   using copy_map_type = copy_map<final_node_type,final_allocator_type>;
   using index_saver_type = index_saver<index_node_type,final_allocator_type>;
   using index_loader_type = index_loader<index_node_type, final_node_type, final_allocator_type>;
@@ -830,8 +837,10 @@ void load_construct_data<Ar,Value,Alloc>(Ar&, index_node_base<Value,Alloc>*, uns
 struct invalidate_iterators
 { using iterator=void; self& get() {return *this;} self& next() { return *this;} };
 
-struct is_index_list<T> { constexpr static bool value=mpl::is_sequence<T>::value && !mpl::empty<T>::value; };
-struct is_transparent<F,A1,A2>: mpl_true{};
+struct is_index_list<T> : false_type{};
+struct is_index_list<L<T,Ts...>> true_type{};
+using mp11_index_list<IndexList> = IndexList;
+struct is_transparent<F,A1,A2>: true_type{};
 struct is_transparent_class<F,A1,A2>; struct is_transparent_function<F,A1,A2>;
 struct is_transparent<F,A1,A2> requires (is_class<F>&&!is_final<F>): is_transparent_class<F,A1,A2>{};
 struct is_transparent<F,A1,A2> requires (is_function<remove_pointer_t<F>>): is_transparent_function<remove_pointer_t<F>,A1,A2>{};
@@ -849,13 +858,13 @@ struct forward_iter_adaptor_base<D,Base> : forward_iterator_helper<D,Base::value
     friend bool operator==(const D& x, const D& y);
     D& operator++();
 };
-struct iter_adaptor_selector<std::forward_iterator_tag> { struct apply<D,B> { using type = forward_iter_adaptor_base<D,B>; }; };
+struct iter_adaptor_selector<std::forward_iterator_tag> { using fn = forward_iter_adaptor_base<D,B>; };
 struct bidirectional_iter_adaptor_base<D,Base> : bidirectional_iterator_helper<D,Base::value_type,Base::difference_type,Base::pointer,Base::reference> {
     reference operator*() const;
     friend bool operator==(const D& x, const D& y);
     D& operator++(); D& operator++();
 };
-struct iter_adaptor_selector<std::bidirectional_iterator_tag> { struct apply<D,B> { using type = bidirectional_iter_adaptor_base<D,B>; }; };
+struct iter_adaptor_selector<std::bidirectional_iterator_tag> { using fn = bidirectional_iter_adaptor_base<D,B>; };
 struct random_access_iter_adaptor_base<D,Base> : random_access_iterator_helper<D,Base::value_type,Base::difference_type,Base::pointer,Base::reference> {
     reference operator*() const;
     friend bool operator==(const D& x, const D& y);     friend bool operator<(const D& x, const D& y);
@@ -863,11 +872,9 @@ struct random_access_iter_adaptor_base<D,Base> : random_access_iterator_helper<D
     D& operator+=(difference_type n); D& operator-=(difference_type n);
     friend difference_type operator-(const D& x, const D& y);
 };
-struct iter_adaptor_selector<std::random_access_iterator_tag> { struct apply<D,B> { using type = random_access_iter_adaptor_base<D,B>; }; };
-struct iter_adaptor_base<D,Base> {
-    using type=mpl::apply<iter_adaptor_selector<Base::iterator_category>,D,Base>::type;
-};
-struct iter_adaptor<D,Base> : public iter_adaptor_base<D,Base>::type {
+struct iter_adaptor_selector<std::random_access_iterator_tag> { using fn = random_access_iter_adaptor_base<D,B>; };
+using iter_adaptor_base<D,Base> = mp_invoke_q<iter_adaptor_selector<Base::iterator_category>,D,Base>;
+struct iter_adaptor<D,Base> : public iter_adaptor_base<D,Base> {
 protected: ctor(); explicit ctor(const Base& b_);
     <const> Base& base_reference() <const>;
 private: Base b;
@@ -875,11 +882,9 @@ private: Base b;
 
 struct modify_key_adaptor<Fun,Value,KeyFromValue> { void operator()(Value& x); private: Fun f; KeyFromValue kfv; };
 
-struct duplicate_tag_mark{};
-struct duplicate_tag_marker { struct apply<MplSet,Tag>{using type = mpl::s_item<if_<has_key<MplSet,Tag>,duplicate_tag_mark,Tag>::type,MplSet>; }; };
-struct no_duplicate_tags<TagList> { using aux=mpl::fold<TagList,set0<>,duplicate_tag_marker>; bool value=!mpl::has_key<aux,duplicate_tag_mark>::value; };
-struct duplicate_tag_list_marker { struct apply<MplSet,Idx>: mpl::fold<Idx::tag_list,MplSet,duplicate_tag_marker>{}; };
-struct no_duplicate_tags_in_index_list<IndexList> { using aux=mpl::fold<IndexList,set0<>,duplicate_tag_list_marker>::type; bool value=!mpl::has_key<aux,duplicate_tag_mark>::value; };
+using no_duplicate_tags<TagList> = std::is_same<TagList,mp_unique<TagList>>;
+using index_tag_list<Index> = mp_rename<mp11_tag_list<Index::tag_list>,mp_list>;
+using no_duplicate_tags_in_index_list<IndexList> = no_duplicate_tags<mp_flatten<mp_transform<index_tag_list,IndexList>>>;
 
 struct node_handle<Node,Alloc> { // not copyable
     using value_type=Node::value_type; using allocator_type=Alloc; using alloc_traits = allocator_traits<Alloc>;
@@ -901,15 +906,14 @@ struct insert_return_type<It,NodeHandle> {
     It position; bool inserted; NodeHandle node;
 };
 
-struct index_node_applier { struct apply<ISpecIt,Super>{ using type=mpl::deref<ISpecIt>::type::node_class<Super>::type; }; };
-struct multi_index_node_type<Value,ISpecList,Alloc> { using type=mpl::reverse_iter_fold<ISpecList,index_node_base<Value,Alloc>,mpl::bind<index_node_applier,_2,_1>>::type; };
+using node_type<ISpec,Super> = ISpec::node_class<Super>::type;
+struct multi_index_node_type<Value,ISpecList,Alloc> { using type=mp_reverse_fold<mp11_index_list<ISpecList>,index_node_base<Value,Alloc>,node_type>; };
 
-struct index_args_default_compare<KeyFromValue> { using type = std::less<KeyFromValue::result_type>; };
 struct ordered_index_args<A1,A2,A3> { using full_form=is_tag<A1>;
-    using tag_list_type = mpl::if_<full_form,A1,tag<>>::type;
-    using key_from_value_type = mpl::if_<full_form,A2,A1>::type;
-    using supplied_compare_type = mpl::if_<full_form,A3,A2>::type;
-    using compare_type = mpl::eval_if<is_na<supplied_compare_type>, index_args_default_compare<key_from_value_type>,identity<supplied_compare_type>>::type;
+    using tag_list_type = mp_if<full_form,A1,tag<>>;
+    using key_from_value_type = mp_if<full_form,A2,A1>;
+    using supplied_compare_type = mp_if<full_form,A3,A2>;
+    using compare_type = mp_eval_if_c<!is_void_v<supplied_compare_type>, supplied_compare_type, std::less, key_from_value_type::result_type>;
 };
 
 struct ordered_unique_tag{}; struct ordered_non_unique_tag{};
@@ -929,8 +933,8 @@ public: using key_type=KeyFromValue::result_type; using value_type=index_node_ty
     using insert_return_type = insert_return_type<iterator,node_type>;
     using tag_list=TagList;
 protected: using ctor_args_list=tuples::cons<ctor_args,base::ctor_args_list>;
-    using index_type_list = mpl::push_front<base::index_type_list,ordered_index<__>>::type;
-    using <const>_iterator_type_list = mpl::push_front<base::<const>_iterator_type_list, <const>_itreator>:type;
+    using index_type_list = type_list_push_front<base::index_type_list,ordered_index<__>>;
+    using <const>_iterator_type_list = type_list_push_front<base::<const>_iterator_type_list, <const>_itreator>;
     using value_param_type = call_traits<value_type>::param_type; using key_param_type = call_traits<key_type>::param_type;
     using pair_return_type = std::pair<iterator,bool>;
 public:
@@ -1034,7 +1038,7 @@ struct ordered_index_node_compressed_base<AugmentPolicy,Alloc> {
 private: uintptr_type parentcolor_; pointer left_, right_;
 };
 struct ordered_index_node_impl_base<AP,Al>
-    : AugmentPolicy::augmented_node<mpl::if_c<..., ordered_index_node_std_base<AP,Al>, ordered_index_node_compressed_base<AP,Al>>::type>::type {};
+    : AugmentPolicy::augmented_node<mp_if<..., ordered_index_node_std_base<AP,Al>, ordered_index_node_compressed_base<AP,Al>>>::type {};
 struct ordered_index_node_impl<AP,Al> : ordered_index_node_impl_base<AP,Al> {
     static void increment(pointer& x); static void decrement(pointer& x);
     static void rotate_{left|right}(pointer x, parent_ref root);
@@ -1063,8 +1067,8 @@ Node* ordered_index_{find|lower_bound|upper_bound}<Node,KeyFromValue,Key2,Comp2>
 std::pair<Node*,Node*> ordered_index_equal_range<Node,KeyFromValue,Key2,Comp2>
     (Node* top, Node* y, const KeyFromValue& key, const Key2& x, const Comp& comp);
 
-struct promotes_1st_arg<F,A1,A2> : mpl::and_<not_<is_transparent<F,A1,A2>>,is_convertible<const A1,A2>,is_transparent<F,A2,A2>>{};
-struct promotes_2nd_arg<F,A1,A2> : mpl::and_<not_<is_transparent<F,A1,A2>>,is_convertible<const A2,A1>,is_transparent<F,A1,A1>>{};
+struct promotes_1st_arg<F,A1,A2> : mp_and<not_<is_transparent<F,A1,A2>>,is_convertible<const A1,A2>,is_transparent<F,A2,A2>>{};
+struct promotes_2nd_arg<F,A1,A2> : mp_and<not_<is_transparent<F,A1,A2>>,is_convertible<const A2,A1>,is_transparent<F,A1,A1>>{};
 RawPointer raw_ptr<RawPointer,Pointer>(Pointer const& p);
 
 class random_access_index_loader_base<Alloc> : noncopyable {
@@ -1161,7 +1165,7 @@ protected: ~dtor(){}; ctor(const self& other);
 };
 using scope_guard = const scope_guard_impl_base&;
 struct null_guard : scope_guard_impl_base { ctor<...Ts>(const Ts&...);};
-struct null_guard_return<cond,T> { using type = mpl::if_c<cond,T,null_guard>::type; };
+struct null_guard_return<cond,T> { using type = mp_if<cond,T,null_guard>; };
 struct scope_guard_implN<F,...P> : public scope_guard_impl_base {
     ctor(F fun, P ...p); ~dtor(); void execute() { fun_(p...); }
 protected: F fun_; const P...p;
@@ -1220,7 +1224,7 @@ struct serialization::version<serialization_version<T>> { int value=version<T>::
 
 struct uintptr_candidates<n> {using type=unsigned int}; // -1: uint, 0: uint, 1: ushort, 2: ulong, 3: ulonglong, 4: uint64
 struct uintptr_aux { int index=/**/; bool has_uintptr_type=(index>=0); using type=uintptr_candidates<index>::type; };
-using has_uintptr_type = mpl::bool_<uintptr_aux::has_uintptr_type>;
+using has_uintptr_type = mp_bool<uintptr_aux::has_uintptr_type>;
 using uintptr_type=uintptr_aux::type;
 
 class unbounded_helper{ctor();ctor(const self); friend self unbounded(self); };
@@ -1248,7 +1252,6 @@ private; KeyFromValue key; Compare comp;
 #### Boost.Config
 
 * `<boost/config.hpp>`
-* `<boost/detail/workaround.hpp>`
 * `<boost/limits.hpp>`
 
 #### Boost.ContainerHash
@@ -1278,9 +1281,9 @@ private; KeyFromValue key; Compare comp;
 * `<boost/move/utility_core.hpp>`
 * `<boost/move/utility.hpp>`
 
-#### Boost.MPL
+#### Boost.MP11
 
-* `<boost/mpl/*.hpp>`
+* `<boost/mp11/*.hpp>`
 
 #### Boost.Pool
 
@@ -1293,10 +1296,6 @@ private; KeyFromValue key; Compare comp;
 #### Boost.SmartPtr
 
 * `<boost/intrusive_ptr.hpp>`
-
-#### Boost.StaticAssert
-
-* `<boost/static_assert.hpp>`
 
 #### Boost.ThrowException
 

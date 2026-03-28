@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/describe`
 * repo: `boostorg/describe`
-* commit: `bfdf0c7`, 2024-12-09
+* commit: `4959611`, 2025-12-16
 
 ------
 Header `<boost/describe.hpp>`

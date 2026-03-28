@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/type_index`
 * repo: `boostorg/type_index`
-* commit: `32dcf01`, 2025-05-12
+* commit: `96d4a76`, 2026-01-05
 
 ------
 ### Type index solution
@@ -233,10 +233,6 @@ SmartPtr<T> runtime_pointer_cast<T,U,SmartPtr<TT>>(SmartPtr<U> const& u);
 #### Boost.ContainerHash
 
 * `<boost/container_hash/hash_fwd.hpp>`, `<boost/container_hash/hash.hpp>`.
-
-#### Boost.Core
-
-* `<boost/core/demangle.hpp>`, when `std::type_info` based implementation is chosen.
 
 #### Boost.ThrowException
 

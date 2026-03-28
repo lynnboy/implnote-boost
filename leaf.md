@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/leaf`
 * repo: `boostorg/leaf`
-* commit: `61e4b0d`, 2025-06-02
+* commit: `e8fe60e`, 2026-02-19
 
 ------
 ### Common Bits

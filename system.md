@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/system`
 * repo: `boostorg/system`
-* commit: `14c5f52`, 2025-07-03
+* commit: `f80b9cc`, 2026-03-04
 
 ------
 ### System Error Code
@@ -201,9 +201,12 @@ public: // all functions are constexpr
     explicit operator bool() const noexcept;
 
     T [const]{&|&&} value<U=T> (source_location const& loc=CURRENT_LOCATION) [const]{&|&&}; // if is_move_const<U>: && version returns T, &&const version is deleted.
-    T [const]* operator->() [const] noexcept;
-    T [const]& operator*() [const]& noexcept;
+    T [const]* operator->() [const];
+    T [const]& operator*() [const]&;
     T [const]&& operator* <U=T> () [const]&&; // if is_move_const<U>: && version returns T, &&const version is deleted.
+
+    T<const>& unsafe_value() <const>;
+    {T|T&&} unsafe_value() <const> &&;
 
     E error() {const&|&&};
 
@@ -226,8 +229,10 @@ public: // all functions are constexpr
     explicit operator bool() const noexcept;
 
     void value (source_location const& loc=CURRENT_LOCATION) const;
-    void [const]* operator->() [const] noexcept;
-    void operator*() const noexcept;
+    void [const]* operator->() [const];
+    void operator*() const;
+
+    void unsafe_value() const;
     E error() {const&|&&};
 
     T& emplace();
@@ -254,6 +259,8 @@ public: // all functions are constexpr
     U& value<U=T> (source_location const& loc=CURRENT_LOCATION) const;
     U* operator->() const noexcept;
     U& operator*() const noexcept;
+
+    U& unsafe_value() const;
     E error() {const&|&&};
 
     U& emplace<A> (A&& a); // requires U&->A, !ref_to_temp<U,A>
@@ -271,16 +278,29 @@ T operator| <T,E,U> (result<T,E> {const&|&&} r, U&& u); // requires is_val_conv<
 // `r | f` := `r ? *r : f()`
 T operator| <T,E,F> (result<T,E> {const&|&&} r, F&& f); // requires is_val_conv<T,result_of<F>>
 U operator| <T,E,F,U=result_of<F>> (result<T,E> {const&|&&} r, F&& f); // requires is_val_conv<T,result_of<F>>, U is result<>
+std::decay_t<T> operator| <T,E,F,U=decltype(std::declval<F>()())> (result<T&,E> const& r, F&& f); // requires..
 result<T,E>& operator|= <T,E,U> (result<T,E>& r, U&& u); // requires is_val_conv<U,T>
 result<T,E>& operator|= <T,E,F> (result<T,E>& r, F&& f); // requires is_val_conv<U,T>, is_val_conv<result_of<F>,T>
 // `r & f` := `r ? f(*r) : r`
+result<U,E> operator& <T,E,F,U=invoke_result_t<F,T&>> (result<T,E>& r, F&& f); // requires...
 result<U,E> operator& <T,E,F,U=result_of<F(T const&)>> (result<T,E> {const&|&&} r, F&& f); // requires U !is result<>
-U operator& <T,E,F,U=result_of<F(T const&)>> (result<T,E> {const&|&&} r, F&& f); // requires U is result<>
+U operator& <T,E,F,U=invoke_result_t<F,T&>> (result<T,E> {const&|&&} r, F&& f); // requires U is result<>
 // `r & f` := `r ? f() : r`
 result<U,E> operator& <E,F,U=result_of<F()>> (result<void,E> {const&|&&} r, F&& f); // requires U !is result<>
 U operator& <E,F,U=result_of<F()>> (result<void,E> {const&|&&} r, F&& f); // requires U is result<>
+result<U,E> operator& <T,E,F,U=invoke_result_t<F,T&>> (result<T&,E>&& r, F&& f); // requires...
 result<T,E>& operator&= <T,E,F> (result<T,E>& r, F&& f); // requires ...
 result<void,E>& operator&= <E,F> (result<void,E>& r, F&& f); // requires ...
+```
+
+#### Unwrap
+
+```c++
+auto unwrap_and_invoke<F,...A,R=decltype(compat::invoke(std::declval<F>(),invoke_unwrap(declval<A>())...)),
+    E=get_error_type<remove_cvref_t<A>...>>
+auto unwrap_and_invoke(F&& f, A&&...a) -> result<R,E>;
+
+auto unwrap_and_construct <T,...A> (A&&... a) -> decltype(unwrap_and_invoke(construct<T>(),std::forward<A>(a)...));
 ```
 
 #### Difference from Standard
@@ -303,6 +323,10 @@ result<void,E>& operator&= <E,F> (result<void,E>& r, F&& f); // requires ...
 #### Boost.Assert
 
 * `<boost/assert.hpp>`, `<boost/assert/source_location.hpp>`
+
+#### Boost.Compat
+
+* `<boost/compat/invoke.hpp>`
 
 #### Boost.Config
 

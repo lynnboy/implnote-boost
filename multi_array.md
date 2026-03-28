@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/multi_array`
 * repo: `boostorg/multi_array`
-* commit: `333c304`, 2025-06-26
+* commit: `a31951f`, 2026-02-06
 
 ------
 ### Multi-dimensional Array
@@ -521,6 +521,8 @@ Recursively copy each dimension from `source` to `dest`.
 
 #### Boost.Iterator
 
+* `<boost/iterator/enable_if_convertible.hpp>`
+* `<boost/iterator/iterator_categories.hpp>`
 * `<boost/iterator/iterator_concepts.hpp>`
 * `<boost/iterator/iterator_facade.hpp>`
 * `<boost/iterator/reverse_iterator.hpp>`
@@ -529,10 +531,6 @@ Recursively copy each dimension from `source` to `dest`.
 
 * `<boost/mpl/if.hpp>`, `<boost/mpl/eval_if.hpp>`
 * `<boost/mpl/size_t.hpp>`
-
-#### Boost.StaticAssert
-
-* `<boost/static_assert.hpp>`
 
 #### Boost.TypeTraits
 

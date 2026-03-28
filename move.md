@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/move`
 * repo: `boostorg/move`
-* commit: `a541a8d`, 2024-12-13
+* commit: `ae8cf40`, 2026-02-18
 
 ------
 #### Move Semantic
@@ -28,8 +28,9 @@
 #### Traits
 
 ```c++
-struct has_trival_destructor_after_move<T> : is_trivally_destructible<T>{};
+struct has_trivial_destructor_after_move<T> : is_trivally_destructible<T>{};
 struct has_nothrow_move<T> { static const bool value = is_nothrow_move_constructible<T>::value && is_nothrow_move_assignable<T>::value; };
+// and spec of trait classes for std::pair
 ```
 
 #### Algorithms

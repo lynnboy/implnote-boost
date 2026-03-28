@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/convert`
 * repo: `boostorg/convert`
-* commit: `6e2419c`, 2024-08-19
+* commit: `6dd61f2`, 2026-02-14
 
 ------
 ### `convert` facade API
@@ -174,7 +174,9 @@ template <typename T, typename R, typename ...A> concept trait_name<T, R(A...)> 
 
 #### Boost.TypeTraits
 
+* `<boost/type_traits/decay.hpp>`
 * `<boost/type_traits/function_traits.hpp>`
+* `<boost/type_traits/remove_const.hpp>`
 * `<boost/type_traits/detail/yes_no_type.hpp>`
 
 #### Boost.Range

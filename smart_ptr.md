@@ -2,7 +2,7 @@
 
 * lib: `boost/libs/smart_ptr`
 * repo: `boostorg/smart_ptr`
-* commit: `5a0b5ea`, 2025-09-24
+* commit: `6e94516`, 2026-01-23
 
 ------
 ### Scoped Pointer/Array
@@ -753,7 +753,7 @@ using detail::sp_typeinfo_ == std::type_info; // or boost::core::typeinfo when n
 class detail::sp_nothrow_tag{};
 class detail::sp_inplace_tag<D>{};
 class detail::sp_reference_wrapper<T>
-{ T* t_; explicit ctor(T& t): t_{addressof(t)}{} void operator()<Y>(Y*p) noexcept { (*t_)(p); } };
+{ T* t_; public: explicit ctor(T& t): t_{addressof(t)}{} void operator()<Y>(Y*p) noexcept { (*t_)(p); } };
 struct detail::sp_convert_reference<D> { using type = D; };
 struct detail::sp_convert_reference<D&> { using type = sp_reference_wrapper<D>; };
 size_t detail::sp_hash_pointer<T>(T* p) noexcept { uintptr_t v = uintptr_t(p); return size_t(v+(v>>3)); }
@@ -765,18 +765,10 @@ struct detail::sp_is_unbounded_array<T>;
 struct detail::sp_type_identity<T> { using type = T; };
 struct detail::sp_type_with_alignment<a> { struct alignas(a) type { unsigned char padding[a]; }; };
 
-union detail::freeblock<size,align> { using aligner_type = sp_type_with_alignment<align>;
-    aligner_type aligner; char bytes[size]; freeblock* next;
+struct detail::quick_allocator<T> { // std::allocator<T> or new/delete
+    static void *alloc(<size_t n>);
+    static void dealloc(void* p, <size_t n>);
 };
-struct detail::allocator_impl<size,align> { using block = freeblock<size,align>;
-    enum { items_per_page = 512/size };
-    static lightweight_mutex* mutex_init = mutex();
-    static lightweight_mutex& mutex() { static lightweight_mutex m; return m; }
-    static block *free{nullptr}, *page{nullptr}; static unsigned last = items_per_page;
-    static void* alloc(); static void* alloc(size_t n);
-    static void dealloc(void* pv); static void dealloc(void* pv, size_t n);
-};
-struct detail::quick_allocator<T> : allocator_impl<sizeof(T), alignof(T)> {};
 
 class detail::atomic_count { // no-threading version
     long value_; // no copy
@@ -785,27 +777,6 @@ public: explicit ctor(long v) : value_{v}{}
     long operator--() { return --value_; }
     operator long() const { return value_; }
 };
-class detail::atomic_count { // gcc intrinsic version
-    mutable _Atomic_word value_; // no copy
-public: explicit ctor(long v) : value_{v}{}
-    long operator++() { return __exchange_and_add(&value_, +1) + 1; }
-    long operator--() { return __exchange_and_add(&value_, -1) - 1; }
-    operator long() const { return __exchange_and_add(&value_, 0); }
-};
-class detail::atomic_count { // gcc atomic intrinsic version
-    int_least32_t value_; // no copy
-public: explicit ctor(long v) : value_{v}{}
-    long operator++() { return __atomic_add_fetch(&value_, +1, __ATOMIC_ACQ_REL); }
-    long operator--() { return __atomic_add_fetch(&value_, -1, __ATOMIC_ACQ_REL); }
-    operator long() const { return __atomic_load_n( &value_, __ATOMIC_ACQUIRE); }
-};
-class detail::atomic_count { // sync intrinsic version
-    mutable int_least32_t value_; // no copy
-public: explicit ctor(long v) : value_{v}{}
-    long operator++() { return __sync_add_and_fetch(&value_, +1); }
-    long operator--() { return __sync_add_and_fetch(&value_, -1); }
-    operator long() const { return __sync_fetch_and_add( &value_, 0); }
-};
 class detail::atomic_count { // std version
     std::atomic_int_least32_t value_; // no copy
 public: explicit ctor(long v) : value_{v}{}
@@ -813,56 +784,24 @@ public: explicit ctor(long v) : value_{v}{}
     long operator--() { return value_.fetch_sub(1, memory_order_acq_rel) -1 1; }
     operator long() const { return value_.load(memory_order_acquire); }
 };
-class detail::atomic_count { // win32 version
-    long value_; // no copy
-public: explicit ctor(long v) : value_{v}{}
-    long operator++() { return InterlockedIncrement(&value_); }
-    long operator--() { return InterlockedDecrement(&value_); }
-    operator long() const { return (long const volatile&)value_; }
-};
-class detail::atomic_count { // win32 version
-    long value_; mutable pthread_mutex_t mutex_; // no copy
-    class scoped_lock { pthread_mutex_t& m_;
-    public: ctor(pthread_mutex_t& m): m_{m} { pthread_mutex_lock(&m_); } ~dtor() { pthread_mutex_unlock(&m_); }
-    };
-public: explicit ctor(long v) : value_{v}{ pthread_mutex_init(&mutex_, 0); } ~dtor(){ pthread_mutex_destroy(&mutex_); }
-    long operator++() { scoped_lock lock{mutex_}; return ++value_; }
-    long operator--() { scoped_lock lock{mutex_}; return --value_; }
-    operator long() const { scoped_lock lock{mutex_}; return value_; }
-};
-class detail::atomic_count { // spinlock version
-    long value_; // no copy
-public: explicit ctor(long v) : value_{v}{}
-    long operator++() { spinlock_pool<0>::scoped_lock lock{&value_}; return ++value_; }
-    long operator--() { spinlock_pool<0>::scoped_lock lock{&value_}; return --value_; }
-    operator long() const { spinlock_pool<0>::scoped_lock lock{&value_}; return value_; }
-};
 
-struct detail::spinlock { // no-threading version
-    bool locked_;
-    bool try_lock() { if (locked_) return false; locked_=true; return true; }
-    void lock() { locked_ = true; } // 
-    void unlock() { locked_ = false; }
-    class scoped_lock { spinlock& sp_; // no copy
-    public: explicit ctor(spinlock& sp): sp_{sp} {sp_.lock();}  ~dtor(){sp_.unlock();}
+void detail::yield(unsigned k) { if (k%1) sp_thread_sleep() else sp_thread_pause(); }
+struct detail::spinlock { // gcc atomic version
+    union { unsigned char v_; bool align_; };
+    bool try_lock() { return __atomic_test_and_set(&v_, __ATOMIC_ACQUIRE) == 0; }
+    void lock() { for (unsigned k=0; !try_lock(); ++k) yield(k); }
+    void unlock() { __atomic_clear(&v_, __ATOMIC_RELEASE); }
+    class scoped_lock { spinlock &sp_;
+    public: explicit ctor(spinlock& sp):sp_(sp){sp.lock();} ~dtor(){sp_.unlock();}
     };
 };
-void detail::yield(unsigned k) { if (k%1) sp_thread_sleep() else sp_thread_pause(); }
-struct detail::spinlock { // atomic version (similar: sync, gcc atomic intrinsic)
+struct detail::spinlock { // std atomic version
     std::atomic_flag v_;
     bool try_lock() { return !v_.test_and_set(std::memory_order_acquire); }
     void lock() { for (unsigned k=0; !try_lock(); ++k) yield(k); }
     void unlock() { v_.clear(std::memory_order_release); }
     class scoped_lock; // same
 };
-struct detail::spinlock { // PThread version
-    pthread_mutex_t v_;
-    bool try_lock() { return pthread_mutex_trylock(&v_) == 0; }
-    void lock() { pthread_mutex_lock(&v_); }
-    void unlock() { pthread_mutex_unlock(&v_); }
-    class scoped_lock; // same
-};
-
 class detail::spinlock_pool<m> {
     static spinlock pool_[41];
 public:
@@ -878,41 +817,17 @@ public: ctor(){} // nocopy
     public: explicit ctor(lightweight_mutex& m): m_{m.m_} {m_.lock();}  ~dtor(){m_.unlock();}
     };
 };
-class detail::lightweight_mutex { pthread_mutex_t m_; // pthread version
-public: ctor(){ pthread_mutex_init(&m_, 0); } ~dtor(){ pthread_mutex_destroy(&m_); }
-    class scoped_lock { pthread_mutex_t& m_; // no copy
-    public: explicit ctor(lightweight_mutex& m): m_{m.m_} {pthread_mutex_lock(&m_);}  ~dtor(){pthread_mutex_unlock(&m_);}
-    };
-};
-class detail::lightweight_mutex { RTL_CRITICAL_SECTION cs_; // win32 version
-public: ctor(){ InitializeCriticalSection(&cs_); } ~dtor(){ DeleteCriticalSection(&cs_); }
-    class scoped_lock { lightweight_mutex& m_; // no copy
-    public: explicit ctor(lightweight_mutex& m): m_{m} {EnterCriticalSection(&m_.cs_);}  ~dtor(){LeaveCriticalSection(&m_.cs_);}
-    };
-};
 
-using lw_thread_t = HANDLE; // pthread_t for pthread
-int detail::lw_thread_create_(lw_thread_t* th, pthread_attr_t const*, void* (*)(void*), void* arg); // pthread
-int detail::lw_thread_create_(lw_thread_t* th, void const*, unsigned (__stdcall *)(void*), void* arg); // win32
+using detail::lw_thread_t = std::thread*; // pthread_t for pthread
+int detail::lw_thread_create<F>(lw_thread_t& th, F f);
 void detail::lw_thread_join(lw_thread_t th);
-struct detail::lw_abstract_thread { virtual ~dtor(){}  virtual void run()=0; };
-void* detail::lw_thread_routine(void* pv) { std::unique_ptr<lw_abstract_thread> pt{(lw_abstract_thread*)pv}; pt->run(); return 0; }
-class detail::lw_thread_impl<F> : public lw_abstract_thread { F f_;
-public: explicit ctor(F f): f_{f}{}  void run() { f_(); }
-};
-int detail::lw_thread_create<F>(lw_thread_t& th, F f){
-    std::unique_ptr<lw_abstract_thread> p{new lw_thread_impl<F>{f}};
-    int r = lw_thread_create_(&th, 0, lw_thread_routine, p.get());
-    if (r==0) p.release();
-    return r;
-}
 
 void detail::atomic_increment(int* pw);
 int detail::atomic_exchange_and_add(int* pw, int dv);
 int detail::atomic_decrement(int* pw);
 int detail::atomic_conditional_increment(int* pw);
 class detail::sp_counted_base { // no copy
-    int_least32_t use_count_{1}, weak_count_{1};
+    std::atomic_int_least32_t use_count_{1}, weak_count_{1}; // int_least32_t for No Threading version
 public: ctor() noexcept {} virtual ~dtor(){}
     virtual void dispose() noexcept=0;
     virtual void destroy() noexcept { delete this; }
@@ -1063,7 +978,6 @@ void* detail::get_local_deleter(local_sp_deleter<void>*) noexcept { return nullp
     * `BOOST_AC_DISABLE_THREADS` & `BOOST_SP_DISALBE_THREADS` : force no-threading
     * `BOOST_AC_USE_STD_ATOMIC` & `BOOST_SP_USE_STD_ATOMIC` : force use STD lib
     * Otherwise: gcc intrinsics -> STD lib -> sync intrinsics -> gcc-x86 and other specific arch -> win32 -> glibc -> no-threading/spinlock
-* `BOOST_SP_USE_QUICK_ALLOCATOR`: use quick allocator instead of global `new/delete`
 * `BOOST_SP_REPORT_IMPLEMENTATION`, `BOOST_SP_NO_OBSOLETE_MESSAGE`
 
 ------
@@ -1078,7 +992,6 @@ void* detail::get_local_deleter(local_sp_deleter<void>*) noexcept { return nullp
 * `<boost/config.hpp>`, `<boost/config/workaround.hpp>`
 * `<boost/config/header_deprecated.hpp>`
 * `<boost/config/pragma_message.hpp>`
-* `<boost/cstdint.hpp>`
 
 #### Boost.Core
 
